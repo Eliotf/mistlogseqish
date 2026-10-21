@@ -1,85 +1,105 @@
 # Mistlog: Product Requirements
 
-**Status:** Draft v0.1 · **Last updated:** 2026-10-20
+**Status:** Draft v0.2 · **Last updated:** 2026-10-21
 
 > **How to keep this alive.** Edit in place. When scope, status or a decision changes, update the feature table, add a line to the Decision log, and add a line to the Changelog. Agents: read the milestone you are working on before starting, and update this file in the same PR when behaviour changes.
 
-Status key: ✅ prototyped (UI demo only, not built for real) · 🟡 planned · ⬜ future · ❌ cut
+Status key: ✅ prototyped (UI demo only, not built for real) · 🟢 works today (inherited from Mist) · 🟡 planned · ⬜ future · ❌ cut
 
 ## 1. Summary
 
-Mistlog is a Logseq-style notes app for one person (and the people they share pages with): daily notes, `[[backlinks]]`, tasks, and shareable pages, with every page stored as a plain markdown file on a server so that syncing across devices is simple and safe.
+Mistlog is a Logseq-style notes app for one person (and the people they share pages with): daily notes, `[[backlinks]]`, tasks, and shareable pages, with every page stored on a server so that syncing across devices is simple and safe.
 
-It starts from [Mist](https://github.com/inanimate-tech/mist) (Cloudflare Workers, TipTap, Yjs), which already has a good markdown editor, sharing by URL, and a live-formatting feel.
+It starts from [Mist](https://github.com/inanimate-tech/mist) (Cloudflare Workers, TipTap, Yjs), which already has a good markdown editor, live sync between devices, sharing by URL, and a live-formatting feel. Mistlog keeps Mist's storage model (one live Yjs document per page) and adds the linked-notes layer on top.
 
 ## 2. Problem
 
 - Logseq's model (daily journal, links, backlinks, tasks) is great, but syncing files between devices is fiddly and sharing a single page with someone is awkward.
-- Mist makes sharing markdown easy, but it is document-oriented: no daily notes, no linking between pages, no tasks, and documents expire.
+- Mist makes sharing markdown easy, but it is document-oriented: no daily notes, no linking between pages, no tasks, and documents expire after 99 hours.
 
 ## 3. Goals and non-goals
 
 **Goals**
 - Capture first: open the app and type immediately, with today's journal ready.
-- Notes link to each other, and every page shows what links to it.
-- Pages are plain markdown files, Logseq-compatible, so the user is never locked in.
+- Notes link to each other, every page shows what links to it, and **links never break**, including when a page is renamed.
 - Sync across devices that is fast and never loses text.
 - Share a single page by link (view or edit) without exposing anything else.
+- No lock-in: every page can be exported as a Logseq-compatible markdown file.
 
 **Non-goals (for now)**
 - Block-level references and a true outliner (pages are documents with indented bullets).
-- Real-time multiplayer cursors (planned later; async sharing comes first).
 - Native mobile apps (responsive web first).
 - Plugins, themes marketplace, graph database features.
+- Storing pages as markdown files on the server (see Decision log, 2026-10-21).
 
 ## 4. Principles
 
-1. Plain markdown is the source of truth.
-2. Never lose the user's text. Conflicts get merged or kept, never overwritten.
-3. Keyboard first, with the Logseq muscle memory where it makes sense (Tab to indent, `[[` to link).
-4. Private by default, shared on purpose.
-5. Small and fast. Prefer boring, well-understood parts.
+1. Links are permanent. A link points at a page, not at a piece of text, so renaming never breaks it.
+2. Never lose the user's text. Edits from every device merge; nothing is overwritten.
+3. Markdown-shaped text, exportable at any time. Page text follows Logseq conventions so that export is a straight conversion.
+4. Keyboard first, with the Logseq muscle memory where it makes sense (Tab to indent, `[[` to link).
+5. Private by default, shared on purpose.
+6. Small and fast. Prefer boring, well-understood parts, and reuse what Mist already does.
 
 ## 5. Features
 
 | ID | Feature | Status | Milestone | Notes |
 |----|---------|--------|-----------|-------|
-| F1 | Daily notes feed (today on top, lazily created) | ✅ | M2 | One file per day: `journals/YYYY_MM_DD.md` |
-| F2 | Pages as markdown files | ✅ | M1 | `pages/<slug>.md` |
-| F3 | `[[wikilinks]]` with auto-pair and title autocomplete | ✅ | M2 | Autocomplete searches page titles and shows the file path |
-| F4 | Backlinks / linked references panel | ✅ | M2 | Derived from a link index |
-| F5 | Editable page titles, rename rewrites links | ✅ | M2 | Journal titles are dates, not editable |
+| F0 | Documents persist (remove Mist's 99-hour expiry) | 🟡 | M1 | Existing documents already have a deletion alarm set, so the alarm handler must stop deleting, not just stop being scheduled |
+| F1 | Daily notes feed (today on top, lazily created) | ✅ | M2 | One document per day with a fixed ID, e.g. `journal-2026-10-21` |
+| F2 | Pages with titles | ✅ | M2 | One document per page, random permanent ID, title stored separately |
+| F3 | `[[wikilinks]]` by page ID, with auto-pair and title autocomplete | ✅ | M2 | See 6.1 |
+| F4 | Backlinks / linked references panel | ✅ | M2 | Query on the workspace index |
+| F5 | Editable page titles; rename updates every link instantly | ✅ | M2 | One title change in the index; no linking page is rewritten (see 6.1). Journal titles are dates, not editable |
 | F6 | Tasks: `TODO` / `DOING` / `DONE` and a Tasks view | ✅ | M2 | Cmd/Ctrl+Enter cycles; checkbox in Tasks view toggles |
-| F7 | Tab / Shift+Tab indent (tab character, children move with parent) | ✅ | M2 | Logseq-compatible file format |
+| F7 | Tab / Shift+Tab indent (tab character, children move with parent) | ✅ | M2 | Logseq-compatible text |
 | F8 | Collapsible left and right sidebars (`t l`, `t r`) | ✅ | M2 | |
-| F9 | Live markdown formatting, always-editable | ✅ | M2 | Prototype uses a textarea overlay; production uses TipTap (see decisions) |
-| F10 | Sync: versioned saves, merge on conflict, offline queue, CLI | 🟡 | M3 | See section 7 |
-| F11 | Sharing: private / link view / link edit | ✅ UI | M4 | Backend and permissions still to build |
-| F12 | Accounts and login | 🟡 | M1 | Replaces Mist's public-by-URL model |
-| F13 | Search across pages | 🟡 | M2 | Title and full text |
-| F20 | Fuzzy dates | ⬜ | M5 | See 6.1 |
-| F21 | All pages list | ⬜ | M5 | See 6.2 |
-| F22 | Pomodoro timer (`{{POMO}}`) | ⬜ | M5 | See 6.3 |
-| F30 | Live multiplayer on shared pages (Durable Objects) | ⬜ | M6 | Reuses Mist's existing agent code |
+| F9 | Live markdown formatting, always-editable | 🟢 | — | Mist's TipTap editor (each line a paragraph, markdown styled in place) |
+| F10 | Sync across devices with automatic merge | 🟢 | — | Yjs in a Durable Object per page. Offline editing is F14 |
+| F11 | Sharing: private / link view / link edit | ✅ UI | M4 | Today any document URL is readable and editable by anyone |
+| F12 | Accounts and login | 🟡 | M4 | Cloudflare Access locks the whole site down first (M0) |
+| F13 | Search across pages | 🟡 | M2 | Title and full text, from the workspace index |
+| F14 | Offline editing | ⬜ | M3 | Yjs IndexedDB persistence (new dependency, needs approval) |
+| F15 | Export to Logseq markdown | 🟡 | M3 | `pages/<slug>.md` and `journals/YYYY_MM_DD.md`, links written as `[[Current Title]]` |
+| F16 | Comments and suggest mode (CriticMarkup) | 🟢 | — | Inherited from Mist. Keep or cut is an open question |
+| F20 | Fuzzy dates | ⬜ | M5 | See 6.2 |
+| F21 | All pages list | ⬜ | M5 | See 6.3 |
+| F22 | Pomodoro timer (`{{POMO}}`) | ⬜ | M5 | See 6.4 |
+| F30 | Live multiplayer on shared pages | 🟢 | — | Already how Mist works; needs permissions (M4) before it is safe to use with others |
 | F31 | Graph view, templates, Logseq import, attachments (R2) | ⬜ | M6 | Unprioritised ideas |
 
-## 6. Future feature specs
+## 6. Feature specs
 
-These are first drafts. Details marked *TBC* need confirming before build.
+Details marked *TBC* need confirming before build.
 
-### 6.1 Fuzzy dates (F20)
+### 6.1 Links by page ID (F3, F5)
+
+The core of the linked-notes idea. A link stores the permanent ID of the page it points to. The title shown is looked up, so a rename can never leave a link pointing at the old name.
+
+- **Storage:** a link is a `wikilink` mark on the text in the page's Yjs document, with a `pageId` attribute. This follows the same pattern as Mist's CriticMarkup marks (`app/lib/critic-marks.ts`).
+- **Display:** a link always shows the target page's current title from the workspace index. The text stored inside the mark is a snapshot of the title and may be refreshed when the page is opened, but correctness never depends on it.
+- **Creating a link:** typing `[[` opens title autocomplete. Choosing a page inserts a link to its ID. Typing a title that matches no page and closing with `]]` creates the page and links to it. Title matching ignores case.
+- **Pasted or imported text:** plain `[[Title]]` text is converted to an ID link on paste and on import. Anything that cannot be resolved stays as plain text and is shown as an unresolved link.
+- **Rename:** changes the title in one place, the workspace index. No other page is edited, so rename is instant and works even when linking pages are offline or never opened.
+- **Delete:** links keep their `pageId` and are shown dashed as unresolved. Restoring the page heals them.
+- **Journals:** journal pages have fixed IDs (`journal-YYYY-MM-DD`), so they are valid link targets from day one.
+- **Export:** each link is written as `[[Current Title]]`, so exported files work in Logseq.
+- **Acceptance:** rename a page linked from 50 pages; every link shows the new title on next render with no edits to the 50 pages. Delete a page; its links render as unresolved; restore it; they resolve again.
+- **Tests:** link mark round-trip through Yjs, paste conversion, case-insensitive matching, rename with no writes to linking docs, deleted-target rendering, export output.
+
+### 6.2 Fuzzy dates (F20)
 
 Inspired by the Roam Toolkit's natural-language dates (see the Ness Labs overview of Roam browser extensions). Type a natural phrase and get a link to that day's journal page.
 
 - Phrases: `today`, `tomorrow`, `yesterday`, `next friday`, `in 3 days`, `in 2 weeks`, `last monday`, `oct 31`.
 - Trigger syntax: *TBC*. Candidates: a prefix such as `@`, or recognising phrases inside `[[ ]]`.
-- A suggestion list shows each phrase with its resolved date. Accepting inserts a link to that day, e.g. `[[Oct 24th, 2026]]`.
+- A suggestion list shows each phrase with its resolved date. Accepting inserts an ID link to that day's journal (`journal-YYYY-MM-DD`), creating the journal lazily if needed.
 - Dates resolve in the user's timezone, with a setting for week start.
-- **Dependency:** journal pages must become linkable targets (currently only normal pages are). The link text maps to `journals/YYYY_MM_DD.md`, and the display format is a setting (*TBC*, Logseq's default is `MMM do, yyyy`).
+- Display format for journal titles is a setting (*TBC*, Logseq's default is `MMM do, yyyy`).
 - Acceptance: typing `in 2 weeks` from 2026-10-20 offers `Nov 3rd, 2026`; accepting it creates the link; the target day's journal shows a backlink.
 - Tests: parser unit tests across phrases, month/year boundaries, DST, and week-start settings.
 
-### 6.2 All pages (F21)
+### 6.3 All pages (F21)
 
 A page that lists every page.
 
@@ -87,11 +107,11 @@ A page that lists every page.
 - Columns: title, backlink count, last edited, shared badge. Sortable, with a filter box.
 - Toggle to include or hide journal pages (hidden by default).
 - Click to open. "New page" creates and focuses the title.
-- Delete a page (with confirmation). Links to it remain as unresolved links and are shown dashed.
+- Delete a page (with confirmation). Links to it remain and are shown dashed as unresolved (see 6.1).
 - Must respect permissions (only pages the viewer can read).
 - Acceptance: with 500 pages the list renders and sorts without noticeable lag (paginate or virtualise if needed).
 
-### 6.3 Pomodoro (F22)
+### 6.4 Pomodoro (F22)
 
 Like Roam's `{{POMO}}` timer. Typing `{{POMO}}` in a page renders an inline timer.
 
@@ -101,56 +121,74 @@ Like Roam's `{{POMO}}` timer. Typing `{{POMO}}` in a page renders an inline time
 - Optional: append a log line such as `- 🍅 Pomodoro completed 14:25` to today's journal (*TBC*).
 - Must survive reload and backgrounded tabs, so store an end timestamp rather than counting with `setInterval`.
 - Whether the running timer syncs across devices is *TBC*.
-- The `{{POMO}}` text stays in the markdown file as-is, so the file remains portable.
+- The `{{POMO}}` text stays in the page text as-is, so exported files remain portable.
 
 ## 7. Technical approach
 
 **Hosting:** Cloudflare Workers (React Router 7 SSR), deployed from GitHub.
-**Storage:** D1 (SQLite) holds pages (markdown text, version, owner, visibility), links (source, target), shares, users, with FTS for search. R2 holds attachments later.
-**Files on a server:** pages are exposed as files, e.g. `GET/PUT /api/files/pages/foo.md`. A local folder can mirror them via a CLI.
-**Sync protocol:**
-- Every page has an integer `version`. Save is `UPDATE ... WHERE id = ? AND version = ?`.
-- A mismatch returns 412 with the current page. The client three-way merges (base, theirs, mine) and retries. If it cannot merge cleanly it keeps a conflicted copy.
-- Devices pull `GET /api/changes?since=<cursor>`. Offline edits queue in IndexedDB.
-**Link index:** on every save, parse `[[links]]` and `#tags` into the links table. Backlinks are a query. Unlinked mentions come from full-text search.
-**Live editing (later):** Mist's Durable Object agents stay in the repo and are re-enabled for shared pages in M6.
+
+**Page storage (unchanged from Mist):** each page and each journal day is one `DocumentAgent` Durable Object holding a Yjs document in its built-in SQLite. Clients connect over WebSocket and edits merge automatically, which gives sync across devices and live collaboration without a custom sync protocol. Mist's 99-hour expiry is removed.
+
+**Page text conventions:** inside the Yjs document, text follows Logseq conventions so that export is a straight conversion: bullets are `- `, nesting is a literal tab character, tasks are `TODO` / `DOING` / `DONE` at the start of a line. Links are marks carrying a page ID (6.1).
+
+**Workspace index:** a single `WorkspaceAgent` Durable Object (one per workspace; one in total while single-user) holds, in its SQLite:
+- `pages` (id, kind page or journal, title, journal date, updated_at, deleted)
+- `links` (source page id, target page id)
+- `tasks` (page id, line, state, text)
+- a full-text search table of page text
+
+Each `DocumentAgent` re-indexes itself after edits settle (debounced): it runs the shared parser over its document and sends the results to the workspace. The index is always rebuilt from documents, never the other way round. Backlinks, autocomplete, search, the Tasks view and the journal feed are queries on the index.
+
+**Shared parser:** one module in `app/lib/` extracts links, tags, tasks and journal dates from a document. The index and the editor both use it.
+
+**Access:** Cloudflare Access locks the whole site down first. Per-page permissions (M4) are checked before a WebSocket connection to a `DocumentAgent` is accepted and on every index query.
 
 ## 8. Milestones
 
-- [ ] **M0 Foundation:** import Mist into our own repo, deploy it unchanged to Cloudflare, connect GitHub for auto-deploy, add CI, add AGENTS.md and this PRD, lock the site down while unfinished.
-- [ ] **M1 Storage and auth:** D1 schema and migrations, pages API with compare-and-swap saves, login, remove 99-hour expiry and public-by-default.
-- [ ] **M2 Notes core:** port the prototype behaviours onto TipTap: journal feed, wikilinks with autocomplete, backlinks, rename, tasks, indent, sidebars, search.
-- [ ] **M3 Sync:** change feed, offline queue, conflict merge, CLI folder sync.
-- [ ] **M4 Sharing:** visibility model, share dialog, permission-aware backlinks and search.
+- [ ] **M0 Foundation:** import Mist into our own repo, deploy it to Cloudflare, connect GitHub for auto-deploy, add CI, add AGENTS.md and this PRD, lock the site down with Cloudflare Access while unfinished. Known gap: the CI coverage threshold rises monthly and currently fails.
+- [ ] **M1 Persistence and index:** remove the 99-hour expiry (including for existing documents), shared parser, `WorkspaceAgent` index, documents report to the index with a one-off backfill.
+- [ ] **M2 Notes core:** page identity and titles, journal feed, tab indent, tasks, ID-based wikilinks with autocomplete, backlinks, rename, sidebars, search.
+- [ ] **M3 Portability and offline:** export to Logseq markdown, offline editing.
+- [ ] **M4 Sharing:** accounts, visibility model, share dialog, permission-aware backlinks and search.
 - [ ] **M5 Quality-of-life:** all pages list, fuzzy dates, pomodoro.
-- [ ] **M6 Later:** live collaboration on shared pages, graph view, import from Logseq, attachments.
+- [ ] **M6 Later:** graph view, import from Logseq, attachments.
 
 ## 9. Open questions
 
-1. Editor: keep Mist's TipTap document model and serialise to markdown, or build the always-editable overlay editor from the prototype? (Leaning TipTap for correctness, borrowing the prototype's behaviour.)
-2. Do journal pages become linkable targets in M2 or only when fuzzy dates land?
-3. Fuzzy date trigger syntax and the display date format.
-4. Single user only at first, or teams/workspaces from the start?
-5. Keep Mist's Fathom analytics hooks, or remove them?
-6. Do we want a read-only public site for link-shared pages, or require login to view?
+1. Do Mist's comments and suggest mode (F16) stay? They work today, but they add complexity to the editor and to export.
+2. Fuzzy date trigger syntax and the journal title display format.
+3. Single user only at first, or teams/workspaces from the start? (The index is one Durable Object per workspace either way.)
+4. Keep Mist's Fathom analytics hooks, or remove them?
+5. Do we want a read-only public site for link-shared pages, or require login to view?
+6. Page URLs: keep Mist's random-ID URLs (`/docs/k3x9…`), or show a readable slug that redirects to the ID?
 
 ## 10. Risks
 
-- **Merge quality:** line-based merging can mangle edits to the same line. Mitigation: conflicted copies and tests; consider a proper diff3 library.
-- **Editor complexity:** Logseq-style behaviours (Tab, `[[` autocomplete, always-editable) are fiddly in TipTap. Mitigation: build and test them as small, separate extensions.
-- **Link index drift:** index and markdown can disagree. Mitigation: the index is rebuilt from markdown, never the other way round.
-- **Cloudflare plan limits:** check Durable Object and D1 limits on the free plan before relying on them.
+- **Index drift:** the index can lag behind or disagree with documents. Mitigation: the index is always rebuilt from documents, re-indexing is idempotent, and a full rebuild can be run at any time.
+- **Journal feed connections:** each day in the feed is its own live document. Mitigation: connect only days that are on screen.
+- **Lock-in:** pages live as Yjs data, not files. Mitigation: export (F15) early, in M3, and keep page text in Logseq conventions.
+- **Hand-typed and pasted links:** text that looks like a link but has no page ID could be missed. Mitigation: convert on paste and import, show unresolved links clearly, and test it.
+- **Editor complexity:** Logseq-style behaviours (Tab, `[[` autocomplete) are fiddly in TipTap. Mitigation: build and test them as small, separate extensions.
+- **Open access:** until Cloudflare Access is on, anyone with a document URL can read and edit it, and documents no longer expire. Mitigation: lock the site down before storing real notes.
+- **Cloudflare plan limits:** check Durable Object limits on the free plan before relying on them.
 
 ## 11. Decision log
 
 | Date | Decision | Why |
 |------|----------|-----|
-| 2026-10-20 | Host on Cloudflare (not Vercel) | Mist already runs on Workers and Durable Objects, and Vercel cannot hold WebSockets, which matters for live editing later |
-| 2026-10-20 | Async sharing with safe sync first, live multiplayer later | Fast and safe sync is enough to start |
-| 2026-10-20 | Markdown stored as Logseq-compatible files (tab-indented bullets, `YYYY_MM_DD` journals) | Portability and no lock-in |
-| 2026-10-20 | D1 as source of truth for page text, exposed as files via API | Atomic compare-and-swap saves and simple queries |
+| 2026-10-20 | Host on Cloudflare (not Vercel) | Mist already runs on Workers and Durable Objects, and Vercel cannot hold WebSockets, which matters for live editing |
 | 2026-10-20 | Documents, not an outliner | Far less work; block references can come later |
+| 2026-10-20 | ~~D1 as source of truth for page text, exposed as files via API~~ | Superseded 2026-10-21 |
+| 2026-10-20 | ~~Async sharing with safe sync first, live multiplayer later~~ | Superseded 2026-10-21: Mist's storage already gives live sync |
+| 2026-10-21 | Keep Mist's storage (one Yjs Durable Object per page); drop markdown files as the stored format and compare-and-swap saves | Reuses working sync and merge instead of building them; export keeps us portable |
+| 2026-10-21 | Remove Mist's 99-hour document expiry | Notes must persist |
+| 2026-10-21 | Links point to a permanent page ID, not a title | Renaming must never break a link; otherwise the linked-notes model fails. Rename becomes one title update |
+| 2026-10-21 | Cross-page features use a workspace index in a Durable Object | Each page is isolated, so backlinks, search and tasks need one place to query; no new Cloudflare product needed |
+| 2026-10-21 | Keep TipTap as the editor | Mist's line-per-paragraph model keeps markdown text exact |
+| 2026-10-21 | Journal pages have fixed IDs (`journal-YYYY-MM-DD`) | Today's journal can be created on first open, and journals are link targets from day one (resolves the old "are journals linkable" question) |
+| 2026-10-21 | Pasted or imported `[[Title]]` text is converted to an ID link | Keeps every link ID-based; unresolvable text stays plain and is shown as unresolved |
 
 ## 12. Changelog
 
 - 2026-10-20: v0.1. Initial draft from the UI prototype and planning conversation. Future features added: fuzzy dates, all pages, pomodoro.
+- 2026-10-21: v0.2. Keep Mist's storage instead of markdown files on D1. Links by page ID (new spec 6.1). Added workspace index, export, persistence and offline as features. Marked sync and live multiplayer as already working. Reordered milestones (persistence and index in M1, accounts moved to M4). Resolved the editor open question; added URL and comments questions. Recorded the fixed journal IDs and paste conversion decisions. Updated AGENTS.md to match (renamed from `@AGENTS.md`).
