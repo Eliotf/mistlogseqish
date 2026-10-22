@@ -57,7 +57,7 @@ It starts from [Mist](https://github.com/inanimate-tech/mist) (Cloudflare Worker
 | F9 | Live markdown formatting, always-editable | 🟢 | — | Mist's TipTap editor (each line a paragraph, markdown styled in place) |
 | F10 | Sync across devices with automatic merge | 🟢 | — | Yjs in a Durable Object per page. Offline editing is F14 |
 | F11 | Sharing: private / link view / link edit | ✅ UI | M4 | Today any document URL is readable and editable by anyone |
-| F12 | Accounts and login | 🟡 | M4 | Cloudflare Access locks the whole site down first (M0) |
+| F12 | Accounts and login | 🟡 | M4 | Until then, Cloudflare Access gates the whole site (done in M0, sign-in with a Cloudflare account) |
 | F13 | Search across pages | 🟡 | M2 | Title and full text, from the workspace index |
 | F14 | Offline editing | ⬜ | M3 | Yjs IndexedDB persistence (new dependency, needs approval) |
 | F15 | Export to Logseq markdown | 🟡 | M3 | `pages/<slug>.md` and `journals/YYYY_MM_DD.md`, links written as `[[Current Title]]` |
@@ -147,11 +147,11 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced): it runs t
 - **Coverage must be raised back towards 80 / 75 / 80 / 80.** Raise the floors by hand in the same PR whenever new tests lift coverage, and review progress at the end of each milestone. Most of the current gap is in Mist code (routes, hooks) that M1 and M2 will replace, so new code should arrive well tested.
 - Cloudflare Workers Builds deploys every push to `main` and does not wait for GitHub CI. Until the build command also runs the checks (M0), a commit that fails CI can still go live.
 
-**Access:** Cloudflare Access locks the whole site down first. Per-page permissions (M4) are checked before a WebSocket connection to a `DocumentAgent` is accepted and on every index query.
+**Access:** Cloudflare Access gates the whole `workers.dev` address (set up 2026-10-22). Visitors sign in with their Cloudflare account; there is no one-time email code. Every path is covered, including document WebSocket connections and `/new`. The Worker does not yet verify the Access token itself, and a custom domain added later needs its own Access application. Per-page permissions (M4) are checked before a WebSocket connection to a `DocumentAgent` is accepted and on every index query.
 
 ## 8. Milestones
 
-- [ ] **M0 Foundation:** import Mist into our own repo, deploy it to Cloudflare, connect GitHub for auto-deploy, add CI, add AGENTS.md and this PRD, lock the site down with Cloudflare Access while unfinished. Done so far: repo, auto-deploy via Workers Builds (verified 2026-10-22), CI, AGENTS.md, PRD, coverage thresholds frozen so CI can pass. Still to do: make the Workers Builds command run `npm run typecheck && npm run lint && npm run test` before building, so failing code cannot deploy; Cloudflare Access.
+- [ ] **M0 Foundation:** import Mist into our own repo, deploy it to Cloudflare, connect GitHub for auto-deploy, add CI, add AGENTS.md and this PRD, lock the site down with Cloudflare Access while unfinished. Done so far: repo, auto-deploy via Workers Builds (verified 2026-10-22), CI, AGENTS.md, PRD, coverage thresholds frozen so CI can pass, Cloudflare Access with Cloudflare-account login (verified 2026-10-22). Still to do: make the Workers Builds command run `npm run typecheck && npm run lint && npm run test` before building, so failing code cannot deploy.
 - [ ] **M1 Persistence and index:** remove the 99-hour expiry (including for existing documents), shared parser, `WorkspaceAgent` index, documents report to the index with a one-off backfill.
 - [ ] **M2 Notes core:** page identity and titles, journal feed, tab indent, tasks, ID-based wikilinks with autocomplete, backlinks, rename, sidebars, search.
 - [ ] **M3 Portability and offline:** export to Logseq markdown, offline editing.
@@ -176,7 +176,7 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced): it runs t
 - **Hand-typed and pasted links:** text that looks like a link but has no page ID could be missed. Mitigation: convert on paste and import, show unresolved links clearly, and test it.
 - **Test coverage drifts down or never recovers:** the floors were frozen at 54% lines to get CI green. Mitigation: raise the floors whenever coverage rises and review at each milestone (section 7, Quality gates).
 - **Editor complexity:** Logseq-style behaviours (Tab, `[[` autocomplete) are fiddly in TipTap. Mitigation: build and test them as small, separate extensions.
-- **Open access:** until Cloudflare Access is on, anyone with a document URL can read and edit it, and documents no longer expire. Mitigation: lock the site down before storing real notes.
+- **Access only at the edge:** Cloudflare Access is the only thing keeping strangers out. The Worker does not check who is signing in, and a new hostname (custom domain) would be open until it gets its own Access application. Mitigation: verify the Access token in the Worker (M4), and add Access before pointing any new domain at the Worker.
 - **Cloudflare plan limits:** check Durable Object limits on the free plan before relying on them.
 
 ## 11. Decision log
@@ -195,6 +195,7 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced): it runs t
 | 2026-10-21 | Journal pages have fixed IDs (`journal-YYYY-MM-DD`) | Today's journal can be created on first open, and journals are link targets from day one (resolves the old "are journals linkable" question) |
 | 2026-10-21 | Pasted or imported `[[Title]]` text is converted to an ID link | Keeps every link ID-based; unresolvable text stays plain and is shown as unresolved |
 | 2026-10-22 | Freeze coverage thresholds at current levels instead of Mist's calendar-based ramp | The ramp failed CI on every commit regardless of changes, so CI could not tell good commits from bad. Floors are raised by hand as tests are added, back towards 80% |
+| 2026-10-22 | Lock the site with Cloudflare Access, signing in with a Cloudflare account (not one-time email codes) | Keeps strangers out with no code changes while accounts (F12) are unbuilt |
 | 2026-10-22 | Gate deploys by running the checks in the Workers Builds command | Workers Builds ignores GitHub CI; this is the smallest change that stops failing code going live |
 
 ## 12. Changelog
@@ -202,3 +203,4 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced): it runs t
 - 2026-10-20: v0.1. Initial draft from the UI prototype and planning conversation. Future features added: fuzzy dates, all pages, pomodoro.
 - 2026-10-21: v0.2. Keep Mist's storage instead of markdown files on D1. Links by page ID (new spec 6.1). Added workspace index, export, persistence and offline as features. Marked sync and live multiplayer as already working. Reordered milestones (persistence and index in M1, accounts moved to M4). Resolved the editor open question; added URL and comments questions. Recorded the fixed journal IDs and paste conversion decisions. Updated AGENTS.md to match (renamed from `@AGENTS.md`).
 - 2026-10-22: Added Quality gates (section 7): coverage floors frozen with a commitment to raise them back towards 80%, and deploy gating. Updated M0 progress and added a coverage risk.
+- 2026-10-22: Cloudflare Access is on (Cloudflare-account login). Updated F12, section 7 Access, M0 progress, and replaced the open-access risk with an edge-only-access risk.
