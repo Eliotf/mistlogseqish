@@ -81,7 +81,11 @@ PRD.md        Product spec and roadmap
 ## Working agreements
 
 - Read the relevant PRD milestone first. For anything non-trivial, write a short plan (files to touch, risks) before editing and share it.
-- One focused change per PR. Branch names: `feat/...`, `fix/...`, `chore/...`. Commit messages: conventional commits (`feat: add backlinks panel`).
+<!-- Branches and PRs are paused while this is a solo project; work goes straight to main.
+- One focused change per PR. Branch names: `feat/...`, `fix/...`, `chore/...`.
+-->
+- Commit straight to `main`, one focused change per commit. Commit messages: conventional commits (`feat: add backlinks panel`).
+- Every push to `main` deploys, so ask before pushing.
 - Verify by running the commands above. Say what you ran and what you did not.
 - If the spec is ambiguous or a requirement conflicts with an invariant, stop and ask instead of guessing.
 - When you learn something a future contributor would trip on, add one line to this file.
