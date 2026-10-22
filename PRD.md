@@ -141,11 +141,17 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced): it runs t
 
 **Shared parser:** one module in `app/lib/` extracts links, tags, tasks and journal dates from a document. The index and the editor both use it.
 
+**Quality gates:**
+- CI (`.github/workflows/ci.yml`) runs typecheck, lint and tests on every push and pull request.
+- Coverage thresholds in `vitest.config.ts` are fixed floors (lines 54, branches 43, functions 43, statements 51 as of 2026-10-22). They stop coverage falling but do not rise on their own. Mist's original thresholds rose with the calendar towards 80 / 75 / 80 / 80 and failed CI on every commit, so they were frozen.
+- **Coverage must be raised back towards 80 / 75 / 80 / 80.** Raise the floors by hand in the same PR whenever new tests lift coverage, and review progress at the end of each milestone. Most of the current gap is in Mist code (routes, hooks) that M1 and M2 will replace, so new code should arrive well tested.
+- Cloudflare Workers Builds deploys every push to `main` and does not wait for GitHub CI. Until the build command also runs the checks (M0), a commit that fails CI can still go live.
+
 **Access:** Cloudflare Access locks the whole site down first. Per-page permissions (M4) are checked before a WebSocket connection to a `DocumentAgent` is accepted and on every index query.
 
 ## 8. Milestones
 
-- [ ] **M0 Foundation:** import Mist into our own repo, deploy it to Cloudflare, connect GitHub for auto-deploy, add CI, add AGENTS.md and this PRD, lock the site down with Cloudflare Access while unfinished. Known gap: the CI coverage threshold rises monthly and currently fails.
+- [ ] **M0 Foundation:** import Mist into our own repo, deploy it to Cloudflare, connect GitHub for auto-deploy, add CI, add AGENTS.md and this PRD, lock the site down with Cloudflare Access while unfinished. Done so far: repo, auto-deploy via Workers Builds (verified 2026-10-22), CI, AGENTS.md, PRD, coverage thresholds frozen so CI can pass. Still to do: make the Workers Builds command run `npm run typecheck && npm run lint && npm run test` before building, so failing code cannot deploy; Cloudflare Access.
 - [ ] **M1 Persistence and index:** remove the 99-hour expiry (including for existing documents), shared parser, `WorkspaceAgent` index, documents report to the index with a one-off backfill.
 - [ ] **M2 Notes core:** page identity and titles, journal feed, tab indent, tasks, ID-based wikilinks with autocomplete, backlinks, rename, sidebars, search.
 - [ ] **M3 Portability and offline:** export to Logseq markdown, offline editing.
@@ -168,6 +174,7 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced): it runs t
 - **Journal feed connections:** each day in the feed is its own live document. Mitigation: connect only days that are on screen.
 - **Lock-in:** pages live as Yjs data, not files. Mitigation: export (F15) early, in M3, and keep page text in Logseq conventions.
 - **Hand-typed and pasted links:** text that looks like a link but has no page ID could be missed. Mitigation: convert on paste and import, show unresolved links clearly, and test it.
+- **Test coverage drifts down or never recovers:** the floors were frozen at 54% lines to get CI green. Mitigation: raise the floors whenever coverage rises and review at each milestone (section 7, Quality gates).
 - **Editor complexity:** Logseq-style behaviours (Tab, `[[` autocomplete) are fiddly in TipTap. Mitigation: build and test them as small, separate extensions.
 - **Open access:** until Cloudflare Access is on, anyone with a document URL can read and edit it, and documents no longer expire. Mitigation: lock the site down before storing real notes.
 - **Cloudflare plan limits:** check Durable Object limits on the free plan before relying on them.
@@ -187,8 +194,11 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced): it runs t
 | 2026-10-21 | Keep TipTap as the editor | Mist's line-per-paragraph model keeps markdown text exact |
 | 2026-10-21 | Journal pages have fixed IDs (`journal-YYYY-MM-DD`) | Today's journal can be created on first open, and journals are link targets from day one (resolves the old "are journals linkable" question) |
 | 2026-10-21 | Pasted or imported `[[Title]]` text is converted to an ID link | Keeps every link ID-based; unresolvable text stays plain and is shown as unresolved |
+| 2026-10-22 | Freeze coverage thresholds at current levels instead of Mist's calendar-based ramp | The ramp failed CI on every commit regardless of changes, so CI could not tell good commits from bad. Floors are raised by hand as tests are added, back towards 80% |
+| 2026-10-22 | Gate deploys by running the checks in the Workers Builds command | Workers Builds ignores GitHub CI; this is the smallest change that stops failing code going live |
 
 ## 12. Changelog
 
 - 2026-10-20: v0.1. Initial draft from the UI prototype and planning conversation. Future features added: fuzzy dates, all pages, pomodoro.
 - 2026-10-21: v0.2. Keep Mist's storage instead of markdown files on D1. Links by page ID (new spec 6.1). Added workspace index, export, persistence and offline as features. Marked sync and live multiplayer as already working. Reordered milestones (persistence and index in M1, accounts moved to M4). Resolved the editor open question; added URL and comments questions. Recorded the fixed journal IDs and paste conversion decisions. Updated AGENTS.md to match (renamed from `@AGENTS.md`).
+- 2026-10-22: Added Quality gates (section 7): coverage floors frozen with a commitment to raise them back towards 80%, and deploy gating. Updated M0 progress and added a coverage risk.

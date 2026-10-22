@@ -89,7 +89,8 @@ PRD.md        Product spec and roadmap
 ## Gotchas
 
 - Documents created before the expiry was removed still have a deletion alarm scheduled. `DocumentAgent.alarm()` must never delete data.
-- The coverage thresholds in `vitest.config.ts` rise every month, so `npm run test` can start failing without any code change.
+- Coverage thresholds in `vitest.config.ts` are fixed floors. When your tests raise coverage, raise the floors in the same PR; never lower them. See PRD section 7, "Quality gates".
+- Every push to `main` deploys to the live site through Cloudflare Workers Builds, which does not wait for GitHub CI.
 
 ## Cloudflare notes
 
