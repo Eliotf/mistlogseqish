@@ -13,7 +13,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as Y from "yjs";
 import * as awarenessProtocol from "y-protocols/awareness";
-import { DOCUMENT_TTL_MS, DOC_FORMAT_VERSION } from "~/shared/constants";
+import { DOC_FORMAT_VERSION } from "~/shared/constants";
 import { YjsProvider } from "~/lib/yjs-provider";
 
 /* ------------------------------------------------------------------ */
@@ -75,6 +75,10 @@ vi.mock("agents", () => ({
     getConnections() {
       return mockConnectionMap.values();
     }
+
+    // Stands in for the Agents SDK's alarm(), which only runs tasks
+    // registered with this.schedule(). DocumentAgent registers none.
+    alarm = async (): Promise<void> => {};
   },
 }));
 
@@ -271,15 +275,10 @@ describe("DocumentAgent", () => {
       cleanup(client);
     });
 
-    it("sets auto-delete alarm at createdAt + DOCUMENT_TTL_MS", async () => {
-      const before = Date.now();
+    it("does not schedule an alarm (documents never expire)", async () => {
       await agent.onRequest(new Request("https://do/", { method: "POST" }));
-      const after = Date.now();
 
-      expect(mockSetAlarm).toHaveBeenCalledOnce();
-      const alarmTime = mockSetAlarm.mock.calls[0][0] as number;
-      expect(alarmTime).toBeGreaterThanOrEqual(before + DOCUMENT_TTL_MS);
-      expect(alarmTime).toBeLessThanOrEqual(after + DOCUMENT_TTL_MS);
+      expect(mockSetAlarm).not.toHaveBeenCalled();
     });
 
     it("imports plain text content", async () => {
@@ -397,42 +396,46 @@ describe("DocumentAgent", () => {
   });
 
   /* ================================================================ */
-  /*  Alarm (auto-delete)                                              */
+  /*  Alarm (regression: documents used to auto-delete after 99 hours) */
   /* ================================================================ */
 
   describe("alarm", () => {
-    it("clears all SQL data", async () => {
-      await agent.onRequest(new Request("https://do/", { method: "POST" }));
-      expect(mockSqlStore.size).toBeGreaterThan(0);
+    // Documents created before the expiry was removed still have a
+    // deletion alarm scheduled. When it fires, nothing may be lost.
+    it("keeps the document when a leftover deletion alarm fires", async () => {
+      await agent.onRequest(
+        new Request("https://do/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: "Keep me" }),
+        }),
+      );
+      const stored = new Map(mockSqlStore);
 
       await agent.alarm();
 
-      expect(mockSqlStore.size).toBe(0);
-    });
-
-    it("closes all active connections with code 1000", async () => {
-      await agent.onRequest(new Request("https://do/", { method: "POST" }));
-      const conn1 = createConnection();
-      const conn2 = createConnection();
-
-      await agent.alarm();
-
-      expect(conn1.closed).toBe(true);
-      expect(conn1.closeCode).toBe(1000);
-      expect(conn1.closeReason).toBe("Document expired");
-      expect(conn2.closed).toBe(true);
-    });
-
-    it("resets agent to fresh state (exists: false after alarm)", async () => {
-      await agent.onRequest(new Request("https://do/", { method: "POST" }));
-      const client = connectYjsClient();
-      cleanup(client);
-
-      await agent.alarm();
-
+      expect(mockSqlStore).toEqual(stored);
       const res = await agent.onRequest(new Request("https://do/"));
       const body = (await res.json()) as { exists: boolean };
-      expect(body.exists).toBe(false);
+      expect(body.exists).toBe(true);
+      const client = connectYjsClient();
+      expect(client.doc.getXmlFragment("default").toString()).toContain("Keep me");
+      cleanup(client);
+    });
+
+    it("keeps connections open when an alarm fires", async () => {
+      await agent.onRequest(new Request("https://do/", { method: "POST" }));
+      const conn = createConnection();
+
+      await agent.alarm();
+
+      expect(conn.closed).toBe(false);
+    });
+
+    it("does not override the Agents SDK alarm handler", () => {
+      const BaseAgent = Object.getPrototypeOf(DocumentAgent) as new () => { alarm: () => Promise<void> };
+      expect(Object.prototype.hasOwnProperty.call(DocumentAgent.prototype, "alarm")).toBe(false);
+      expect(agent.alarm.toString()).toBe(new BaseAgent().alarm.toString());
     });
   });
 

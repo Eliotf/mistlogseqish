@@ -88,7 +88,7 @@ PRD.md        Product spec and roadmap
 
 ## Gotchas
 
-- Documents created before the expiry was removed still have a deletion alarm scheduled. `DocumentAgent.alarm()` must never delete data.
+- `DocumentAgent` must not override `alarm()`: the Agents SDK uses it to run `this.schedule()` tasks. Documents created before the expiry was removed still have a deletion alarm scheduled, which only stays harmless while the SDK's handler is in place. Scheduled work must never delete document data.
 - Coverage thresholds in `vitest.config.ts` are fixed floors. When your tests raise coverage, raise the floors in the same PR; never lower them. See PRD section 7, "Quality gates".
 - Every push to `main` deploys to the live site through Cloudflare Workers Builds, which does not wait for GitHub CI.
 

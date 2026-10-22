@@ -65,7 +65,7 @@ Each page is an isolated Durable Object, so cross-page features (backlinks, `[[`
 ### How it stays correct
 
 1. **On every edit.** After edits pause (about 2 seconds), the `DocumentAgent` runs the shared parser and sends that page's entry to the index. Only that page's rows are replaced. Re-indexing the same content twice gives the same result.
-2. **Retry until confirmed.** Each document remembers whether the index has confirmed its latest entry. Until it has, the document retries on its alarm. Lost updates (index briefly unreachable, a restart) fix themselves within seconds or minutes.
+2. **Retry until confirmed.** Each document remembers whether the index has confirmed its latest entry. Until it has, the document retries using the Agents SDK's `this.schedule()`. Lost updates (index briefly unreachable, a restart) fix themselves within seconds or minutes.
 3. **Rebuild when the parser changes.** Bumping the parser version triggers one rebuild: clear the derived tables, then ask every page in the registry and every journal to re-index. Expect a handful a year, never on a schedule.
 4. **Weekly check.** Once a week the index asks each registered page whether its entry is current, by comparing a short content summary, and re-indexes only those that differ (M1, chunk 1.6; can land after M2).
 
@@ -77,7 +77,7 @@ Mist-era documents are not backfilled, because they cannot be listed. A document
 
 ### Alarms
 
-`DocumentAgent.alarm()` is reused for debounced indexing and retries. Documents created before the 99-hour expiry was removed still have a deletion alarm scheduled; with this change it fires as a harmless re-index. `alarm()` must never delete data.
+`DocumentAgent` does not override `alarm()`. The Agents SDK uses `alarm()` to run tasks registered with `this.schedule()`, which is what debounced indexing and retries use. Documents created before the 99-hour expiry was removed still have a deletion alarm scheduled; when it fires, the SDK finds no scheduled task and does nothing. Scheduled work must never delete document data.
 
 ### What the user sees
 
