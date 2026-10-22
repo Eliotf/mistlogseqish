@@ -132,12 +132,13 @@ Like Roam's `{{POMO}}` timer. Typing `{{POMO}}` in a page renders an inline time
 **Page text conventions:** inside the Yjs document, text follows Logseq conventions so that export is a straight conversion: bullets are `- `, nesting is a literal tab character, tasks are `TODO` / `DOING` / `DONE` at the start of a line. Links are marks carrying a page ID (6.1).
 
 **Workspace index:** a single `WorkspaceAgent` Durable Object (one per workspace; one in total while single-user) holds, in its SQLite:
+- a page registry (every page ID and creation date, recorded at creation; never cleared, because Durable Objects cannot be listed)
 - `pages` (id, kind page or journal, title, journal date, updated_at, deleted)
 - `links` (source page id, target page id)
 - `tasks` (page id, line, state, text)
 - a full-text search table of page text
 
-Each `DocumentAgent` re-indexes itself after edits settle (debounced): it runs the shared parser over its document and sends the results to the workspace. The index is always rebuilt from documents, never the other way round. Backlinks, autocomplete, search, the Tasks view and the journal feed are queries on the index.
+Each `DocumentAgent` re-indexes itself after edits settle (debounced, using its alarm): it runs the shared parser over its document and sends the results to the workspace, retrying until the index confirms. A parser version change triggers a full rebuild through the registry, and a weekly check re-indexes any page whose entry is out of date. Existing Mist-era documents are not backfilled; they index themselves when opened. The index is always rebuilt from documents, never the other way round. Backlinks, autocomplete, search, the Tasks view and the journal feed are queries on the index. Users see nothing unless results may be incomplete. Details, including the status messages: `docs/technical-architecture.md`, "Workspace Index".
 
 **Shared parser:** one module in `app/lib/` extracts links, tags, tasks and journal dates from a document. The index and the editor both use it.
 
@@ -153,7 +154,7 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced): it runs t
 
 - [ ] **M0 Foundation:** import Mist into our own repo, deploy it to Cloudflare, connect GitHub for auto-deploy, add CI, add AGENTS.md and this PRD, lock the site down with Cloudflare Access while unfinished. Done so far: repo, auto-deploy via Workers Builds (verified 2026-10-22), CI, AGENTS.md, PRD, coverage thresholds frozen so CI can pass, Cloudflare Access with Cloudflare-account login (verified 2026-10-22), Workers Builds command set to run the checks before building (2026-10-22, not yet verified). Still to do:
   - [ ] **Verify the deploy gate.** (1) Open the Workers Builds log for a recent build and confirm `typecheck`, `lint` and `test` run before `build`. (2) Push a throwaway branch `chore/test-deploy-gate` with a test that always fails (`expect(1).toBe(2)`); confirm its preview build fails at `test`, nothing is uploaded, and the live site is unchanged; then delete the branch. Needs builds for non-production branches turned on; do not test on `main`, because a broken gate would put the failing code live.
-- [ ] **M1 Persistence and index:** remove the 99-hour expiry (including for existing documents), shared parser, `WorkspaceAgent` index, documents report to the index with a one-off backfill.
+- [ ] **M1 Persistence and index:** remove the 99-hour expiry (including for existing documents); shared parser, including the `wikilink` mark definition; `WorkspaceAgent` index with page registry and parser-versioned rebuild; documents report to the index and retry until confirmed; weekly index check (can land after M2).
 - [ ] **M2 Notes core:** page identity and titles, journal feed, tab indent, tasks, ID-based wikilinks with autocomplete, backlinks, rename, sidebars, search.
 - [ ] **M3 Portability and offline:** export to Logseq markdown, offline editing.
 - [ ] **M4 Sharing:** accounts, visibility model, share dialog, permission-aware backlinks and search.
@@ -171,7 +172,8 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced): it runs t
 
 ## 10. Risks
 
-- **Index drift:** the index can lag behind or disagree with documents. Mitigation: the index is always rebuilt from documents, re-indexing is idempotent, and a full rebuild can be run at any time.
+- **Index drift:** the index can lag behind or disagree with documents. Mitigation: documents retry until the index confirms; a parser version change rebuilds through the page registry; a weekly check fixes anything missed; the UI flags results that may be incomplete. Residual risk: a parser bug gives consistently wrong results that no check detects, so the parser needs thorough tests.
+- **Losing the page registry:** it is the one part of the index that cannot be rebuilt. If lost, pages stay intact but are hard to find until opened. Mitigation: a small, append-only table that rebuilds never touch.
 - **Journal feed connections:** each day in the feed is its own live document. Mitigation: connect only days that are on screen.
 - **Lock-in:** pages live as Yjs data, not files. Mitigation: export (F15) early, in M3, and keep page text in Logseq conventions.
 - **Hand-typed and pasted links:** text that looks like a link but has no page ID could be missed. Mitigation: convert on paste and import, show unresolved links clearly, and test it.
@@ -197,6 +199,11 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced): it runs t
 | 2026-10-21 | Pasted or imported `[[Title]]` text is converted to an ID link | Keeps every link ID-based; unresolvable text stays plain and is shown as unresolved |
 | 2026-10-22 | Freeze coverage thresholds at current levels instead of Mist's calendar-based ramp | The ramp failed CI on every commit regardless of changes, so CI could not tell good commits from bad. Floors are raised by hand as tests are added, back towards 80% |
 | 2026-10-22 | Lock the site with Cloudflare Access, signing in with a Cloudflare account (not one-time email codes) | Keeps strangers out with no code changes while accounts (F12) are unbuilt |
+| 2026-10-22 | Define the `wikilink` mark (name, `pageId`) in the shared parser chunk in M1, before the link UI in M2 | The parser and index need to read links before the editor can create them |
+| 2026-10-22 | No backfill for existing documents; a document indexes itself when opened | Durable Objects cannot be listed, and existing documents are Mist-era test pages with no links or titles |
+| 2026-10-22 | Index keeps a page registry that rebuilds never clear | Makes "rebuild from documents" possible when documents cannot be listed |
+| 2026-10-22 | Reuse `DocumentAgent.alarm()` for debounced indexing and retries | Old deletion alarms become harmless re-indexes instead of needing cleanup |
+| 2026-10-22 | Index drift handled by retry-until-confirmed, parser-version rebuilds and a weekly check; UI signals only when results may be incomplete | Drift fixes itself without bothering the user; full rebuilds are rare |
 | 2026-10-22 | Gate deploys by running the checks in the Workers Builds command | Workers Builds ignores GitHub CI; this is the smallest change that stops failing code going live |
 
 ## 12. Changelog
@@ -206,3 +213,4 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced): it runs t
 - 2026-10-22: Added Quality gates (section 7): coverage floors frozen with a commitment to raise them back towards 80%, and deploy gating. Updated M0 progress and added a coverage risk.
 - 2026-10-22: Cloudflare Access is on (Cloudflare-account login). Updated F12, section 7 Access, M0 progress, and replaced the open-access risk with an edge-only-access risk.
 - 2026-10-22: Workers Builds command now runs the checks. Added an M0 task to verify the deploy gate with a throwaway failing branch.
+- 2026-10-22: Index design: page registry, retry until confirmed, parser-version rebuilds, weekly check, and when the UI signals possible drift (details in `docs/technical-architecture.md`). `wikilink` mark defined in M1. No backfill. Rewrote the index drift risk and added a registry risk.

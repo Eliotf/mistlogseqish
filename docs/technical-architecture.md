@@ -1,14 +1,14 @@
 # Technical Architecture
 
-Technology choices, rules, and architectural decisions for mist.
+Technology choices, rules, and architectural decisions for Mistlog. Product scope and the reasons behind decisions live in `PRD.md`; this file describes how the system is built.
 
 ## Platform
 
 Everything runs on Cloudflare. No other hosting, no external databases, no separate asset storage.
 
 - **Cloudflare Workers** — single worker serving the entire application.
-- **Durable Objects** — each markdown document is a Durable Object holding persistent state. Uses SQLite storage (built-in to Durable Objects).
-- **No auth** at this stage. Will be added later.
+- **Durable Objects** — each page and each journal day is a `DocumentAgent` Durable Object holding a Yjs document in its built-in SQLite. A single `WorkspaceAgent` Durable Object holds the workspace index (see below; planned for M1).
+- **Cloudflare Access** — gates the whole `workers.dev` address; visitors sign in with a Cloudflare account. The Worker does not verify the Access token itself yet (planned for M4).
 
 ## Framework Stack
 
@@ -25,14 +25,12 @@ Everything runs on Cloudflare. No other hosting, no external databases, no separ
 agents/       Server-side Durable Object agents
 app/          React Router application
   components/ Shared UI components
-  lib/        Utilities, editor logic, Yjs provider
+  lib/        Utilities, editor logic, shared parser, Yjs provider
   routes/     File-based routing
   shared/     Constants and types shared between client and server
 docs/         Project documentation
 workers/      Cloudflare Worker entry point (workers/app.ts)
 tests/        Test suite
-plans/        Working plans
-skills/       Skill documents for AI coding assistants
 ```
 
 ## Critical Rule: Server/Client Separation
@@ -50,18 +48,61 @@ The worker entry at `workers/app.ts` handles requests in this order:
 
 Agents are exported from the worker entry file and configured as Durable Object bindings in `wrangler.jsonc`.
 
+## Links
+
+A link is a `wikilink` mark on text in the page's Yjs document, with a `pageId` attribute. The mark's name and attributes are defined once in the shared parser module (M1, chunk 1.3), so the server and the editor agree on them before any link UI exists. The displayed title always comes from the index, so renaming a page never edits linking pages. See `PRD.md` section 6.1.
+
+## Workspace Index
+
+Each page is an isolated Durable Object, so cross-page features (backlinks, `[[` autocomplete, search, the Tasks view, the journal feed) query one `WorkspaceAgent` instead. The index is always derived from documents, never the other way round.
+
+### What it holds
+
+- **Page registry** — every page ID and its creation date, recorded when the page is created. This is the only part of the index that cannot be rebuilt (Durable Objects cannot be listed), so rebuilds never clear it. Journals have date-based IDs (`journal-YYYY-MM-DD`) and can always be found by date.
+- **Derived tables** — `pages` (title, kind, journal date, updated), `links`, `tasks`, and a full-text search table. These can be cleared and rebuilt at any time.
+- **Parser version** — the version of the shared parser that built each page's entry.
+
+### How it stays correct
+
+1. **On every edit.** After edits pause (about 2 seconds), the `DocumentAgent` runs the shared parser and sends that page's entry to the index. Only that page's rows are replaced. Re-indexing the same content twice gives the same result.
+2. **Retry until confirmed.** Each document remembers whether the index has confirmed its latest entry. Until it has, the document retries on its alarm. Lost updates (index briefly unreachable, a restart) fix themselves within seconds or minutes.
+3. **Rebuild when the parser changes.** Bumping the parser version triggers one rebuild: clear the derived tables, then ask every page in the registry and every journal to re-index. Expect a handful a year, never on a schedule.
+4. **Weekly check.** Once a week the index asks each registered page whether its entry is current, by comparing a short content summary, and re-indexes only those that differ (M1, chunk 1.6; can land after M2).
+
+**Limit:** none of these catch a bug in the parser itself, because a wrong result is consistently wrong. Parser tests and the version bump in step 3 are the only defence.
+
+### Existing documents
+
+Mist-era documents are not backfilled, because they cannot be listed. A document indexes itself whenever it is opened.
+
+### Alarms
+
+`DocumentAgent.alarm()` is reused for debounced indexing and retries. Documents created before the 99-hour expiry was removed still have a deletion alarm scheduled; with this change it fires as a harmless re-index. `alarm()` must never delete data.
+
+### What the user sees
+
+Nothing in normal operation. Signals appear only where results may be incomplete, and only while they are:
+
+| Situation | Where | Message |
+|---|---|---|
+| This page's latest edit is not confirmed by the index | Small dot by the backlinks heading | "Recent edits to this page aren't in search yet" |
+| A rebuild is running | One line at the foot of the left sidebar, and a note above search, backlinks and Tasks results | "Updating index · 140 of 412 pages" |
+| The weekly check fixed pages | Not shown; logged | — |
+| User suspects drift | Settings | "Rebuild index" button, same progress line |
+
 ## Key Configuration
 
-- `wrangler.jsonc` — Cloudflare Workers config. Must include `"nodejs_compat"` in compatibility flags (required by Agents SDK for `async_hooks`). Set `CLOUDFLARE_ACCOUNT_ID` env var for deployment.
+- `wrangler.jsonc` — Cloudflare Workers config. Must include `"nodejs_compat"` in compatibility flags (required by Agents SDK for `async_hooks`). A new Durable Object class needs a new, append-only `migrations` entry. Set `CLOUDFLARE_ACCOUNT_ID` env var for deployment.
 - `react-router.config.ts` — SSR enabled with `v8_viteEnvironmentApi` and `v8_middleware` future flags.
 - `vite.config.ts` — plugins: cloudflare, tailwindcss, reactRouter, tsconfigPaths.
-- `vitest.config.ts` — test config with coverage thresholds.
+- `vitest.config.ts` — test config with fixed coverage floors (see `PRD.md` section 7, Quality gates).
 
 ## Documentation
 
 - Cloudflare Workers: https://developers.cloudflare.com/workers/
 - Cloudflare Agents SDK: https://developers.cloudflare.com/agents/
 - Durable Objects: https://developers.cloudflare.com/durable-objects/
+- Cloudflare Access: https://developers.cloudflare.com/cloudflare-one/policies/access/
 - React Router 7: https://reactrouter.com/
 - TipTap: https://tiptap.dev/
 - Yjs: https://yjs.dev/
