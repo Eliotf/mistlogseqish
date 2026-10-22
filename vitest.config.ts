@@ -3,16 +3,16 @@ import { defineConfig } from "vitest/config";
 import tsconfigPaths from "vite-tsconfig-paths";
 
 /**
- * Fixed coverage floors, set just below actual coverage on 2026-10-22.
- * They stop coverage falling but never rise on their own. Raise them by
- * hand as tests are added (target: 80 / 75 / 80 / 80). See PRD.md
- * section 7, "Quality gates".
+ * Fixed coverage floors, set just below actual coverage (last raised
+ * 2026-10-22 with the shared note parser). They stop coverage falling but
+ * never rise on their own. Raise them by hand as tests are added (target:
+ * 80 / 75 / 80 / 80). See PRD.md section 7, "Quality gates".
  */
 const coverageThresholds = {
-  lines: 54,
-  branches: 43,
-  functions: 43,
-  statements: 51,
+  lines: 57,
+  branches: 47,
+  functions: 48,
+  statements: 54,
 };
 
 export default defineConfig({

@@ -52,6 +52,19 @@ Agents are exported from the worker entry file and configured as Durable Object 
 
 A link is a `wikilink` mark on text in the page's Yjs document, with a `pageId` attribute. The mark's name and attributes are defined once in the shared parser module (M1, chunk 1.3), so the server and the editor agree on them before any link UI exists. The displayed title always comes from the index, so renaming a page never edits linking pages. See `PRD.md` section 6.1.
 
+## Shared Note Parser
+
+One module, used by both the workspace index (server) and the editor (client), so links, tags and tasks are extracted one way (AGENTS.md invariant 7).
+
+| File | Role |
+|---|---|
+| `app/lib/note-ids.ts` | Page IDs: Mist's random 8-character IDs for pages, `journal-YYYY-MM-DD` for journals (validated as real dates) |
+| `app/lib/wikilink.ts` | The `wikilink` mark: name, `pageId` attribute, ProseMirror spec. The editor's TipTap extension (chunk 2.5) wraps this spec |
+| `app/lib/note-parser.ts` | `parseLine` (indent, bullet, task) and `parseNote` (links, tags, tasks, search text), plus `PARSER_VERSION` |
+| `app/lib/note-lines.ts` | Converts a Yjs fragment (server) or ProseMirror doc (client) into the parser's input: one line per paragraph, with mark ranges |
+
+Tests in `tests/unit/lib/note-*.test.ts` include a round trip through Yjs using y-tiptap's converters (the same code the editor syncs with) and check that the server and client produce identical parser output.
+
 ## Workspace Index
 
 Each page is an isolated Durable Object, so cross-page features (backlinks, `[[` autocomplete, search, the Tasks view, the journal feed) query one `WorkspaceAgent` instead. The index is always derived from documents, never the other way round.
