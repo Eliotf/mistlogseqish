@@ -1,0 +1,1859 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Mistlog interaction reference (M2). Open this file in a browser. Match its behaviour, not its code. -->
+<style>body { margin: 0; } [hidden] { display: none !important; }</style>
+<title>Mistlog Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: Mist's flat, typographic shell. Three columns divided by hairlines (nav / page / side panel);
+   at phone width one column, with the nav as a drawer and the side panel as a full-screen sheet. */
+:root {
+  --ink: #1a1a1a;
+  --paper: #fafafa;
+  --surface: #ffffff;
+  --muted: #8a8a8a;
+  --soft: #5c5c5c;
+  --border: #e5e5e5;
+  --guide: #ececec;
+  --chartreuse: #b5e636;
+  --coral: #e8564a;
+  --canary: #ffe014;
+  --on-accent: #1a1a1a;
+  --select: rgba(181, 230, 54, 0.35);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-serif: Georgia, "Times New Roman", ui-serif, serif;
+}
+@supports (color: color(display-p3 1 1 1)) {
+  :root {
+    --chartreuse: color(display-p3 0.71 0.9 0.21);
+    --coral: color(display-p3 0.91 0.34 0.29);
+    --canary: color(display-p3 1 0.9 0.04);
+  }
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ink: #e5e5e5; --paper: #111111; --surface: #161616; --muted: #777777; --soft: #a5a5a5;
+    --border: #2a2a2a; --guide: #242424; --select: rgba(181, 230, 54, 0.22); color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --ink: #e5e5e5; --paper: #111111; --surface: #161616; --muted: #777777; --soft: #a5a5a5;
+  --border: #2a2a2a; --guide: #242424; --select: rgba(181, 230, 54, 0.22); color-scheme: dark;
+}
+
+html, body { height: 100%; }
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  overflow: hidden;
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+button:focus-visible, [tabindex]:focus-visible, input:focus-visible, .title:focus-visible {
+  outline: 2px solid var(--chartreuse); outline-offset: 1px;
+}
+.mono { font-family: var(--font-mono); }
+.label {
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);
+}
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+svg.i { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+/* ---------- Stage and app grid ---------- */
+.stage { height: 100%; display: flex; justify-content: center; }
+.stage.framed {
+  align-items: center;
+  padding-block: 16px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  background: var(--guide);
+}
+.app {
+  --lw: 232px; --rw: 400px;
+  position: relative; display: grid; width: 100%; height: 100%;
+  grid-template-columns: var(--lw) minmax(0, 1fr) var(--rw);
+  background: var(--paper); overflow: hidden;
+}
+.app.left-closed { --lw: 0px; }
+.app.right-closed { --rw: 0px; }
+.app.framed { width: 390px; height: min(820px, 100%); border: 1px solid var(--ink); }
+
+/* ---------- Left nav ---------- */
+.left {
+  border-right: 1px solid var(--border); display: flex; flex-direction: column; min-width: 0; overflow: hidden;
+  background: var(--paper);
+}
+.app.left-closed .left { visibility: hidden; }
+.brand { display: flex; align-items: stretch; border-bottom: 1px solid var(--border); min-height: 41px; }
+.brand-home {
+  display: flex; align-items: center; padding: 0 14px; background: var(--ink); color: var(--paper); font-weight: 500;
+  transition: background-color .15s, color .15s;
+}
+.brand-home:hover { background: var(--chartreuse); color: var(--on-accent); }
+.brand .spacer { flex: 1; }
+.iconbtn { display: inline-flex; align-items: center; justify-content: center; width: 40px; color: var(--soft); }
+.iconbtn:hover { color: var(--ink); background: var(--guide); }
+.nav { display: grid; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.nav button {
+  display: flex; align-items: center; gap: 10px; padding: 6px 14px; text-align: left; color: var(--soft);
+}
+.nav button:hover { color: var(--ink); background: var(--guide); }
+.nav button[aria-current="page"] { color: var(--ink); font-weight: 600; box-shadow: inset 3px 0 0 var(--chartreuse); }
+.nav .count { margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.nav kbd { margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+.recent { padding: 12px 0; display: grid; gap: 2px; overflow-y: auto; flex: 1; align-content: start; }
+.recent .label { padding: 0 14px 6px; }
+.recent button { text-align: left; padding: 4px 14px; color: var(--soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recent button:hover { color: var(--ink); background: var(--guide); }
+.left-foot { border-top: 1px solid var(--border); padding: 10px 14px; display: grid; gap: 8px; }
+.idx-status { display: grid; gap: 6px; }
+.idx-status .bar { height: 3px; background: var(--border); }
+.idx-status .bar i { display: block; height: 100%; background: var(--chartreuse); width: 0; }
+.hint { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+
+/* ---------- Main column ---------- */
+.main { display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+.topbar { display: flex; align-items: stretch; border-bottom: 1px solid var(--border); min-height: 41px; }
+.topbar .addr {
+  flex: 1; display: flex; align-items: center; gap: 6px; padding: 0 14px; min-width: 0;
+  font-family: var(--font-mono); font-size: 12px; color: var(--muted); overflow: hidden; white-space: nowrap;
+}
+.topbar .addr b { color: var(--ink); font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
+.topbar .iconbtn { border-left: 1px solid var(--border); }
+.topbar .iconbtn.first { border-left: 0; border-right: 1px solid var(--border); }
+.scroll { flex: 1; overflow-y: auto; overscroll-behavior: contain; }
+.page-wrap { max-width: 46rem; margin: 0 auto; padding: 28px 28px 120px; display: grid; gap: 36px; }
+
+/* ---------- Document ---------- */
+.doc { display: grid; gap: 10px; min-width: 0; }
+.doc.in-feed + .doc.in-feed { border-top: 1px solid var(--border); padding-top: 28px; }
+.mistbar {
+  display: flex; flex-wrap: wrap; align-items: stretch; border: 1px solid var(--border); font-size: 12px; width: max-content; max-width: 100%;
+}
+.mistbar > * { padding: 4px 10px; display: flex; align-items: center; gap: 6px; }
+.mistbar > * + * { border-left: 1px solid var(--border); }
+.mistbar .seg { padding: 0; }
+.mistbar .seg button { padding: 4px 10px; color: var(--muted); }
+.mistbar .seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.mistbar button:hover { color: var(--ink); }
+.title-row { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.title {
+  font-size: 26px; line-height: 1.2; font-weight: 600; margin: 0; letter-spacing: -0.01em; text-wrap: balance; min-width: 0;
+  overflow-wrap: anywhere; flex: 1;
+}
+.title[contenteditable="true"] { cursor: text; }
+.title[contenteditable="true"]:hover { box-shadow: 0 2px 0 var(--border); }
+.title.journal-link { text-align: left; }
+.title.journal-link:hover { box-shadow: 0 2px 0 var(--chartreuse); }
+.in-feed .title { font-size: 20px; }
+.weekday { font-family: var(--font-mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
+.meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+.meta .warn { color: var(--coral); }
+.menu-wrap { position: relative; }
+.menu {
+  position: absolute; right: 0; top: 100%; z-index: 30; min-width: 190px; background: var(--surface); border: 1px solid var(--ink);
+  display: grid; padding: 4px 0;
+}
+.menu button { text-align: left; padding: 6px 12px; }
+.menu button:hover, .menu button:focus-visible { background: var(--guide); }
+.menu .danger { color: var(--coral); }
+.title-error { font-size: 12px; color: var(--coral); }
+
+/* ---------- Blocks (the editor) ---------- */
+.blocks { display: grid; gap: 2px; font-size: 16px; line-height: 1.6; }
+.block {
+  --ind: 0; position: relative; display: grid; grid-template-columns: 22px minmax(0, 1fr); align-items: start;
+  padding-left: calc(var(--ind) * 24px);
+}
+.block::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: calc(var(--ind) * 24px); pointer-events: none;
+  background-image: repeating-linear-gradient(to right, transparent 0 10px, var(--guide) 10px 11px, transparent 11px 24px);
+}
+.bullet { height: 25.6px; display: flex; align-items: center; justify-content: center; touch-action: auto; }
+.bullet::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
+.app.drag-mode.phone .bullet { touch-action: none; cursor: ew-resize; }
+.app.drag-mode.phone .bullet::after { width: 8px; height: 8px; background: var(--soft); box-shadow: 0 0 0 4px var(--guide); }
+.app.menu-mode.phone .bullet { cursor: pointer; }
+.app.menu-mode.phone .bullet::after { width: 8px; height: 8px; }
+.content { outline: none; min-height: 25.6px; white-space: pre-wrap; overflow-wrap: anywhere; caret-color: var(--ink); padding-right: 4px; }
+.content:empty::before { content: attr(data-ph); color: var(--muted); pointer-events: none; }
+.content:focus { background: linear-gradient(to right, var(--guide), transparent 70%); }
+.block.is-done .content { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--muted); }
+.block.is-done .kw, .block.is-done .link { text-decoration: none; }
+.block.dragging { transition: none; }
+.block.drag-hint::after { content: attr(data-hint); position: absolute; right: 0; top: 2px; font-family: var(--font-mono); font-size: 11px; color: var(--soft); }
+
+.kw { font-family: var(--font-mono); font-size: 0.78em; font-weight: 600; letter-spacing: 0.04em; }
+.kw-TODO { color: var(--coral); }
+.kw-DOING { color: var(--on-accent); background: var(--canary); padding: 0 3px; }
+.kw-DONE { color: var(--muted); }
+.link {
+  color: var(--ink); cursor: pointer; text-decoration: underline; text-decoration-color: var(--chartreuse);
+  text-decoration-thickness: 2px; text-underline-offset: 3px; border-radius: 0;
+}
+.link:hover { background: var(--select); }
+.link.empty { text-decoration-style: solid; text-decoration-color: var(--border); }
+.link.unresolved { color: var(--muted); text-decoration: none; border-bottom: 1.5px dashed var(--muted); }
+.link.selected { background: var(--chartreuse); color: var(--on-accent); text-decoration: none; }
+.link.journal { font-family: var(--font-mono); font-size: 0.86em; }
+.raw { color: var(--soft); font-family: var(--font-mono); font-size: 0.88em; }
+.created-hint { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+
+/* ---------- Backlinks ---------- */
+.backlinks { border-top: 1px solid var(--border); padding-top: 14px; display: grid; gap: 14px; }
+.backlinks h3 { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; }
+.dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--canary); box-shadow: 0 0 0 1px var(--on-accent) inset; display: inline-block;
+}
+.dot-wrap { display: inline-flex; align-items: center; gap: 6px; font-weight: 400; font-size: 12px; color: var(--soft); }
+.ref-group { display: grid; gap: 4px; }
+.ref-group > button { justify-self: start; font-weight: 600; font-size: 13px; }
+.ref-group > button:hover { box-shadow: 0 2px 0 var(--chartreuse); }
+.ref-line { padding-left: 14px; border-left: 2px solid var(--border); font-size: 14px; color: var(--soft); white-space: pre-wrap; overflow-wrap: anywhere; }
+.empty-note { color: var(--muted); font-size: 13px; }
+.rebuild-note {
+  font-family: var(--font-mono); font-size: 11px; color: var(--on-accent); background: var(--canary); padding: 4px 8px; justify-self: start;
+}
+
+/* ---------- Tasks view ---------- */
+.tasks h1 { font-size: 26px; margin: 0; }
+.task-group { display: grid; gap: 6px; }
+.task-group > button { justify-self: start; font-weight: 600; }
+.task-group > button:hover { box-shadow: 0 2px 0 var(--chartreuse); }
+.task-row { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 6px; align-items: start; font-size: 15px; }
+.task-row input { width: 16px; height: 16px; margin-top: 4px; accent-color: var(--ink); }
+.task-row .txt { overflow-wrap: anywhere; white-space: pre-wrap; }
+.task-row.done .txt { color: var(--muted); text-decoration: line-through; }
+details.done-list summary { cursor: pointer; color: var(--soft); }
+
+/* ---------- Right panel ---------- */
+.right { border-left: 1px solid var(--border); display: flex; flex-direction: column; min-width: 0; overflow: hidden; background: var(--paper); }
+.app.right-closed .right { visibility: hidden; }
+.right-head { display: flex; align-items: center; border-bottom: 1px solid var(--border); min-height: 41px; padding-left: 14px; gap: 8px; }
+.right-head .label { flex: 1; }
+.right-head .iconbtn { border-left: 1px solid var(--border); align-self: stretch; }
+.right .scroll { padding: 0; }
+.panel-card { padding: 18px 18px 28px; border-bottom: 1px solid var(--border); display: grid; gap: 10px; }
+.panel-card .doc .title { font-size: 20px; }
+.panel-card .blocks { font-size: 15px; }
+.panel-close { align-self: start; color: var(--muted); }
+.panel-close:hover { color: var(--ink); }
+.right-empty { padding: 24px 18px; color: var(--muted); }
+
+/* ---------- Popups, palette, toasts ---------- */
+.popup {
+  position: fixed; z-index: 60; min-width: 240px; max-width: min(360px, calc(100vw - 32px)); background: var(--surface);
+  border: 1px solid var(--ink); padding: 4px 0; margin: 0; list-style: none; font-size: 14px;
+}
+.popup li { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 5px 12px; cursor: pointer; }
+.popup li[aria-selected="true"] { background: var(--chartreuse); color: var(--on-accent); }
+.popup li[aria-selected="true"] .sub { color: var(--on-accent); }
+.popup .sub { font-family: var(--font-mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
+.popup .head { font-family: var(--font-mono); font-size: 11px; color: var(--muted); padding: 4px 12px 2px; cursor: default; }
+.popup .new { font-weight: 600; }
+.popup .none { color: var(--muted); cursor: default; }
+
+.scrim { position: absolute; inset: 0; background: rgba(0,0,0,0.28); z-index: 40; }
+.palette {
+  position: absolute; z-index: 50; left: 50%; top: 72px; transform: translateX(-50%); width: min(560px, calc(100% - 32px));
+  background: var(--surface); border: 1px solid var(--ink); display: grid;
+}
+.palette input {
+  font: inherit; font-size: 16px; padding: 12px 14px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--ink); outline: none;
+}
+.palette ul { list-style: none; margin: 0; padding: 4px 0; max-height: 50vh; overflow-y: auto; }
+.palette li { padding: 6px 14px; cursor: pointer; display: grid; gap: 2px; }
+.palette li[aria-selected="true"] { background: var(--chartreuse); color: var(--on-accent); }
+.palette li[aria-selected="true"] .snip, .palette li[aria-selected="true"] .sub { color: var(--on-accent); }
+.palette .group { font-family: var(--font-mono); font-size: 11px; color: var(--muted); padding: 8px 14px 2px; cursor: default; }
+.palette .snip { font-size: 13px; color: var(--soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palette mark { background: var(--canary); color: var(--on-accent); }
+.palette .foot { border-top: 1px solid var(--border); padding: 6px 14px; font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+
+.toasts { position: absolute; z-index: 70; left: 50%; bottom: 20px; transform: translateX(-50%); display: grid; gap: 6px; width: max-content; max-width: calc(100% - 32px); }
+.toast { background: var(--ink); color: var(--paper); padding: 8px 12px; display: flex; gap: 14px; align-items: center; font-size: 13px; }
+.toast button { color: var(--chartreuse); font-weight: 600; }
+
+/* ---------- Phone ---------- */
+.app.phone { grid-template-columns: minmax(0, 1fr); }
+.app.phone .left {
+  position: absolute; z-index: 45; top: 0; bottom: 0; left: 0; width: min(300px, 84%); visibility: visible;
+  transform: translateX(-102%); transition: transform .2s ease; border-right: 1px solid var(--ink);
+}
+.app.phone.drawer-open .left { transform: none; }
+.app.phone .right {
+  position: absolute; z-index: 44; inset: 0; visibility: visible; transform: translateX(102%); transition: transform .2s ease; border-left: 0;
+}
+.app.phone.sheet-open .right { transform: none; }
+.app.phone .page-wrap { padding: 18px 16px 140px; gap: 28px; }
+.app.phone .title { font-size: 22px; }
+.app.phone .blocks { font-size: 16px; }
+.app.phone .block { padding-left: calc(var(--ind) * 18px); }
+.app.phone .block::before { width: calc(var(--ind) * 18px); background-image: repeating-linear-gradient(to right, transparent 0 8px, var(--guide) 8px 9px, transparent 9px 18px); }
+.app:not(.phone) .phone-only { display: none !important; }
+.app.phone .desk-only { display: none !important; }
+
+.ptool {
+  position: absolute; z-index: 35; left: 0; right: 0; bottom: 0; display: flex; border-top: 1px solid var(--ink); background: var(--surface);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.ptool button { flex: 1; min-height: 46px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; font-size: 10px; color: var(--soft); }
+.ptool button + button { border-left: 1px solid var(--border); }
+.ptool button:active { background: var(--chartreuse); color: var(--on-accent); }
+.ptool b { font-family: var(--font-mono); font-size: 14px; color: var(--ink); font-weight: 500; }
+.sheet {
+  position: absolute; z-index: 48; left: 0; right: 0; bottom: 0; background: var(--surface); border-top: 1px solid var(--ink);
+  display: grid; padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.sheet .label { padding: 10px 16px 4px; }
+.sheet button { text-align: left; padding: 12px 16px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; }
+.sheet button:active { background: var(--chartreuse); color: var(--on-accent); }
+.sheet .k { font-family: var(--font-mono); color: var(--muted); font-size: 12px; }
+
+/* ---------- Prototype controls ---------- */
+.proto-btn {
+  position: fixed; z-index: 80; right: calc(16px + env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  background: var(--ink); color: var(--paper); padding: 8px 12px; font-family: var(--font-mono); font-size: 12px; display: flex; gap: 8px; align-items: center;
+}
+.proto-btn:hover { background: var(--chartreuse); color: var(--on-accent); }
+.proto-btn .n { background: var(--chartreuse); color: var(--on-accent); padding: 0 5px; }
+.proto-panel {
+  position: fixed; z-index: 90; top: calc(12px + env(safe-area-inset-top, 0px)); bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  right: calc(12px + env(safe-area-inset-right, 0px)); width: min(400px, calc(100vw - 24px)); background: var(--surface);
+  border: 1px solid var(--ink); display: flex; flex-direction: column;
+}
+.proto-head { display: flex; align-items: center; border-bottom: 1px solid var(--border); padding-left: 16px; min-height: 44px; }
+.proto-head h2 { flex: 1; margin: 0; font-size: 14px; }
+.proto-head .iconbtn { align-self: stretch; border-left: 1px solid var(--border); }
+.proto-body { overflow-y: auto; padding: 16px; display: grid; gap: 22px; align-content: start; }
+.proto-body p { margin: 0; color: var(--soft); }
+.proto-sec { display: grid; gap: 8px; }
+.proto-sec h3 { margin: 0; font-size: 13px; }
+.try { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.try label { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 8px; align-items: start; padding: 5px 0; cursor: pointer; }
+.try input { margin-top: 3px; accent-color: var(--ink); }
+.try .f { font-family: var(--font-mono); font-size: 10px; color: var(--muted); padding-top: 3px; white-space: nowrap; }
+.choice .decided { background: var(--chartreuse); color: var(--on-accent); font-family: var(--font-mono); font-size: 10px; padding: 0 4px; margin-left: 6px; }
+.try .remind { background: var(--canary); color: var(--on-accent); font-family: var(--font-mono); font-size: 10px; padding: 0 4px; margin-left: 4px; }
+.try li.done span { color: var(--muted); }
+.choice { border: 1px solid var(--border); margin: 0; padding: 10px 12px; display: grid; gap: 6px; }
+.choice legend { font-weight: 600; padding: 0 4px; font-size: 13px; }
+.choice label { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 6px; align-items: start; cursor: pointer; }
+.choice input { margin-top: 3px; accent-color: var(--ink); }
+.choice small { display: block; color: var(--muted); font-size: 12px; }
+.choice .q { font-family: var(--font-mono); font-size: 10px; color: var(--muted); }
+.btnrow { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn { border: 1px solid var(--ink); padding: 6px 10px; font-size: 13px; }
+.btn:hover { background: var(--chartreuse); color: var(--on-accent); border-color: var(--chartreuse); }
+.keys { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; font-size: 12px; }
+.keys kbd { font-family: var(--font-mono); font-size: 11px; color: var(--ink); }
+.keys span { color: var(--soft); }
+
+@media (prefers-reduced-motion: reduce) { .app.phone .left, .app.phone .right { transition: none; } }
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+  <div class="app" id="app">
+    <aside class="left" id="left" aria-label="Navigation"></aside>
+    <main class="main" id="main"></main>
+    <aside class="right" id="right" aria-label="Side panel"></aside>
+  </div>
+</div>
+<ul class="popup" id="popup" role="listbox" hidden></ul>
+<button type="button" class="proto-btn" id="protoBtn" aria-haspopup="dialog">Prototype controls</button>
+<section class="proto-panel" id="protoPanel" role="dialog" aria-label="Prototype controls" hidden></section>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- Constants and helpers ----------
+  var LO = "", LC = "", LCHAR = "", ZW = "​";
+  var TOKEN_RE = /([A-Za-z0-9_-]+)/g;
+  var IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || "");
+  var MOD = IS_MAC ? "⌘" : "Ctrl";
+  var KEY = "mistlog-proto-v1", OKEY = "mistlog-proto-opts-v2";
+  var MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  var MONTHS_FULL = ["january","february","march","april","may","june","july","august","september","october","november","december"];
+  var DAYS = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
+
+  function load(k) { try { var v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
+  function persist(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* storage unavailable */ } }
+
+  function h(tag, attrs) {
+    var e = document.createElement(tag);
+    if (attrs) for (var k in attrs) {
+      var v = attrs[k];
+      if (v == null || v === false) continue;
+      if (k === "class") e.className = v;
+      else if (k === "text") e.textContent = v;
+      else if (k === "html") e.innerHTML = v;
+      else if (k.slice(0, 2) === "on") e.addEventListener(k.slice(2), v);
+      else e.setAttribute(k, v === true ? "" : v);
+    }
+    for (var i = 2; i < arguments.length; i++) append(e, arguments[i]);
+    return e;
+  }
+  function append(e, c) {
+    if (c == null || c === false) return;
+    if (Array.isArray(c)) { c.forEach(function (x) { append(e, x); }); return; }
+    e.append(c.nodeType ? c : document.createTextNode(String(c)));
+  }
+  var ICONS = {
+    menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+    search: '<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/>',
+    panel: '<rect x="3.5" y="4.5" width="17" height="15"/><path d="M14 4.5v15"/>',
+    sidebar: '<rect x="3.5" y="4.5" width="17" height="15"/><path d="M9.5 4.5v15"/>',
+    x: '<path d="M6 6l12 12M18 6L6 18"/>',
+    plus: '<path d="M12 5v14M5 12h14"/>',
+    dots: '<circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/>',
+    cal: '<rect x="4" y="5" width="16" height="15"/><path d="M4 10h16M9 3v4M15 3v4"/>',
+    check: '<rect x="4.5" y="4.5" width="15" height="15"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/>',
+    back: '<path d="M15 5l-7 7 7 7"/>'
+  };
+  function icon(name) {
+    var s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    s.setAttribute("viewBox", "0 0 24 24"); s.setAttribute("class", "i"); s.setAttribute("aria-hidden", "true");
+    s.innerHTML = ICONS[name]; return s;
+  }
+
+  // ---------- Dates ----------
+  function today0() { var d = new Date(); d.setHours(0, 0, 0, 0); return d; }
+  function addDays(d, n) { var x = new Date(d); x.setDate(x.getDate() + n); return x; }
+  function ymd(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+  function parseYmd(s) { var p = s.split("-").map(Number); return new Date(p[0], p[1] - 1, p[2]); }
+  function ordinal(n) { var s = ["th","st","nd","rd"], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); }
+  function fmtDate(d) { return MONTHS[d.getMonth()] + " " + ordinal(d.getDate()) + ", " + d.getFullYear(); }
+  function weekday(d) { var w = DAYS[d.getDay()]; return w[0].toUpperCase() + w.slice(1); }
+
+  function resolvePhrase(p, base) {
+    p = p.trim().toLowerCase().replace(/\s+/g, " ");
+    var m;
+    if (p === "today") return base;
+    if (p === "tomorrow") return addDays(base, 1);
+    if (p === "yesterday") return addDays(base, -1);
+    if ((m = p.match(/^in (\d{1,3}) (day|days|week|weeks|month|months)$/))) {
+      var n = +m[1];
+      if (m[2].indexOf("day") === 0) return addDays(base, n);
+      if (m[2].indexOf("week") === 0) return addDays(base, 7 * n);
+      var x = new Date(base); x.setMonth(x.getMonth() + n); return x;
+    }
+    if ((m = p.match(/^(?:(next|last|this) )?(sunday|monday|tuesday|wednesday|thursday|friday|saturday)$/))) {
+      var t = DAYS.indexOf(m[2]), cur = base.getDay();
+      if (m[1] === "last") return addDays(base, -(((cur - t + 7) % 7) || 7));
+      return addDays(base, ((t - cur + 7) % 7) || 7);
+    }
+    var mi = -1, day = 0;
+    if ((m = p.match(/^([a-z]{3,9}) (\d{1,2})(?:st|nd|rd|th)?$/))) { mi = monthIndex(m[1]); day = +m[2]; }
+    else if ((m = p.match(/^(\d{1,2})(?:st|nd|rd|th)? ([a-z]{3,9})$/))) { mi = monthIndex(m[2]); day = +m[1]; }
+    if (mi >= 0 && day >= 1 && day <= 31) {
+      var d = new Date(base.getFullYear(), mi, day);
+      if (d.getMonth() !== mi) return null;
+      if (d < base) d = new Date(base.getFullYear() + 1, mi, day);
+      return d;
+    }
+    return null;
+  }
+  function monthIndex(s) { for (var i = 0; i < 12; i++) if (MONTHS_FULL[i].indexOf(s) === 0) return i; return -1; }
+  function dateSuggestions(q, base) {
+    q = (q || "").trim().toLowerCase().replace(/\s+/g, " ");
+    var cands = ["today", "tomorrow", "yesterday"];
+    DAYS.forEach(function (d) { cands.push("next " + d, "last " + d, d); });
+    var num = (q.match(/\d+/) || [])[0];
+    (num ? [num] : ["1", "2", "3"]).forEach(function (n) {
+      ["day", "week", "month"].forEach(function (u) { cands.push("in " + n + " " + u + (n === "1" ? "" : "s")); });
+    });
+    var md = q.match(/^([a-z]{3,9}) ?(\d{0,2})$/);
+    if (md && monthIndex(md[1]) >= 0 && md[2]) cands.push(MONTHS_FULL[monthIndex(md[1])].slice(0, 3) + " " + md[2]);
+    var list = q ? cands.filter(function (c) { return c.indexOf(q) === 0; }) : ["today", "tomorrow", "yesterday", "next monday", "in 1 week"];
+    var out = [], seen = {};
+    [q].concat(list).forEach(function (c) {
+      if (!c || seen[c] || out.length >= 6) return;
+      var d = resolvePhrase(c, base); if (!d) return;
+      seen[c] = 1; out.push({ phrase: c, date: d });
+    });
+    return out;
+  }
+
+  // ---------- Text model: a line is a string; links are encoded tokens ----------
+  function linkTok(id) { return LO + id + LC; }
+  function toUnits(str) {
+    var out = [], i = 0;
+    while (i < str.length) {
+      if (str[i] === LO) { var j = str.indexOf(LC, i); if (j < 0) j = str.length - 1; out.push(str.slice(i, j + 1)); i = j + 1; }
+      else { out.push(str[i]); i++; }
+    }
+    return out;
+  }
+  function isLinkU(u) { return u && u.length > 1 && u[0] === LO; }
+  function linkIdOf(u) { return u.slice(1, -1); }
+  function plainU(u) { return isLinkU(u) ? LCHAR : u; }
+  function slugify(t) { return t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "untitled"; }
+
+  // ---------- State ----------
+  var state, opts;
+  var DEFAULT_OPTS = { linkEdit: "reopen", dateTrigger: "both", feedHeader: "shown", phone: "toolbar", view: "desktop", tried: {} };
+
+  function seed() {
+    var T = today0(), pages = {};
+    function L(s) { var m = s.match(/^(\t*)(.*)$/); return { ind: m[1].length, text: m[2] }; }
+    function P(id, title, lines, extra) {
+      pages[id] = Object.assign({ id: id, kind: "page", title: title, lines: lines.map(L), slugs: [slugify(title)], deleted: false }, extra || {});
+    }
+    function J(offset, lines) {
+      var d = addDays(T, offset), id = "journal-" + ymd(d);
+      pages[id] = { id: id, kind: "journal", date: ymd(d), lines: lines.map(L), exists: lines.length > 0, deleted: false };
+    }
+    var k = linkTok;
+    P("p-mistlog", "Mistlog", [
+      "Logseq-style notes on Cloudflare, forked from Mist",
+      "Milestones",
+      "\tM1 Persistence and index",
+      "\tM2 Notes core",
+      "\t\tTODO Agree the interactions in this prototype",
+      "Related: " + k("p-access") + " and " + k("p-migration")
+    ]);
+    P("p-access", "Cloudflare Access", [
+      "Gates the whole workers.dev address",
+      "Sign in with a Cloudflare account",
+      "TODO Verify the Access token inside the Worker (M4)"
+    ]);
+    P("p-reading", "Reading list", ["How to Take Smart Notes", "TODO Read the Yjs docs on shared types"]);
+    P("p-weekly", "Weekly review", ["Every Friday afternoon", "TODO Clear out the Tasks view", "Look back at the week's journals"]);
+    P("p-migration", "Logseq migration", []);
+    P("p-old", "Old ideas", ["Superseded by " + k("p-mistlog")], { deleted: true });
+    J(0, []);
+    J(-1, [
+      "Set up " + k("p-access") + " for the site",
+      "TODO Verify the deploy gate with a failing branch",
+      "DOING Build the " + k("p-mistlog") + " prototype",
+      "\tTry link editing both ways",
+      "\tPick the phone controls"
+    ]);
+    J(-2, [
+      "Reviewed the PRD",
+      "\tLinks point to page IDs, see " + k("p-mistlog"),
+      "DONE Freeze the coverage thresholds",
+      "Reread " + k("p-old") + " before deleting it"
+    ]);
+    J(-3, []);
+    J(-4, ["Started a " + k("p-reading"), "TODO Book time for the " + k("p-weekly")]);
+    return {
+      pages: pages, view: { type: "feed" }, recent: ["p-mistlog", "p-access", "p-reading", "p-weekly"],
+      right: [], leftOpen: true, rightOpen: true
+    };
+  }
+
+  function ensureJournal(date) {
+    var id = "journal-" + date;
+    if (!state.pages[id]) state.pages[id] = { id: id, kind: "journal", date: date, lines: [], exists: false, deleted: false };
+    return state.pages[id];
+  }
+  function todayId() { return ensureJournal(ymd(today0())).id; }
+  function titleOf(p) { return p.kind === "journal" ? fmtDate(parseYmd(p.date)) : p.title; }
+  function hasContent(p) { return p.lines.some(function (l) { return l.text.replace(TOKEN_RE, "x").trim(); }); }
+  function linkable() {
+    return Object.values(state.pages).filter(function (p) {
+      return !p.deleted && (p.kind === "page" || hasContent(p) || p.exists);
+    });
+  }
+  function plainLine(text) {
+    return text.replace(TOKEN_RE, function (_, id) { var p = state.pages[id]; return p ? titleOf(p) : "missing page"; });
+  }
+  function findByTitle(t, exceptId) {
+    var lt = t.trim().toLowerCase();
+    return linkable().find(function (p) { return p.id !== exceptId && titleOf(p).toLowerCase() === lt; });
+  }
+  function createPage(title) {
+    var base = title.trim() || "Untitled", t = base, n = 2;
+    while (findByTitle(t)) t = base + " " + n++;
+    var id = "p-" + Math.random().toString(36).slice(2, 9);
+    state.pages[id] = { id: id, kind: "page", title: t, lines: [], slugs: [slugify(t)], deleted: false };
+    return id;
+  }
+  function pathOf(p) { return p.kind === "journal" ? "/journal/" + p.date : "/page/" + p.slugs[0]; }
+
+  // ---------- Index simulation ----------
+  var pendingIdx = {}, idxTimer = null, rebuild = null, saveTimer = null;
+  function markEdited(pageId) {
+    pendingIdx[pageId] = true;
+    updateDots();
+    clearTimeout(idxTimer);
+    idxTimer = setTimeout(function () { pendingIdx = {}; refreshDerived(); }, 1800);
+    scheduleSave();
+  }
+  function scheduleSave() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function () { persist(KEY, state); }, 400);
+  }
+  function updateDots() {
+    document.querySelectorAll(".backlinks[data-page]").forEach(function (sec) {
+      var d = sec.querySelector(".dot-wrap");
+      if (d) d.hidden = !pendingIdx[sec.getAttribute("data-page")];
+    });
+  }
+  function startRebuild() {
+    if (rebuild) return;
+    rebuild = { done: 0, total: 412 };
+    var t = setInterval(function () {
+      rebuild.done = Math.min(rebuild.total, rebuild.done + 9);
+      if (rebuild.done >= rebuild.total) { clearInterval(t); rebuild = null; toast("Index rebuilt: 412 pages"); renderAll(); return; }
+      renderStatus();
+      document.querySelectorAll(".rebuild-note").forEach(function (n) { n.textContent = rebuildText(); });
+    }, 70);
+    renderAll();
+  }
+  function rebuildText() { return "Updating index · " + rebuild.done + " of " + rebuild.total + " pages. Results may be incomplete."; }
+
+  // ---------- Caret helpers (links count as one unit; zero-width spaces count as zero) ----------
+  function visLen(s) { return s.replace(/​/g, "").length; }
+  function getCaret(el) {
+    var sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return 0;
+    var r = sel.getRangeAt(0), node = r.startContainer, off = r.startOffset, u = 0;
+    if (!el.contains(node)) return toUnits(lineOf(el).text).length;
+    function rec(n) {
+      if (n.nodeType === 3) {
+        if (n === node) { u += visLen(n.data.slice(0, off)); return true; }
+        u += visLen(n.data); return false;
+      }
+      if (n.nodeType !== 1) return false;
+      if (n.classList.contains("link")) { u += 1; return n === node || n.contains(node); }
+      var kids = n.childNodes;
+      if (n === node) { for (var k = 0; k < off && k < kids.length; k++) rec(kids[k]); return true; }
+      for (var j = 0; j < kids.length; j++) if (rec(kids[j])) return true;
+      return false;
+    }
+    rec(el);
+    return u;
+  }
+  function setCaret(el, u) {
+    var sel = window.getSelection(), r = document.createRange(), rem = u, done = false;
+    function rec(n) {
+      if (done) return;
+      if (n.nodeType === 3) {
+        var s = n.data, vis = visLen(s);
+        if (rem <= vis) {
+          var idx = 0, c = 0;
+          while (idx < s.length && (c < rem || s[idx] === ZW)) { if (s[idx] !== ZW) c++; idx++; }
+          r.setStart(n, idx); done = true; return;
+        }
+        rem -= vis; return;
+      }
+      if (n.nodeType !== 1) return;
+      if (n.classList.contains("link")) { rem -= 1; return; }
+      for (var i = 0; i < n.childNodes.length; i++) { rec(n.childNodes[i]); if (done) return; }
+    }
+    rec(el);
+    if (!done) { r.selectNodeContents(el); r.collapse(false); } else r.collapse(true);
+    sel.removeAllRanges(); sel.addRange(r);
+  }
+  function caretRect() {
+    var sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return null;
+    var r = sel.getRangeAt(0).cloneRange(); r.collapse(true);
+    var rects = r.getClientRects();
+    if (rects.length) return rects[0];
+    var n = r.startContainer.nodeType === 1 ? r.startContainer : r.startContainer.parentElement;
+    return n ? n.getBoundingClientRect() : null;
+  }
+
+  // ---------- Rendering line content ----------
+  function readContent(el) {
+    var out = "";
+    (function rec(n) {
+      n.childNodes.forEach(function (c) {
+        if (c.nodeType === 3) out += c.data.replace(/​/g, "");
+        else if (c.nodeType === 1) {
+          if (c.classList.contains("link")) out += linkTok(c.getAttribute("data-id"));
+          else if (c.tagName !== "BR") rec(c);
+        }
+      });
+    })(el);
+    return out.replace(/\n/g, " ");
+  }
+  function linkEl(id, editable) {
+    var p = state.pages[id];
+    var cls = "link";
+    if (!p || p.deleted) cls += " unresolved";
+    else if (p.kind === "page" && !hasContent(p)) cls += " empty";
+    if (p && p.kind === "journal") cls += " journal";
+    var label = p ? titleOf(p) : "missing page";
+    var tip = !p || p.deleted ? "Deleted page. Click to restore" : (MOD + "+click to open in the side panel");
+    return h("span", { class: cls, "data-id": id, contenteditable: editable ? "false" : null, title: tip }, label);
+  }
+  function renderContent(el, str, editable) {
+    el.textContent = "";
+    var toks = [], last = 0, m;
+    TOKEN_RE.lastIndex = 0;
+    while ((m = TOKEN_RE.exec(str))) { if (m.index > last) toks.push({ t: str.slice(last, m.index) }); toks.push({ id: m[1] }); last = m.index + m[0].length; }
+    if (last < str.length) toks.push({ t: str.slice(last) });
+    toks.forEach(function (tk, i) {
+      if (tk.id) {
+        if (editable) el.append(document.createTextNode(ZW));
+        el.append(linkEl(tk.id, editable));
+        if (editable && i === toks.length - 1) el.append(document.createTextNode(ZW));
+        return;
+      }
+      var t = tk.t;
+      if (i === 0) {
+        var km = t.match(/^(TODO|DOING|DONE)(?= |$)/);
+        if (km) { el.append(h("span", { class: "kw kw-" + km[1] }, km[1])); t = t.slice(km[1].length); }
+      }
+      var rawRe = /\[\[[^\]]*\]\]/g, pos = 0, rm;
+      while ((rm = rawRe.exec(t))) {
+        if (rm.index > pos) el.append(document.createTextNode(t.slice(pos, rm.index)));
+        el.append(h("span", { class: "raw" }, rm[0]));
+        pos = rm.index + rm[0].length;
+      }
+      if (pos < t.length) el.append(document.createTextNode(t.slice(pos)));
+    });
+  }
+  function taskState(text) { var m = text.match(/^(TODO|DOING|DONE)(?= |$)/); return m ? m[1] : null; }
+  function setBlockState(block, text) {
+    var s = taskState(text);
+    block.classList.toggle("is-done", s === "DONE");
+  }
+
+  // ---------- Layout ----------
+  var app = document.getElementById("app"), stage = document.getElementById("stage");
+  var leftEl = document.getElementById("left"), mainEl = document.getElementById("main"), rightEl = document.getElementById("right");
+  var popupEl = document.getElementById("popup");
+  var ui = { drawer: false, sheet: false, palette: null, menuFor: null, sheetCtx: null, editing: null };
+  function isPhone() { return window.innerWidth < 760 || opts.view === "phone"; }
+  function applyLayout() {
+    var narrow = window.innerWidth < 760, phone = isPhone(), framed = !narrow && opts.view === "phone";
+    app.classList.toggle("phone", phone);
+    app.classList.toggle("framed", framed);
+    stage.classList.toggle("framed", framed);
+    app.classList.toggle("left-closed", !phone && !state.leftOpen);
+    app.classList.toggle("right-closed", !phone && !(state.rightOpen && state.right.length));
+    app.classList.toggle("drawer-open", phone && ui.drawer);
+    app.classList.toggle("sheet-open", phone && ui.sheet && state.right.length > 0);
+    app.classList.toggle("drag-mode", opts.phone === "drag");
+    app.classList.toggle("menu-mode", opts.phone === "menu");
+  }
+
+  // ---------- Left nav ----------
+  function openTaskCount() {
+    var n = 0;
+    Object.values(state.pages).forEach(function (p) {
+      if (p.deleted) return;
+      p.lines.forEach(function (l) { var s = taskState(l.text); if (s === "TODO" || s === "DOING") n++; });
+    });
+    return n;
+  }
+  function renderLeft() {
+    leftEl.textContent = "";
+    var v = state.view;
+    leftEl.append(
+      h("div", { class: "brand" },
+        h("button", { class: "brand-home", "data-go": "feed", type: "button" }, "mistlogseqish"),
+        h("span", { class: "spacer" }),
+        h("button", { class: "iconbtn", type: "button", "data-act": "close-left", "aria-label": "Hide navigation (t l)", title: "Hide navigation (t l)" }, icon("sidebar"))
+      ),
+      h("nav", { class: "nav" },
+        h("button", { type: "button", "data-go": "feed", "aria-current": v.type === "feed" ? "page" : null }, "Journals"),
+        h("button", { type: "button", "data-go": "tasks", "aria-current": v.type === "tasks" ? "page" : null }, "Tasks", h("span", { class: "count" }, openTaskCount())),
+        h("button", { type: "button", "data-act": "palette" }, "Search", h("kbd", null, MOD + " K")),
+        h("button", { type: "button", "data-act": "new-page" }, "New page")
+      )
+    );
+    var rec = h("div", { class: "recent" }, h("div", { class: "label" }, "Recent"));
+    state.recent.forEach(function (id) {
+      var p = state.pages[id];
+      if (!p || p.deleted) return;
+      rec.append(h("button", { type: "button", "data-open": id, "aria-current": v.type === "page" && v.id === id ? "page" : null }, titleOf(p)));
+    });
+    leftEl.append(rec);
+    var foot = h("div", { class: "left-foot" }, h("div", { class: "idx-status", id: "idxStatus" }), h("div", { class: "hint desk-only" }, "t l · t r toggle panels"));
+    leftEl.append(foot);
+    renderStatus();
+  }
+  function renderStatus() {
+    var s = document.getElementById("idxStatus");
+    if (!s) return;
+    s.textContent = "";
+    s.hidden = !rebuild;
+    if (!rebuild) return;
+    var bar = h("div", { class: "bar" }, h("i", { style: "width:" + Math.round(rebuild.done / rebuild.total * 100) + "%" }));
+    s.append(h("div", { class: "label" }, "Updating index · " + rebuild.done + " of " + rebuild.total + " pages"), bar);
+  }
+
+  // ---------- Main ----------
+  function feedDays() {
+    var tid = todayId(), t = ymd(today0());
+    return Object.values(state.pages).filter(function (p) {
+      return p.kind === "journal" && !p.deleted && p.date <= t && (p.id === tid || hasContent(p));
+    }).sort(function (a, b) { return a.date < b.date ? 1 : -1; });
+  }
+  function renderMain() {
+    mainEl.textContent = "";
+    var v = state.view, addr = "/", label = "Journals";
+    if (v.type === "tasks") { addr = "/tasks"; label = "Tasks"; }
+    if (v.type === "page") { var p = state.pages[v.id]; if (!p || p.deleted) { state.view = { type: "feed" }; return renderMain(); } addr = pathOf(p); label = titleOf(p); }
+    var top = h("div", { class: "topbar" },
+      h("button", { class: "iconbtn first phone-only", type: "button", "data-act": "open-drawer", "aria-label": "Open navigation" }, icon("menu")),
+      state.leftOpen ? null : h("button", { class: "iconbtn first desk-only", type: "button", "data-act": "open-left", "aria-label": "Show navigation (t l)", title: "Show navigation (t l)" }, icon("sidebar")),
+      h("div", { class: "addr", title: "Address in the real app" }, h("span", null, "mistlog"), h("b", null, addr)),
+      h("button", { class: "iconbtn", type: "button", "data-act": "palette", "aria-label": "Search (" + MOD + "+K)", title: "Search (" + MOD + "+K)" }, icon("search")),
+      state.right.length ? h("button", { class: "iconbtn", type: "button", "data-act": "toggle-right", "aria-label": "Side panel (t r)", title: "Side panel (t r)" }, icon("panel")) : null
+    );
+    var scroll = h("div", { class: "scroll", id: "mainScroll" });
+    var wrap = h("div", { class: "page-wrap" });
+    scroll.append(wrap);
+    mainEl.append(top, scroll);
+    if (v.type === "feed") feedDays().forEach(function (p) { wrap.append(article(p, { col: "main", feed: true })); });
+    else if (v.type === "tasks") wrap.append(tasksView());
+    else wrap.append(article(state.pages[v.id], { col: "main" }));
+    mainEl.setAttribute("aria-label", label);
+  }
+
+  function mistBar(p) {
+    var mode = p.mode || "edit";
+    return h("div", { class: "mistbar", "aria-label": "Mist document controls" },
+      h("div", { class: "seg" },
+        h("button", { type: "button", "aria-pressed": String(mode === "edit"), "data-mode": "edit", "data-page": p.id }, "Edit"),
+        h("button", { type: "button", "aria-pressed": String(mode === "suggest"), "data-mode": "suggest", "data-page": p.id }, "Suggest")),
+      h("button", { type: "button", "data-act": "mist-stub" }, "Comments"),
+      h("button", { type: "button", "data-act": "mist-stub" }, "Share")
+    );
+  }
+
+  function article(p, o) {
+    var a = h("article", { class: "doc" + (o.feed ? " in-feed" : ""), "data-page": p.id, "data-col": o.col });
+    if (!o.feed || opts.feedHeader === "shown") a.append(mistBar(p));
+    var row = h("div", { class: "title-row" });
+    if (p.kind === "journal") {
+      var d = parseYmd(p.date);
+      if (o.feed) row.append(h("button", { type: "button", class: "title journal-link", "data-open": p.id, title: "Open this day on its own" }, titleOf(p)));
+      else row.append(h("h1", { class: "title" }, titleOf(p)));
+      row.append(h("span", { class: "weekday" }, p.id === todayId() ? "Today" : weekday(d)));
+    } else {
+      row.append(h("h1", { class: "title", contenteditable: "true", spellcheck: "false", "data-title": p.id, role: "textbox", "aria-label": "Page title. Edit to rename" }, p.title));
+      var mw = h("div", { class: "menu-wrap" },
+        h("button", { class: "iconbtn", type: "button", "data-act": "page-menu", "data-page": p.id, "aria-label": "Page actions", "aria-haspopup": "menu", "aria-expanded": String(ui.menuFor === p.id + o.col) , "data-col": o.col }, icon("dots")));
+      if (ui.menuFor === p.id + o.col) {
+        mw.append(h("div", { class: "menu", role: "menu" },
+          o.col === "main" ? h("button", { type: "button", role: "menuitem", "data-act": "menu-right", "data-page": p.id }, "Open in side panel") : null,
+          h("button", { type: "button", role: "menuitem", class: "danger", "data-act": "menu-delete", "data-page": p.id }, "Delete page")));
+      }
+      row.append(mw);
+    }
+    if (o.panel) row.append(h("button", { class: "iconbtn panel-close", type: "button", "data-act": "close-panel", "data-page": p.id, "aria-label": "Close " + titleOf(p) }, icon("x")));
+    a.append(row);
+    a.append(h("div", { class: "title-error", "data-title-error": p.id, hidden: true, role: "status" }));
+
+    var meta = h("div", { class: "meta" });
+    if (p.kind === "page") {
+      meta.append(h("span", null, pathOf(p)));
+      if (p.slugs.length > 1) meta.append(h("span", null, "redirects from " + p.slugs.slice(1).map(function (s) { return "/page/" + s; }).join(", ")));
+      if (!hasContent(p)) meta.append(h("span", { class: "warn" }, "Empty page, created by a link. Write something to fill it in."));
+    } else if (p.id === todayId() && !p.exists) {
+      meta.append(h("span", { class: "created-hint", "data-page": p.id }, "Not saved yet. Today's journal is created when you start typing."));
+    } else if (!o.feed) {
+      meta.append(h("span", null, pathOf(p)), h("span", null, "Journal titles are dates and can't be renamed"));
+    }
+    if (meta.childNodes.length) a.append(meta);
+
+    var blocks = h("div", { class: "blocks", "data-page": p.id });
+    renderBlocks(blocks, p);
+    a.append(blocks);
+    if (!o.feed) a.append(backlinksSection(p));
+    return a;
+  }
+
+  function renderBlocks(container, p) {
+    container.textContent = "";
+    if (!p.lines.length) p.lines.push({ ind: 0, text: "" });
+    var single = p.lines.length === 1 && !p.lines[0].text;
+    p.lines.forEach(function (l, i) {
+      var block = h("div", { class: "block", "data-i": i, style: "--ind:" + l.ind });
+      var bullet = h("span", { class: "bullet", "data-bullet": "1", "aria-hidden": "true" });
+      var c = h("div", {
+        class: "content", contenteditable: "true", role: "textbox", "aria-multiline": "false", spellcheck: "true",
+        "aria-label": "Line " + (i + 1) + " of " + titleOf(p), "data-page": p.id, "data-i": i,
+        "data-ph": single ? (p.kind === "journal" ? "Start typing. Tab nests, [[ links, " + MOD + "+Enter makes a task" : "Write something to fill in this page") : null
+      });
+      renderContent(c, l.text, true);
+      setBlockState(block, l.text);
+      block.append(bullet, c);
+      container.append(block);
+    });
+  }
+  function rerenderPage(pageId) {
+    var p = state.pages[pageId];
+    document.querySelectorAll('.blocks[data-page="' + pageId + '"]').forEach(function (b) { renderBlocks(b, p); });
+  }
+  function syncOthers(pageId, i, except) {
+    var p = state.pages[pageId];
+    document.querySelectorAll('.content[data-page="' + pageId + '"][data-i="' + i + '"]').forEach(function (c) {
+      if (c === except) return;
+      renderContent(c, p.lines[i].text, true);
+      setBlockState(c.parentElement, p.lines[i].text);
+    });
+  }
+
+  function backlinksSection(p) {
+    var refs = [];
+    Object.values(state.pages).forEach(function (q) {
+      if (q.deleted || q.id === p.id) return;
+      var lines = [];
+      q.lines.forEach(function (l, i) { if (l.text.indexOf(linkTok(p.id)) >= 0) lines.push(i); });
+      if (lines.length) refs.push({ q: q, lines: lines });
+    });
+    refs.sort(function (a, b) { return titleOf(a.q) < titleOf(b.q) ? -1 : 1; });
+    var count = refs.reduce(function (n, r) { return n + r.lines.length; }, 0);
+    var sec = h("section", { class: "backlinks", "data-page": p.id, "aria-label": "Linked references" });
+    var dot = h("span", { class: "dot-wrap", hidden: !pendingIdx[p.id], title: "Recent edits to this page aren't in search yet" },
+      h("span", { class: "dot", "aria-hidden": "true" }), "Recent edits to this page aren't in search yet");
+    sec.append(h("h3", null, "Linked references · " + count, dot));
+    if (rebuild) sec.append(h("div", { class: "rebuild-note", role: "status" }, rebuildText()));
+    if (!refs.length) sec.append(h("div", { class: "empty-note" }, "No pages link here yet. Type [[" + titleOf(p) + " on another page to link it."));
+    refs.forEach(function (r) {
+      var g = h("div", { class: "ref-group" }, h("button", { type: "button", "data-open": r.q.id }, titleOf(r.q)));
+      r.lines.forEach(function (i) { var s = h("div", { class: "ref-line" }); renderContent(s, r.q.lines[i].text, false); g.append(s); });
+      sec.append(g);
+    });
+    return sec;
+  }
+
+  function tasksView() {
+    var wrap = h("div", { class: "doc tasks" }, h("h1", null, "Tasks"));
+    if (rebuild) wrap.append(h("div", { class: "rebuild-note", role: "status" }, rebuildText()));
+    var open = [], done = [];
+    Object.values(state.pages).forEach(function (p) {
+      if (p.deleted) return;
+      p.lines.forEach(function (l, i) {
+        var s = taskState(l.text);
+        if (!s) return;
+        (s === "DONE" ? done : open).push({ p: p, i: i, s: s });
+      });
+    });
+    function groupBy(list) {
+      var g = {};
+      list.forEach(function (t) { (g[t.p.id] = g[t.p.id] || []).push(t); });
+      return Object.keys(g).map(function (k) { return g[k]; }).sort(function (a, b) {
+        var pa = a[0].p, pb = b[0].p;
+        if (pa.kind !== pb.kind) return pa.kind === "journal" ? -1 : 1;
+        return pa.kind === "journal" ? (pa.date < pb.date ? 1 : -1) : (titleOf(pa) < titleOf(pb) ? -1 : 1);
+      });
+    }
+    function row(t, isDone) {
+      var id = "task-" + t.p.id + "-" + t.i;
+      var txt = h("span", { class: "txt" });
+      renderContent(txt, t.p.lines[t.i].text, false);
+      return h("div", { class: "task-row" + (isDone ? " done" : "") },
+        h("input", { type: "checkbox", id: id, checked: isDone, "data-task": t.p.id, "data-i": t.i, "aria-label": (isDone ? "Reopen: " : "Mark done: ") + plainLine(t.p.lines[t.i].text).replace(/^(TODO|DOING|DONE) /, "") }),
+        h("label", { for: id }, txt));
+    }
+    if (!open.length) wrap.append(h("div", { class: "empty-note" }, "No open tasks. Press " + MOD + "+Enter on any line to make one."));
+    groupBy(open).forEach(function (g) {
+      var sec = h("div", { class: "task-group" }, h("button", { type: "button", "data-open": g[0].p.id }, titleOf(g[0].p)));
+      g.forEach(function (t) { sec.append(row(t, false)); });
+      wrap.append(sec);
+    });
+    if (done.length) {
+      var det = h("details", { class: "done-list" }, h("summary", null, "Done · " + done.length));
+      groupBy(done).forEach(function (g) {
+        var sec = h("div", { class: "task-group" }, h("button", { type: "button", "data-open": g[0].p.id }, titleOf(g[0].p)));
+        g.forEach(function (t) { sec.append(row(t, true)); });
+        det.append(sec);
+      });
+      wrap.append(det);
+    }
+    return wrap;
+  }
+
+  // ---------- Right panel ----------
+  function renderRight() {
+    rightEl.textContent = "";
+    rightEl.append(h("div", { class: "right-head" },
+      h("button", { class: "iconbtn phone-only", type: "button", "data-act": "close-sheet", "aria-label": "Back" }, icon("back")),
+      h("span", { class: "label" }, "Side panel"),
+      state.right.length ? h("button", { class: "iconbtn", type: "button", "data-act": "close-all-right", "aria-label": "Close side panel", title: "Close side panel" }, icon("x")) : null));
+    var sc = h("div", { class: "scroll" });
+    if (!state.right.length) sc.append(h("div", { class: "right-empty" }, MOD + "+click a link to open its page here."));
+    state.right.forEach(function (id) {
+      var p = state.pages[id];
+      if (!p || p.deleted) return;
+      sc.append(h("div", { class: "panel-card" }, article(p, { col: "right", panel: true })));
+    });
+    rightEl.append(sc);
+  }
+
+  // ---------- Phone toolbar and sheet ----------
+  function renderPhoneExtras() {
+    app.querySelectorAll(".ptool, .sheet, .app-scrim").forEach(function (n) { n.remove(); });
+    var phone = isPhone();
+    if (phone && (ui.drawer || ui.palette || ui.sheetCtx)) app.append(h("div", { class: "scrim app-scrim", "data-act": "scrim" }));
+    if (phone && opts.phone === "toolbar" && ui.editing && !ui.palette) {
+      app.append(h("div", { class: "ptool", role: "toolbar", "aria-label": "Editing controls" },
+        tb("outdent", "⇤", "Outdent"), tb("indent", "⇥", "Indent"), tb("task", "☐", "Task"), tb("link", "[[", "Link"), tb("date", "@", "Date"), tb("done", "✓", "Done")));
+    }
+    if (phone && ui.sheetCtx) {
+      var c = ui.sheetCtx, t = plainLine(state.pages[c.page].lines[c.i].text) || "Empty line";
+      app.append(h("div", { class: "sheet", role: "menu", "aria-label": "Line actions" },
+        h("div", { class: "label" }, t.length > 40 ? t.slice(0, 40) + "…" : t),
+        sb("indent", "Indent", "⇥"), sb("outdent", "Outdent", "⇤"), sb("task", "Cycle task", "TODO → DOING → DONE"),
+        sb("link", "Add a link", "[["), sb("date", "Add a date", "@"), sb("close-sheet-menu", "Cancel", "")));
+    }
+    function tb(act, glyph, label) { return h("button", { type: "button", "data-tool": act, "aria-label": label }, h("b", null, glyph), label); }
+    function sb(act, label, k) { return h("button", { type: "button", role: "menuitem", "data-sheet": act }, label, h("span", { class: "k" }, k)); }
+  }
+
+  function renderAll() {
+    applyLayout();
+    renderLeft(); renderMain(); renderRight(); renderPhoneExtras();
+    scheduleSave();
+  }
+  function refreshDerived() {
+    document.querySelectorAll(".backlinks[data-page]").forEach(function (sec) {
+      var p = state.pages[sec.getAttribute("data-page")];
+      if (p) sec.replaceWith(backlinksSection(p));
+    });
+    if (state.view.type === "tasks") {
+      var t = mainEl.querySelector(".tasks");
+      if (t) t.replaceWith(tasksView());
+    }
+    document.querySelectorAll(".link[data-id]").forEach(function (l) {
+      if (l.closest(".content:focus")) return;
+      l.replaceWith(linkEl(l.getAttribute("data-id"), !!l.closest(".content")));
+    });
+    var focused = document.activeElement;
+    var keep = focused && focused.classList && focused.classList.contains("content") ? getCaret(focused) : null;
+    renderLeft();
+    if (keep != null) setCaret(focused, keep);
+  }
+
+  // ---------- Navigation ----------
+  function go(view) {
+    state.view = view;
+    if (view.type === "page") {
+      state.recent = [view.id].concat(state.recent.filter(function (x) { return x !== view.id; })).slice(0, 8);
+    }
+    ui.drawer = false; ui.menuFor = null;
+    closePopup();
+    renderAll();
+    var s = document.getElementById("mainScroll"); if (s) s.scrollTop = 0;
+  }
+  function openPage(id) { var p = state.pages[id]; if (!p) return; if (p.deleted) return offerRestore(id); go({ type: "page", id: id }); }
+  function openRight(id) {
+    var p = state.pages[id]; if (!p) return; if (p.deleted) return offerRestore(id);
+    state.right = [id].concat(state.right.filter(function (x) { return x !== id; }));
+    state.rightOpen = true; ui.sheet = true; ui.drawer = false;
+    renderAll();
+    toast("Opened " + titleOf(p) + " in the side panel");
+  }
+  function offerRestore(id) {
+    var p = state.pages[id];
+    toast("“" + titleOf(p) + "” was deleted. Its links stay, shown dashed.", "Restore", function () {
+      p.deleted = false; renderAll(); toast("Restored “" + titleOf(p) + "”. Its links work again.");
+    });
+  }
+
+  // ---------- Toasts ----------
+  function toast(msg, actionLabel, action) {
+    var box = app.querySelector(".toasts");
+    if (!box) { box = h("div", { class: "toasts", role: "status", "aria-live": "polite" }); app.append(box); }
+    var t = h("div", { class: "toast" }, h("span", null, msg));
+    if (actionLabel) t.append(h("button", { type: "button", onclick: function () { action(); t.remove(); } }, actionLabel));
+    box.append(t);
+    setTimeout(function () { t.remove(); }, actionLabel ? 7000 : 3200);
+  }
+
+  // ---------- Editing ----------
+  var lm = null, dm = null, popIdx = 0, popQ = null, pendingDel = null;
+  function lineOf(el) { return state.pages[el.getAttribute("data-page")].lines[+el.getAttribute("data-i")]; }
+  function ctxOf(el) {
+    var art = el.closest("[data-col]");
+    return { el: el, page: state.pages[el.getAttribute("data-page")], i: +el.getAttribute("data-i"), col: art ? art.getAttribute("data-col") : "main" };
+  }
+  function colRoot(col) { return col === "right" ? rightEl : mainEl; }
+  function focusLine(col, pageId, i, off) {
+    var el = colRoot(col).querySelector('.content[data-page="' + pageId + '"][data-i="' + i + '"]') ||
+      document.querySelector('.content[data-page="' + pageId + '"][data-i="' + i + '"]');
+    if (!el) return;
+    el.focus();
+    setCaret(el, Math.max(0, Math.min(off, toUnits(state.pages[pageId].lines[i].text).length)));
+  }
+  function dateAt() { return opts.dateTrigger === "at" || opts.dateTrigger === "both"; }
+  function dateBrackets() { return opts.dateTrigger === "brackets" || opts.dateTrigger === "both"; }
+
+  function afterEdit(el, str, c) {
+    var cx = ctxOf(el), page = cx.page, i = cx.i;
+    page.lines[i].text = str;
+    if (page.kind === "journal" && !page.exists) {
+      page.exists = true;
+      document.querySelectorAll('.created-hint[data-page="' + page.id + '"]').forEach(function (n) { n.remove(); });
+    }
+    var units = toUnits(str);
+    var before = units.slice(0, c).map(plainU).join("");
+    if (lm && (lm.page !== page.id || lm.i !== i)) closePopup();
+    if (dm && (dm.page !== page.id || dm.i !== i)) closePopup();
+    if (!lm && !dm && before.slice(-2) === "[[" && !(units[c] === "]" && units[c + 1] === "]")) {
+      units.splice(c, 0, "]", "]");
+      str = units.join(""); page.lines[i].text = str;
+      lm = { page: page.id, i: i, start: c - 2, el: el, q: "" };
+    }
+    if (lm) {
+      var u = toUnits(page.lines[i].text);
+      if (u[lm.start] !== "[" || u[lm.start + 1] !== "[" || c < lm.start + 2) closePopup();
+      else {
+        var q = u.slice(lm.start + 2, c).map(plainU).join("");
+        if (q.indexOf("]") >= 0 || q.indexOf(LCHAR) >= 0) closePopup(); else lm.q = q;
+      }
+    }
+    if (!lm && !dm && dateAt() && before.slice(-1) === "@" && (before.length === 1 || /\s/.test(before[before.length - 2]))) {
+      dm = { page: page.id, i: i, start: c - 1, el: el, q: "" };
+    }
+    if (dm) {
+      var u2 = toUnits(page.lines[i].text);
+      if (u2[dm.start] !== "@" || c <= dm.start) closePopup();
+      else {
+        var q2 = u2.slice(dm.start + 1, c).map(plainU).join("");
+        if (q2.length > 24 || q2.indexOf(LCHAR) >= 0) closePopup(); else dm.q = q2;
+      }
+    }
+    renderContent(el, page.lines[i].text, true);
+    setCaret(el, c);
+    setBlockState(el.parentElement, page.lines[i].text);
+    syncOthers(page.id, i, el);
+    markEdited(page.id);
+    if (lm || dm) updatePopup(); else hidePopup();
+  }
+
+  function onInput(e) {
+    var el = e.target;
+    if (!el.classList || !el.classList.contains("content")) return;
+    if (e.isComposing) return;
+    afterEdit(el, readContent(el), getCaret(el));
+  }
+
+  // Popup (link and date suggestions)
+  function popupItems() {
+    var items = [];
+    if (lm) {
+      var q = lm.q || "", ql = q.trim().toLowerCase();
+      var pages = linkable().filter(function (p) { return !ql || titleOf(p).toLowerCase().indexOf(ql) >= 0; });
+      pages.sort(function (a, b) {
+        var as = titleOf(a).toLowerCase().indexOf(ql) === 0, bs = titleOf(b).toLowerCase().indexOf(ql) === 0;
+        if (as !== bs) return as ? -1 : 1;
+        if (a.kind !== b.kind) return a.kind === "page" ? -1 : 1;
+        return titleOf(a) < titleOf(b) ? -1 : 1;
+      });
+      pages.slice(0, 6).forEach(function (p) {
+        items.push({ kind: "page", id: p.id, label: titleOf(p), sub: p.kind === "journal" ? "journal" : (hasContent(p) ? pathOf(p) : "empty page") });
+      });
+      if (dateBrackets() && ql) {
+        var ds = dateSuggestions(ql, today0()).slice(0, 3);
+        if (ds.length) items.push({ kind: "head", label: "Dates" });
+        ds.forEach(function (s) { items.push({ kind: "date", date: s.date, label: fmtDate(s.date), sub: s.phrase }); });
+      }
+      if (ql && !findByTitle(q)) items.push({ kind: "new", label: "New page “" + q.trim() + "”", title: q.trim(), sub: "creates an empty page" });
+      if (!items.length) items.push({ kind: "none", label: "Type a page title" });
+    } else if (dm) {
+      var list = dateSuggestions(dm.q, today0());
+      list.forEach(function (s) { items.push({ kind: "date", date: s.date, label: fmtDate(s.date), sub: s.phrase }); });
+      if (!list.length) items.push({ kind: "none", label: "No date matches “" + dm.q + "”. Try “next fri” or “in 2 weeks”." });
+    }
+    return items;
+  }
+  var lastItems = [];
+  function selectable(it) { return it.kind === "page" || it.kind === "date" || it.kind === "new"; }
+  function updatePopup() {
+    var q = (lm ? "l:" + lm.q : "d:" + (dm && dm.q));
+    if (q !== popQ) { popIdx = 0; popQ = q; }
+    lastItems = popupItems();
+    var sel = lastItems.map(function (it, k) { return selectable(it) ? k : -1; }).filter(function (k) { return k >= 0; });
+    if (sel.length && sel.indexOf(popIdx) < 0) popIdx = sel[0];
+    popupEl.textContent = "";
+    lastItems.forEach(function (it, k) {
+      if (it.kind === "head") { popupEl.append(h("li", { class: "head", role: "presentation" }, it.label)); return; }
+      popupEl.append(h("li", {
+        role: "option", id: "opt-" + k, "data-k": k, class: it.kind === "new" ? "new" : (it.kind === "none" ? "none" : null),
+        "aria-selected": String(k === popIdx && selectable(it))
+      }, h("span", null, it.label), it.sub ? h("span", { class: "sub" }, it.sub) : null));
+    });
+    popupEl.hidden = false;
+    var r = caretRect();
+    if (r) {
+      var w = popupEl.offsetWidth, ph = popupEl.offsetHeight;
+      var x = Math.min(Math.max(8, r.left - 6), window.innerWidth - w - 8);
+      var y = r.bottom + 6;
+      if (y + ph > window.innerHeight - 8) y = Math.max(8, r.top - ph - 6);
+      popupEl.style.left = x + "px"; popupEl.style.top = y + "px";
+    }
+  }
+  function hidePopup() { popupEl.hidden = true; }
+  // A link reopened with Backspace goes back to its original target unless a new one is chosen.
+  function cancelReopen() {
+    if (!lm || !lm.orig) { closePopup(); return; }
+    var ctx = lm, page = state.pages[ctx.page], u = toUnits(page.lines[ctx.i].text), end = -1;
+    for (var k = ctx.start + 2; k < u.length - 1; k++) if (u[k] === "]" && u[k + 1] === "]") { end = k + 2; break; }
+    if (u[ctx.start] !== "[" || u[ctx.start + 1] !== "[" || end < 0) { closePopup(); return; }
+    u.splice(ctx.start, end - ctx.start, linkTok(ctx.orig));
+    page.lines[ctx.i].text = u.join("");
+    closePopup();
+    var el = document.contains(ctx.el) ? ctx.el : null;
+    if (el) {
+      var focused = document.activeElement === el;
+      renderContent(el, page.lines[ctx.i].text, true);
+      if (focused) setCaret(el, ctx.start + 1);
+    }
+    syncOthers(page.id, ctx.i, el);
+    markEdited(page.id);
+  }
+  function closePopup() { lm = null; dm = null; popQ = null; hidePopup(); }
+  function movePopup(dir) {
+    var sel = lastItems.map(function (it, k) { return selectable(it) ? k : -1; }).filter(function (k) { return k >= 0; });
+    if (!sel.length) return;
+    var pos = sel.indexOf(popIdx);
+    popIdx = sel[(pos + dir + sel.length) % sel.length];
+    popQ = lm ? "l:" + lm.q : "d:" + (dm && dm.q);
+    updatePopup();
+  }
+  function choose(it) {
+    if (!it || !selectable(it)) return;
+    var id;
+    if (it.kind === "page") id = it.id;
+    else if (it.kind === "date") id = ensureJournal(ymd(it.date)).id;
+    else id = createPage(it.title);
+    commitLink(id);
+    if (it.kind === "new") toast("Created an empty page “" + titleOf(state.pages[id]) + "”");
+  }
+  function commitLink(id) {
+    var ctx = lm || dm; if (!ctx) return;
+    var el = ctx.el, page = state.pages[ctx.page], c = getCaret(el), u = toUnits(page.lines[ctx.i].text);
+    var start = ctx.start, end = Math.max(c, start + (lm ? 2 : 1));
+    if (lm && u[end] === "]" && u[end + 1] === "]") end += 2;
+    u.splice(start, end - start, linkTok(id));
+    page.lines[ctx.i].text = u.join("");
+    closePopup();
+    renderContent(el, page.lines[ctx.i].text, true);
+    setCaret(el, start + 1);
+    syncOthers(page.id, ctx.i, el);
+    markEdited(page.id);
+    tick("link");
+  }
+
+  // Line operations
+  function indentLine(page, i, dir) {
+    var L = page.lines, base = L[i].ind, j = i + 1;
+    while (j < L.length && L[j].ind > base) j++;
+    if (dir > 0) { var max = i > 0 ? L[i - 1].ind + 1 : 0; if (base + 1 > max) return false; }
+    else if (base === 0) return false;
+    for (var k = i; k < j; k++) L[k].ind = Math.max(0, L[k].ind + dir);
+    return true;
+  }
+  function cycleTask(page, i) {
+    var t = page.lines[i].text, s = taskState(t), nt, d;
+    if (!s) { nt = "TODO " + t; d = 5; }
+    else if (s === "TODO") { nt = "DOING" + t.slice(4); d = 1; }
+    else if (s === "DOING") { nt = "DONE" + t.slice(5); d = -1; }
+    else { nt = t.slice(4).replace(/^ /, ""); d = -5; }
+    page.lines[i].text = nt;
+    return d;
+  }
+  function doIndent(cx, dir) {
+    var c = getCaret(cx.el);
+    if (indentLine(cx.page, cx.i, dir)) { rerenderPage(cx.page.id); markEdited(cx.page.id); tick("indent"); }
+    else toast(dir > 0 ? "Can't nest deeper than one level below the line above" : "Already at the top level");
+    focusLine(cx.col, cx.page.id, cx.i, c);
+  }
+  function doTask(cx) {
+    var c = getCaret(cx.el), d = cycleTask(cx.page, cx.i);
+    renderContent(cx.el, cx.page.lines[cx.i].text, true);
+    setBlockState(cx.el.parentElement, cx.page.lines[cx.i].text);
+    setCaret(cx.el, Math.max(0, c + d));
+    syncOthers(cx.page.id, cx.i, cx.el);
+    markEdited(cx.page.id);
+    tick("task");
+  }
+  function insertAtCaret(cx, text) {
+    var c = document.activeElement === cx.el ? getCaret(cx.el) : toUnits(cx.page.lines[cx.i].text).length;
+    if (document.activeElement !== cx.el) { cx.el.focus(); }
+    var u = toUnits(cx.page.lines[cx.i].text);
+    var add = text.split("");
+    if (text === "@" && c > 0 && !/\s/.test(plainU(u[c - 1]))) add = [" ", "@"];
+    u.splice.apply(u, [c, 0].concat(add));
+    afterEdit(cx.el, u.join(""), c + add.length);
+  }
+
+  function onKeydown(e) {
+    var el = e.target;
+    var mod = IS_MAC ? e.metaKey : e.ctrlKey;
+    if (mod && (e.key === "k" || e.key === "K")) { e.preventDefault(); openPalette(); return; }
+    if (el.classList && el.classList.contains("title") && el.hasAttribute("data-title")) {
+      if (e.key === "Enter") { e.preventDefault(); el.blur(); }
+      if (e.key === "Escape") { e.preventDefault(); el.textContent = state.pages[el.getAttribute("data-title")].title; el.blur(); }
+      return;
+    }
+    if (!el.classList || !el.classList.contains("content")) { onGlobalKey(e); return; }
+    var cx = ctxOf(el), page = cx.page, i = cx.i;
+
+    if (!popupEl.hidden && (lm || dm)) {
+      if (e.key === "ArrowDown") { e.preventDefault(); movePopup(1); return; }
+      if (e.key === "ArrowUp") { e.preventDefault(); movePopup(-1); return; }
+      if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); choose(lastItems[popIdx]); return; }
+      if (e.key === "Escape") { e.preventDefault(); cancelReopen(); return; }
+    }
+    if (lm && e.key === "]") {
+      e.preventDefault();
+      var q = (lm.q || "").trim();
+      if (!q) { closePopup(); return; }
+      var ex = findByTitle(q);
+      var newId = ex ? ex.id : createPage(q);
+      if (!ex) toast("Created an empty page “" + q + "”");
+      commitLink(newId);
+      return;
+    }
+    if (e.key !== "Backspace" && pendingDel) clearPendingDel();
+
+    if (mod && e.key === "Enter") { e.preventDefault(); doTask(cx); return; }
+    if (e.altKey && e.key === "Enter") {
+      e.preventDefault();
+      var cc = getCaret(el), uu = toUnits(page.lines[i].text);
+      if (isLinkU(uu[cc - 1])) { if (e.shiftKey) openRight(linkIdOf(uu[cc - 1])); else openPage(linkIdOf(uu[cc - 1])); }
+      return;
+    }
+    if (e.key === "Tab") { e.preventDefault(); doIndent(cx, e.shiftKey ? -1 : 1); return; }
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      var c = getCaret(el), L = page.lines, u = toUnits(L[i].text);
+      if (!L[i].text && L[i].ind > 0) { doIndent(cx, -1); return; }
+      var hasKids = i + 1 < L.length && L[i + 1].ind > L[i].ind;
+      L[i].text = u.slice(0, c).join("");
+      L.splice(i + 1, 0, { ind: (hasKids && c === u.length) ? L[i].ind + 1 : L[i].ind, text: u.slice(c).join("") });
+      rerenderPage(page.id); markEdited(page.id); tick("bullets");
+      focusLine(cx.col, page.id, i + 1, 0);
+      return;
+    }
+    if (e.key === "Backspace" && !mod && !e.altKey) {
+      var s = window.getSelection();
+      if (!s.isCollapsed) return;
+      var c2 = getCaret(el), u2 = toUnits(page.lines[i].text);
+      if (c2 > 0 && isLinkU(u2[c2 - 1])) {
+        e.preventDefault();
+        var lid = linkIdOf(u2[c2 - 1]);
+        if (opts.linkEdit === "unit") {
+          if (pendingDel && pendingDel.el === el && pendingDel.c === c2) {
+            u2.splice(c2 - 1, 1); clearPendingDel();
+            page.lines[i].text = u2.join("");
+            renderContent(el, page.lines[i].text, true); setCaret(el, c2 - 1);
+            syncOthers(page.id, i, el); markEdited(page.id);
+          } else {
+            clearPendingDel();
+            var nth = u2.slice(0, c2 - 1).filter(isLinkU).length;
+            var span = el.querySelectorAll(".link")[nth];
+            if (span) span.classList.add("selected");
+            pendingDel = { el: el, c: c2 };
+            toast("Link selected. Backspace again to delete it.");
+          }
+        } else {
+          var t = titleOf(state.pages[lid] || { kind: "page", title: "" });
+          var raw = ["[", "["].concat(t.split(""), ["]", "]"]);
+          u2.splice.apply(u2, [c2 - 1, 1].concat(raw));
+          page.lines[i].text = u2.join("");
+          lm = { page: page.id, i: i, start: c2 - 1, el: el, q: t, orig: lid };
+          renderContent(el, page.lines[i].text, true);
+          setCaret(el, c2 - 1 + 2 + t.length);
+          markEdited(page.id);
+          updatePopup();
+        }
+        return;
+      }
+      if (c2 === 0) {
+        var L2 = page.lines;
+        if (!L2[i].text && L2[i].ind > 0) { e.preventDefault(); doIndent(cx, -1); return; }
+        if (i > 0) {
+          e.preventDefault();
+          var prevLen = toUnits(L2[i - 1].text).length;
+          L2[i - 1].text += L2[i].text;
+          L2.splice(i, 1);
+          rerenderPage(page.id); markEdited(page.id);
+          focusLine(cx.col, page.id, i - 1, prevLen);
+          return;
+        }
+      }
+      return;
+    }
+    if ((e.key === "ArrowUp" || e.key === "ArrowDown") && !e.shiftKey) {
+      var r = caretRect(), br = el.getBoundingClientRect(), lh = 22;
+      var atEdge = !r || (e.key === "ArrowUp" ? r.top - br.top < lh : br.bottom - r.bottom < lh);
+      if (!atEdge) return;
+      var all = Array.prototype.slice.call(colRoot(cx.col).querySelectorAll(".content"));
+      var k = all.indexOf(el) + (e.key === "ArrowUp" ? -1 : 1);
+      if (k < 0 || k >= all.length) return;
+      e.preventDefault();
+      var off = getCaret(el), tgt = all[k];
+      tgt.focus(); setCaret(tgt, Math.min(off, toUnits(lineOf(tgt).text).length));
+    }
+  }
+  function clearPendingDel() {
+    if (pendingDel) pendingDel.el.querySelectorAll(".link.selected").forEach(function (n) { n.classList.remove("selected"); });
+    pendingDel = null;
+  }
+
+  function onPaste(e) {
+    var el = e.target.closest && e.target.closest(".content");
+    if (!el) return;
+    e.preventDefault();
+    var text = (e.clipboardData || window.clipboardData).getData("text/plain") || "";
+    text = text.replace(/\r?\n/g, " ");
+    var made = [];
+    var enc = text.replace(/\[\[([^\]]+)\]\]/g, function (_, t) {
+      var ex = findByTitle(t);
+      var id = ex ? ex.id : createPage(t);
+      if (!ex) made.push(t.trim());
+      return linkTok(id);
+    });
+    var cx = ctxOf(el), c = getCaret(el), u = toUnits(cx.page.lines[cx.i].text);
+    var add = toUnits(enc);
+    u.splice.apply(u, [c, 0].concat(add));
+    afterEdit(el, u.join(""), c + add.length);
+    if (enc !== text) { toast("Converted pasted [[links]]" + (made.length ? ", created " + made.join(", ") : "")); tick("paste"); }
+  }
+
+  // Title rename
+  function onTitleBlur(el) {
+    var id = el.getAttribute("data-title"), p = state.pages[id];
+    var nt = el.textContent.replace(/\s+/g, " ").trim();
+    var err = document.querySelector('[data-title-error="' + id + '"]');
+    if (!nt || nt === p.title) { el.textContent = p.title; if (err) err.hidden = true; return; }
+    var clash = findByTitle(nt, id);
+    if (clash) {
+      el.textContent = p.title;
+      document.querySelectorAll('[data-title-error="' + id + '"]').forEach(function (n) {
+        n.textContent = "A page called “" + titleOf(clash) + "” already exists, so the rename was undone. Merging pages is planned for later (F32).";
+        n.hidden = false;
+      });
+      tick("unique");
+      return;
+    }
+    var n = 0;
+    Object.values(state.pages).forEach(function (q) { q.lines.forEach(function (l) { if (l.text.indexOf(linkTok(id)) >= 0) n++; }); });
+    p.title = nt;
+    var slug = slugify(nt);
+    p.slugs = [slug].concat(p.slugs.filter(function (s) { return s !== slug; }));
+    renderAll();
+    toast("Renamed. " + n + " link" + (n === 1 ? "" : "s") + " now show “" + nt + "”. No other page was edited.");
+    tick("rename");
+  }
+
+  // ---------- Palette ----------
+  function paletteResults(q) {
+    var ql = q.trim().toLowerCase(), out = [];
+    var titles = linkable().filter(function (p) { return !ql || titleOf(p).toLowerCase().indexOf(ql) >= 0; })
+      .sort(function (a, b) { var as = titleOf(a).toLowerCase().indexOf(ql) === 0, bs = titleOf(b).toLowerCase().indexOf(ql) === 0; return as === bs ? (titleOf(a) < titleOf(b) ? -1 : 1) : (as ? -1 : 1); })
+      .slice(0, ql ? 6 : 8);
+    if (titles.length) out.push({ group: ql ? "Titles" : "Pages" });
+    titles.forEach(function (p) { out.push({ id: p.id, label: titleOf(p), sub: p.kind === "journal" ? "journal" : pathOf(p) }); });
+    if (ql) {
+      var texts = [];
+      Object.values(state.pages).forEach(function (p) {
+        if (p.deleted) return;
+        p.lines.forEach(function (l) {
+          var pl = plainLine(l.text), k = pl.toLowerCase().indexOf(ql);
+          if (k >= 0 && texts.length < 8) texts.push({ id: p.id, label: titleOf(p), snip: pl, at: k, len: ql.length });
+        });
+      });
+      if (texts.length) out.push({ group: "In pages" });
+      texts.forEach(function (t) { out.push(t); });
+      if (!findByTitle(q)) out.push({ create: q.trim(), label: "Create page “" + q.trim() + "”" });
+    }
+    return out;
+  }
+  function openPalette() {
+    closePopup();
+    ui.palette = { q: "", idx: 0, ret: document.activeElement };
+    ui.drawer = false;
+    applyLayout();
+    renderPalette();
+    tick("search");
+  }
+  function closePalette() {
+    var ret = ui.palette && ui.palette.ret;
+    ui.palette = null;
+    app.querySelectorAll(".palette, .pal-scrim").forEach(function (n) { n.remove(); });
+    renderPhoneExtras();
+    if (ret && ret.focus && document.contains(ret)) ret.focus();
+  }
+  function renderPalette() {
+    app.querySelectorAll(".palette, .pal-scrim").forEach(function (n) { n.remove(); });
+    var pal = ui.palette;
+    var res = paletteResults(pal.q);
+    var sel = res.map(function (r, k) { return r.group ? -1 : k; }).filter(function (k) { return k >= 0; });
+    if (sel.indexOf(pal.idx) < 0) pal.idx = sel.length ? sel[0] : 0;
+    var input = h("input", { id: "palq", type: "text", value: pal.q, placeholder: "Search pages, or type a new title", "aria-label": "Search", autocomplete: "off", role: "combobox", "aria-expanded": "true", "aria-controls": "palres" });
+    var list = h("ul", { id: "palres", role: "listbox" });
+    res.forEach(function (r, k) {
+      if (r.group) { list.append(h("li", { class: "group", role: "presentation" }, r.group)); return; }
+      var li = h("li", { role: "option", "data-k": k, "aria-selected": String(k === pal.idx) });
+      li.append(h("span", null, r.create ? h("b", null, r.label) : r.label));
+      if (r.snip != null) {
+        var a = Math.max(0, r.at - 30), s = h("span", { class: "snip" });
+        s.append((a > 0 ? "…" : "") + r.snip.slice(a, r.at), h("mark", null, r.snip.slice(r.at, r.at + r.len)), r.snip.slice(r.at + r.len));
+        li.append(s);
+      } else if (r.sub) li.append(h("span", { class: "snip" }, r.sub));
+      list.append(li);
+    });
+    var box = h("div", { class: "palette", role: "dialog", "aria-label": "Search" }, input);
+    if (rebuild) box.append(h("div", { class: "rebuild-note", role: "status", style: "margin:6px 14px 0" }, rebuildText()));
+    box.append(list, h("div", { class: "foot" }, "↑↓ choose · Enter open · " + MOD + "+Enter open in side panel · Esc close"));
+    app.append(h("div", { class: "scrim pal-scrim", "data-act": "close-palette" }), box);
+    input.focus();
+    input.setSelectionRange(pal.q.length, pal.q.length);
+    input.addEventListener("input", function () { pal.q = input.value; pal.idx = -1; renderPalette(); });
+    input.addEventListener("keydown", function (e) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        var pos = sel.indexOf(pal.idx), d = e.key === "ArrowDown" ? 1 : -1;
+        pal.idx = sel[(pos + d + sel.length) % sel.length]; renderPalette();
+      } else if (e.key === "Enter") {
+        e.preventDefault(); pickPalette(res[pal.idx], IS_MAC ? e.metaKey : e.ctrlKey);
+      } else if (e.key === "Escape") { e.preventDefault(); closePalette(); }
+    });
+    list.addEventListener("mousedown", function (e) {
+      var li = e.target.closest("li[data-k]"); if (!li) return;
+      e.preventDefault(); pickPalette(res[+li.getAttribute("data-k")], IS_MAC ? e.metaKey : e.ctrlKey);
+    });
+  }
+  function pickPalette(r, right) {
+    if (!r || r.group) return;
+    var id = r.create ? createPage(r.create) : r.id;
+    ui.palette = null;
+    app.querySelectorAll(".palette, .pal-scrim").forEach(function (n) { n.remove(); });
+    if (right) openRight(id); else openPage(id);
+    if (r.create) {
+      toast("Created “" + titleOf(state.pages[id]) + "”");
+      setTimeout(function () { focusLine(right ? "right" : "main", id, 0, 0); }, 0);
+    }
+  }
+
+  // ---------- Global keys and clicks ----------
+  var tPending = 0;
+  function onGlobalKey(e) {
+    var tag = (e.target.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "textarea" || e.target.isContentEditable) return;
+    if (e.key === "Escape") {
+      if (ui.palette) return closePalette();
+      if (!document.getElementById("protoPanel").hidden) return toggleProto(false);
+      if (ui.menuFor || ui.drawer || ui.sheetCtx) { ui.menuFor = null; ui.drawer = false; ui.sheetCtx = null; renderAll(); }
+      return;
+    }
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === "t") { tPending = Date.now(); return; }
+    if (Date.now() - tPending < 900 && (e.key === "l" || e.key === "r")) {
+      tPending = 0;
+      if (e.key === "l") { if (isPhone()) ui.drawer = !ui.drawer; else state.leftOpen = !state.leftOpen; }
+      else { if (!state.right.length) { toast(MOD + "+click a link first to open a page in the side panel"); return; } if (isPhone()) ui.sheet = !ui.sheet; else state.rightOpen = !state.rightOpen; }
+      renderAll(); tick("panels");
+      return;
+    }
+    if (e.key === "?") toggleProto(true);
+  }
+
+  function onClick(e) {
+    var t = e.target;
+    var mod = IS_MAC ? e.metaKey : e.ctrlKey;
+    var link = t.closest(".link[data-id]");
+    if (link) {
+      e.preventDefault();
+      var id = link.getAttribute("data-id");
+      if (mod || e.shiftKey) { openRight(id); tick("side"); } else openPage(id);
+      return;
+    }
+    if (!t.closest(".menu-wrap") && ui.menuFor) { ui.menuFor = null; renderMain(); renderRight(); }
+    var b = t.closest("[data-go],[data-open],[data-act],[data-mode],[data-tool],[data-sheet],[data-bullet]");
+    if (!b) { if (pendingDel && !t.closest(".content")) clearPendingDel(); return; }
+    if (b.hasAttribute("data-go")) { go({ type: b.getAttribute("data-go") }); if (b.getAttribute("data-go") === "tasks") tick("tasks-view"); return; }
+    if (b.hasAttribute("data-open")) { if (mod) openRight(b.getAttribute("data-open")); else openPage(b.getAttribute("data-open")); return; }
+    if (b.hasAttribute("data-mode")) {
+      var mp = state.pages[b.getAttribute("data-page")]; mp.mode = b.getAttribute("data-mode");
+      document.querySelectorAll('[data-mode][data-page="' + mp.id + '"]').forEach(function (x) { x.setAttribute("aria-pressed", String(x.getAttribute("data-mode") === mp.mode)); });
+      return;
+    }
+    if (b.hasAttribute("data-tool")) { e.preventDefault(); toolAction(b.getAttribute("data-tool")); return; }
+    if (b.hasAttribute("data-sheet")) { sheetAction(b.getAttribute("data-sheet")); return; }
+    if (b.hasAttribute("data-bullet")) {
+      if (isPhone() && opts.phone === "menu") {
+        var c = b.parentElement.querySelector(".content"); var cx = ctxOf(c);
+        ui.sheetCtx = { page: cx.page.id, i: cx.i, col: cx.col }; renderPhoneExtras(); tick("phone");
+      }
+      return;
+    }
+    var act = b.getAttribute("data-act");
+    switch (act) {
+      case "palette": openPalette(); break;
+      case "close-palette": closePalette(); break;
+      case "new-page": {
+        var nid = createPage("Untitled");
+        go({ type: "page", id: nid });
+        var te = mainEl.querySelector('[data-title="' + nid + '"]');
+        if (te) { te.focus(); var r = document.createRange(); r.selectNodeContents(te); var s = getSelection(); s.removeAllRanges(); s.addRange(r); }
+        break;
+      }
+      case "close-left": state.leftOpen = false; ui.drawer = false; renderAll(); break;
+      case "open-left": state.leftOpen = true; renderAll(); break;
+      case "open-drawer": ui.drawer = true; renderAll(); tick("phone"); break;
+      case "scrim": ui.drawer = false; ui.sheetCtx = null; if (ui.palette) closePalette(); renderAll(); break;
+      case "toggle-right": if (isPhone()) ui.sheet = !ui.sheet; else state.rightOpen = !state.rightOpen; renderAll(); break;
+      case "close-sheet": ui.sheet = false; renderAll(); break;
+      case "close-all-right": state.right = []; ui.sheet = false; renderAll(); break;
+      case "close-panel": state.right = state.right.filter(function (x) { return x !== b.getAttribute("data-page"); }); if (!state.right.length) ui.sheet = false; renderAll(); break;
+      case "page-menu": ui.menuFor = ui.menuFor === b.getAttribute("data-page") + b.getAttribute("data-col") ? null : b.getAttribute("data-page") + b.getAttribute("data-col"); renderMain(); renderRight(); break;
+      case "menu-right": ui.menuFor = null; openRight(b.getAttribute("data-page")); break;
+      case "menu-delete": {
+        var dp = state.pages[b.getAttribute("data-page")];
+        dp.deleted = true; ui.menuFor = null;
+        state.right = state.right.filter(function (x) { return x !== dp.id; });
+        if (state.view.type === "page" && state.view.id === dp.id) state.view = { type: "feed" };
+        renderAll(); tick("delete");
+        toast("Deleted “" + dp.title + "”. Links to it now show dashed.", "Undo", function () { dp.deleted = false; renderAll(); });
+        break;
+      }
+      case "mist-stub": toast("Mist's comments and sharing work as they do today. They aren't part of this prototype."); break;
+    }
+  }
+
+  function editingCtx() {
+    var el = ui.editing && document.contains(ui.editing) ? ui.editing : null;
+    return el ? ctxOf(el) : null;
+  }
+  function toolAction(a) {
+    var cx = editingCtx(); if (!cx) return;
+    tick("phone");
+    if (a === "indent") doIndent(cx, 1);
+    else if (a === "outdent") doIndent(cx, -1);
+    else if (a === "task") doTask(cx);
+    else if (a === "link") insertAtCaret(cx, "[[");
+    else if (a === "date") insertAtCaret(cx, dateAt() ? "@" : "[[");
+    else if (a === "done") { cx.el.blur(); ui.editing = null; renderPhoneExtras(); }
+  }
+  function sheetAction(a) {
+    var s = ui.sheetCtx; ui.sheetCtx = null; renderPhoneExtras();
+    if (!s || a === "close-sheet-menu") return;
+    var el = colRoot(s.col).querySelector('.content[data-page="' + s.page + '"][data-i="' + s.i + '"]');
+    if (!el) return;
+    el.focus(); setCaret(el, toUnits(state.pages[s.page].lines[s.i].text).length);
+    var cx = ctxOf(el);
+    if (a === "indent") doIndent(cx, 1);
+    else if (a === "outdent") doIndent(cx, -1);
+    else if (a === "task") doTask(cx);
+    else if (a === "link") insertAtCaret(cx, "[[");
+    else if (a === "date") insertAtCaret(cx, dateAt() ? "@" : "[[");
+  }
+
+  // Drag a bullet sideways to indent or outdent (phone option)
+  var drag = null;
+  function onPointerDown(e) {
+    var b = e.target.closest && e.target.closest(".bullet");
+    if (!b || !isPhone() || opts.phone !== "drag") return;
+    e.preventDefault();
+    var block = b.parentElement;
+    drag = { x: e.clientX, block: block, el: block.querySelector(".content"), dx: 0 };
+    block.classList.add("dragging");
+    try { b.setPointerCapture(e.pointerId); } catch (err) { /* older browsers */ }
+  }
+  function onPointerMove(e) {
+    if (!drag) return;
+    drag.dx = Math.max(-60, Math.min(60, e.clientX - drag.x));
+    drag.block.style.transform = "translateX(" + Math.round(drag.dx / 2) + "px)";
+    drag.block.classList.toggle("drag-hint", Math.abs(drag.dx) > 28);
+    drag.block.setAttribute("data-hint", drag.dx > 0 ? "indent" : "outdent");
+  }
+  function onPointerUp() {
+    if (!drag) return;
+    var d = drag; drag = null;
+    d.block.style.transform = ""; d.block.classList.remove("dragging", "drag-hint");
+    if (Math.abs(d.dx) > 28) {
+      var cx = ctxOf(d.el);
+      if (indentLine(cx.page, cx.i, d.dx > 0 ? 1 : -1)) { rerenderPage(cx.page.id); markEdited(cx.page.id); tick("phone"); }
+    }
+  }
+
+  // Task checkboxes in the Tasks view
+  function onChange(e) {
+    var cb = e.target;
+    if (!cb.hasAttribute || !cb.hasAttribute("data-task")) return;
+    var p = state.pages[cb.getAttribute("data-task")], i = +cb.getAttribute("data-i"), t = p.lines[i].text;
+    p.lines[i].text = cb.checked ? t.replace(/^(TODO|DOING)/, "DONE") : t.replace(/^DONE/, "TODO");
+    rerenderPage(p.id);
+    var tv = mainEl.querySelector(".tasks"); if (tv) tv.replaceWith(tasksView());
+    renderLeft();
+    scheduleSave();
+    toast((cb.checked ? "Marked done in “" : "Reopened in “") + titleOf(p) + "”");
+    tick("tasks-view");
+  }
+
+  // ---------- Prototype controls ----------
+  var TRY = [
+    { id: "bullets", f: "F7", t: "In today's journal, type a line, press Enter for the next bullet, then Tab and Shift+Tab to nest. Backspace on an empty bullet outdents it." },
+    { id: "indent", f: "F7", t: "Tab a line that has children (Mistlog page) and watch them move with it." },
+    { id: "task", f: "F6", t: MOD + "+Enter on a line cycles TODO → DOING → DONE → plain." },
+    { id: "link", f: "F3", t: "Type [[ and pick a page, or type a new title and press ] to create an empty page." },
+    { id: "linkedit", f: "6.1", t: "Put the cursor right after a link and press Backspace to reopen it. Pick another page, or press Esc to put the original back." },
+    { id: "paste", f: "6.1", t: "Paste text containing [[Reading list]] and see it become a link." },
+    { id: "date", f: "F20", t: "Type @next fri or [[in 2 weeks. Switch “Date trigger” below to compare." },
+    { id: "rename", f: "F5", t: "Open Mistlog, click its title and rename it. Every link updates; the old address redirects." },
+    { id: "unique", f: "F2", t: "Rename a page to “Reading list” to see the unique-title rule." },
+    { id: "side", f: "F18", t: MOD + "+click any link to open it in the side panel." },
+    { id: "search", f: "F13", t: MOD + "+K to search titles and text, then create a page from the last row." },
+    { id: "tasks-view", f: "F6", t: "Open Tasks and tick a task. The line on its page changes." },
+    { id: "delete", f: "6.1", t: "Delete “Weekly review” from its ⋯ menu. Links go dashed; click one to restore." },
+    { id: "panels", f: "F8", t: "Press t l and t r (outside the editor) to hide and show the panels." },
+    { id: "rebuild", f: "Index", t: "Run an index rebuild (below) and look at the sidebar, backlinks, Tasks and search." },
+    { id: "phone", f: "F17", t: "Switch View to Phone frame, open the menu, and try each phone control option." }
+  ];
+  var CHOICES = [
+    { key: "linkEdit", label: "Editing a link", q: "PRD 6.1", opts: [
+      ["reopen", "Reopen for editing", "Backspace turns the link back into [[Title]] with suggestions open, like Logseq. Esc puts the original link back."],
+      ["unit", "One unit", "Backspace selects the whole link, a second Backspace deletes it. To point elsewhere, delete and retype."]], decided: "reopen" },
+    { key: "dateTrigger", label: "Date trigger", q: "PRD 6.2", opts: [
+      ["at", "@ prefix", "Type @ then a phrase: @tomorrow, @next fri, @oct 31."],
+      ["brackets", "Inside [[ ]]", "Dates appear among page suggestions: [[in 2 weeks."],
+      ["both", "Both", "Either way works."]], decided: "both" },
+    { key: "feedHeader", label: "Mist header in the journal feed", q: "F1, revisit after M2", opts: [
+      ["hidden", "Hidden per day", "Shown when you open a day on its own."],
+      ["shown", "Shown on every day", "Edit/Suggest, Comments and Share above each day."]], decided: "shown" },
+    { key: "phone", label: "Phone controls", q: "F17", opts: [
+      ["toolbar", "Keyboard toolbar", "A bar of indent, outdent, task, link and date buttons while you type."],
+      ["menu", "Bullet menu", "Tap a bullet for a menu of line actions."],
+      ["drag", "Drag the bullet", "Drag a bullet right to indent, left to outdent."]], decided: "toolbar" },
+    { key: "view", label: "View", q: "", opts: [
+      ["desktop", "Desktop", "Full width."],
+      ["phone", "Phone frame", "A 390px phone-sized frame. On a real phone this is automatic."]] }
+  ];
+  var protoPanel = document.getElementById("protoPanel"), protoBtn = document.getElementById("protoBtn");
+  function tick(id) {
+    if (opts.tried[id]) return;
+    opts.tried[id] = true; persist(OKEY, opts);
+    if (!protoPanel.hidden) renderProto(); else renderProtoBtn();
+  }
+  function renderProtoBtn() {
+    var n = TRY.filter(function (t) { return opts.tried[t.id]; }).length;
+    protoBtn.textContent = "";
+    protoBtn.append("Prototype controls", h("span", { class: "n" }, n + "/" + TRY.length));
+  }
+  function renderProto() {
+    renderProtoBtn();
+    protoPanel.textContent = "";
+    var body = h("div", { class: "proto-body" },
+      h("p", null, "A clickable mock of Mistlog's M2 interactions, built on Mist's look. It is the interaction reference for building M2: match its behaviour, not its code. Notes are sample data saved in this browser only."));
+    var list = h("ol", { class: "try" });
+    TRY.forEach(function (t) {
+      var id = "try-" + t.id;
+      list.append(h("li", { class: opts.tried[t.id] ? "done" : null },
+        h("label", { for: id },
+          h("input", { type: "checkbox", id: id, checked: !!opts.tried[t.id], "data-try": t.id }),
+          h("span", null, t.t, t.remind ? h("span", { class: "remind" }, "decide") : null),
+          h("span", { class: "f" }, t.f))));
+    });
+    body.append(h("div", { class: "proto-sec" }, h("h3", null, "Things to try"), list));
+    var ch = h("div", { class: "proto-sec" }, h("h3", null, "Choices"), h("p", null, "Defaults follow the decisions recorded in the PRD on 22 Oct 2026. Switch to see the alternatives that were considered."));
+    CHOICES.forEach(function (c) {
+      var fs = h("fieldset", { class: "choice" }, h("legend", null, c.label, c.q ? " " : null, c.q ? h("span", { class: "q" }, c.q) : null));
+      c.opts.forEach(function (o) {
+        var id = "opt-" + c.key + "-" + o[0];
+        fs.append(h("label", { for: id },
+          h("input", { type: "radio", name: "opt-" + c.key, id: id, value: o[0], checked: opts[c.key] === o[0], "data-opt": c.key }),
+          h("span", null, o[1], c.decided === o[0] ? h("span", { class: "decided" }, "decided") : null, h("small", null, o[2]))));
+      });
+      ch.append(fs);
+    });
+    body.append(ch);
+    body.append(h("div", { class: "proto-sec" }, h("h3", null, "Simulate"),
+      h("div", { class: "btnrow" },
+        h("button", { class: "btn", type: "button", "data-proto": "rebuild" }, "Run an index rebuild"),
+        h("button", { class: "btn", type: "button", "data-proto": "reset" }, "Reset sample notes"))));
+    var keys = h("div", { class: "keys" });
+    [["Enter", "New bullet at the same level"], ["Tab / Shift+Tab", "Indent / outdent with children"], ["Backspace", "On an empty bullet: outdent, then remove"],
+      [MOD + "+Enter", "Cycle TODO → DOING → DONE"], ["[[", "Link to a page"], ["@", "Link to a date"], ["Alt+Enter", "Open the link before the cursor"],
+      [MOD + "+click", "Open in side panel"], [MOD + "+K", "Search"], ["t l / t r", "Toggle panels"], ["?", "These controls"]]
+      .forEach(function (k) { keys.append(h("kbd", null, k[0]), h("span", null, k[1])); });
+    body.append(h("div", { class: "proto-sec" }, h("h3", null, "Keys"), keys));
+    protoPanel.append(h("div", { class: "proto-head" }, h("h2", null, "Prototype controls"),
+      h("button", { class: "iconbtn", type: "button", "data-proto": "close", "aria-label": "Close prototype controls" }, icon("x"))), body);
+  }
+  function toggleProto(show) {
+    protoPanel.hidden = !show;
+    protoBtn.setAttribute("aria-expanded", String(show));
+    if (show) { renderProto(); var c = protoPanel.querySelector("[data-proto='close']"); if (c) c.focus(); }
+    else protoBtn.focus();
+  }
+  protoBtn.addEventListener("click", function () { toggleProto(protoPanel.hidden); });
+  protoPanel.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-proto]"); if (!b) return;
+    var a = b.getAttribute("data-proto");
+    if (a === "close") toggleProto(false);
+    if (a === "rebuild") { startRebuild(); tick("rebuild"); }
+    if (a === "reset") { state = seed(); ui.sheet = false; closePopup(); renderAll(); toast("Sample notes reset"); }
+  });
+  protoPanel.addEventListener("change", function (e) {
+    var t = e.target;
+    if (t.hasAttribute("data-opt")) {
+      opts[t.getAttribute("data-opt")] = t.value; persist(OKEY, opts);
+      closePopup(); clearPendingDel(); ui.sheetCtx = null;
+      renderAll();
+      if (t.getAttribute("data-opt") === "view" && t.value === "phone") tick("phone");
+    }
+    if (t.hasAttribute("data-try")) { opts.tried[t.getAttribute("data-try")] = t.checked; persist(OKEY, opts); renderProto(); }
+  });
+
+  // ---------- Wire up ----------
+  document.addEventListener("input", onInput);
+  document.addEventListener("keydown", onKeydown);
+  document.addEventListener("paste", onPaste);
+  document.addEventListener("click", onClick);
+  document.addEventListener("change", onChange);
+  document.addEventListener("pointerdown", onPointerDown);
+  document.addEventListener("pointermove", onPointerMove);
+  document.addEventListener("pointerup", onPointerUp);
+  document.addEventListener("pointercancel", onPointerUp);
+  document.addEventListener("compositionend", function (e) { if (e.target.classList && e.target.classList.contains("content")) onInput({ target: e.target }); });
+  popupEl.addEventListener("mousedown", function (e) {
+    var li = e.target.closest("li[data-k]"); if (!li) return;
+    e.preventDefault(); choose(lastItems[+li.getAttribute("data-k")]);
+  });
+  document.addEventListener("focusin", function (e) {
+    var t = e.target;
+    if (t.classList && t.classList.contains("content")) {
+      ui.editing = t;
+      if (isPhone()) renderPhoneExtras();
+    }
+  });
+  document.addEventListener("focusout", function (e) {
+    var t = e.target;
+    if (t.hasAttribute && t.hasAttribute("data-title")) onTitleBlur(t);
+    if (t.classList && t.classList.contains("content")) {
+      setTimeout(function () {
+        var a = document.activeElement;
+        if (!(a && a.classList && a.classList.contains("content"))) {
+          if (lm && lm.orig) cancelReopen(); else if (lm || dm) closePopup();
+          if (isPhone() && !(a && a.closest && a.closest(".ptool,.sheet"))) { ui.editing = null; renderPhoneExtras(); }
+        }
+      }, 120);
+    }
+  });
+  window.addEventListener("resize", function () { applyLayout(); renderPhoneExtras(); hidePopup(); });
+
+  state = load(KEY) || seed();
+  ensureJournal(ymd(today0()));
+  opts = Object.assign({}, DEFAULT_OPTS, load(OKEY) || {});
+  opts.tried = opts.tried || {};
+  renderAll();
+  renderProtoBtn();
+})();
+</script>
+</body>
+</html>

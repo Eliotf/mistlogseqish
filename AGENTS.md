@@ -9,7 +9,7 @@ Keep this file short and accurate. If a rule here turns out to be wrong or out o
 Mistlog is a Logseq-style notes app: daily notes, `[[backlinks]]`, tasks and shareable pages, synced live across devices. It is forked from [inanimate-tech/mist](https://github.com/inanimate-tech/mist) (MIT licence, keep the attribution in LICENSE) and keeps Mist's storage: one live Yjs document per page.
 
 - Product spec and roadmap: `PRD.md` (read the relevant milestone before starting work; section 6.1 for anything touching links)
-- Interaction reference: `docs/prototype/mistlog-demo.html` (single-file prototype; match its behaviour, not its code). Not in the repo yet; ask for it before M2 UI work.
+- Interaction reference: `docs/prototype/mistlog-demo.html` (single-file clickable prototype; open it in a browser and match its behaviour, not its code). Its defaults follow the PRD decisions; the "Prototype controls" switches show alternatives that were considered and rejected. If the prototype and `PRD.md` disagree, the PRD wins.
 - Mist's own docs in `docs/` describe the inherited editor and CriticMarkup. Where they disagree with `PRD.md`, the PRD wins.
 
 ## Commands

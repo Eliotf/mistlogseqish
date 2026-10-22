@@ -46,14 +46,14 @@ It starts from [Mist](https://github.com/inanimate-tech/mist) (Cloudflare Worker
 | ID | Feature | Status | Milestone | Notes |
 |----|---------|--------|-----------|-------|
 | F0 | Documents persist (remove Mist's 99-hour expiry) | 🟡 | M1 | Existing documents already have a deletion alarm set, so the alarm handler must stop deleting, not just stop being scheduled |
-| F1 | Daily notes feed (today on top, lazily created) | ✅ | M2 | One document per day with a fixed ID, e.g. `journal-2026-10-21` |
-| F2 | Pages with titles | ✅ | M2 | One document per page, random permanent ID, title stored separately |
-| F3 | `[[wikilinks]]` by page ID, with auto-pair and title autocomplete | ✅ | M2 | See 6.1 |
-| F4 | Backlinks / linked references panel | ✅ | M2 | Query on the workspace index |
+| F1 | Daily notes feed (today on top, lazily created) | ✅ | M2 | One document per day with a fixed ID, e.g. `journal-2026-10-21`. Days with no notes are skipped; today's journal is created on first keystroke. Mist's document header is shown on every day (revisit after M2, see open questions) |
+| F2 | Pages with titles and readable URLs | ✅ | M2 | One document per page with a random permanent ID. The title lives in the page's document and is copied to the index. Titles are unique ignoring case; renaming to an existing title is refused (merge is F32). URLs are `/page/<slug>` and `/journal/YYYY-MM-DD`; after a rename the old slug redirects |
+| F3 | `[[wikilinks]]` by page ID, with auto-pair and title autocomplete | ✅ | M2 | See 6.1. Linking to a new title creates an empty placeholder page |
+| F4 | Backlinks / linked references panel | ✅ | M2 | Below the page content, grouped by linking page. Query on the workspace index |
 | F5 | Editable page titles; rename updates every link instantly | ✅ | M2 | One title change in the index; no linking page is rewritten (see 6.1). Journal titles are dates, not editable |
-| F6 | Tasks: `TODO` / `DOING` / `DONE` and a Tasks view | ✅ | M2 | Cmd/Ctrl+Enter cycles; checkbox in Tasks view toggles |
-| F7 | Tab / Shift+Tab indent (tab character, children move with parent) | ✅ | M2 | Logseq-compatible text |
-| F8 | Collapsible left and right sidebars (`t l`, `t r`) | ✅ | M2 | |
+| F6 | Tasks: `TODO` / `DOING` / `DONE` and a Tasks view | ✅ | M2 | Cmd/Ctrl+Enter cycles. Shown as styled text in the editor (no checkbox). Checkbox in the Tasks view toggles; the target page matches the line by text and refuses if not unique |
+| F7 | Bullets and indent | ✅ | M2 | Tab / Shift+Tab indent with a tab character, children move with their parent. Enter continues a bullet at the same level; Backspace on an empty bullet outdents, then removes it. Logseq-compatible text |
+| F8 | Collapsible left and right sidebars (`t l`, `t r`) | ✅ | M2 | Left: Journals, Tasks, Search, recent pages, index status line. Right: pages opened side by side (F18) |
 | F9 | Live markdown formatting, always-editable | 🟢 | — | Mist's TipTap editor (each line a paragraph, markdown styled in place) |
 | F10 | Sync across devices with automatic merge | 🟢 | — | Yjs in a Durable Object per page. Offline editing is F14 |
 | F11 | Sharing: private / link view / link edit | ✅ UI | M4 | Today any document URL is readable and editable by anyone |
@@ -61,12 +61,16 @@ It starts from [Mist](https://github.com/inanimate-tech/mist) (Cloudflare Worker
 | F13 | Search across pages | 🟡 | M2 | Title and full text, from the workspace index |
 | F14 | Offline editing | ⬜ | M3 | Yjs IndexedDB persistence (new dependency, needs approval) |
 | F15 | Export to Logseq markdown | 🟡 | M3 | `pages/<slug>.md` and `journals/YYYY_MM_DD.md`, links written as `[[Current Title]]` |
-| F16 | Comments and suggest mode (CriticMarkup) | 🟢 | — | Inherited from Mist. Keep or cut is an open question |
+| F16 | Comments and suggest mode (CriticMarkup) | 🟢 | — | Inherited from Mist and kept, along with live collaboration (F30). How they fit the workspace index, export and sharing is to be designed later (see open questions) |
+| F17 | Responsive layout for phones | 🟡 | M2 | Left panel opens from a hamburger button. While typing, a keyboard toolbar offers indent, outdent, task, link and date. Dragging a bullet sideways could be added later as a shortcut |
+| F18 | Cmd/Ctrl+click a link opens the page in the right panel | 🟡 | M2 | Like Roam's side-by-side pages. Replaces the browser's open-in-new-tab on links |
 | F20 | Fuzzy dates | ⬜ | M5 | See 6.2 |
 | F21 | All pages list | ⬜ | M5 | See 6.3 |
 | F22 | Pomodoro timer (`{{POMO}}`) | ⬜ | M5 | See 6.4 |
 | F30 | Live multiplayer on shared pages | 🟢 | — | Already how Mist works; needs permissions (M4) before it is safe to use with others |
 | F31 | Graph view, templates, Logseq import, attachments (R2) | ⬜ | M6 | Unprioritised ideas |
+| F32 | Merge pages | ⬜ | M6 | Offered when renaming a page to a title that already exists, as Logseq does. Links to both pages point to the merged page |
+| F33 | Live title updates across open tabs and devices | ⬜ | M6 | Until then, other tabs pick up a new title on next load or focus. Needs a live connection to the index |
 
 ## 6. Feature specs
 
@@ -78,7 +82,8 @@ The core of the linked-notes idea. A link stores the permanent ID of the page it
 
 - **Storage:** a link is a `wikilink` mark on the text in the page's Yjs document, with a `pageId` attribute. This follows the same pattern as Mist's CriticMarkup marks (`app/lib/critic-marks.ts`).
 - **Display:** a link always shows the target page's current title from the workspace index. The text stored inside the mark is a snapshot of the title and may be refreshed when the page is opened, but correctness never depends on it.
-- **Creating a link:** typing `[[` opens title autocomplete. Choosing a page inserts a link to its ID. Typing a title that matches no page and closing with `]]` creates the page and links to it. Title matching ignores case.
+- **Creating a link:** typing `[[` opens title autocomplete. Choosing a page inserts a link to its ID. Typing a title that matches no page and closing with `]]` creates the page and links to it. The new page is an empty placeholder until something is written in it (a link needs an ID, so the page must exist). Title matching ignores case.
+- **Editing inside a link:** Backspace right after a link reopens it as `[[Title]]` text with title suggestions open, as in Logseq. Choosing a suggestion or typing `]` links again (to the same or a different page). Esc restores the original link, so a link is never left broken by accident.
 - **Pasted or imported text:** plain `[[Title]]` text is converted to an ID link on paste and on import. Anything that cannot be resolved stays as plain text and is shown as an unresolved link.
 - **Rename:** changes the title in one place, the workspace index. No other page is edited, so rename is instant and works even when linking pages are offline or never opened.
 - **Delete:** links keep their `pageId` and are shown dashed as unresolved. Restoring the page heals them.
@@ -92,10 +97,10 @@ The core of the linked-notes idea. A link stores the permanent ID of the page it
 Inspired by the Roam Toolkit's natural-language dates (see the Ness Labs overview of Roam browser extensions). Type a natural phrase and get a link to that day's journal page.
 
 - Phrases: `today`, `tomorrow`, `yesterday`, `next friday`, `in 3 days`, `in 2 weeks`, `last monday`, `oct 31`.
-- Trigger syntax: *TBC*. Candidates: a prefix such as `@`, or recognising phrases inside `[[ ]]`.
+- Trigger syntax: both. Type `@` after a space (`@next fri`), or type a phrase inside `[[ ]]`, where dates appear among the page suggestions. `@` only triggers after a space or at the start of a line, so email addresses do not.
 - A suggestion list shows each phrase with its resolved date. Accepting inserts an ID link to that day's journal (`journal-YYYY-MM-DD`), creating the journal lazily if needed.
 - Dates resolve in the user's timezone, with a setting for week start.
-- Display format for journal titles is a setting (*TBC*, Logseq's default is `MMM do, yyyy`).
+- Journal titles use Logseq's default format, `MMM do, yyyy` (`Oct 22nd, 2026`), so exported files match what Logseq expects.
 - Acceptance: typing `in 2 weeks` from 2026-10-20 offers `Nov 3rd, 2026`; accepting it creates the link; the target day's journal shows a backlink.
 - Tests: parser unit tests across phrases, month/year boundaries, DST, and week-start settings.
 
@@ -154,8 +159,8 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced, using its 
 
 - [ ] **M0 Foundation:** import Mist into our own repo, deploy it to Cloudflare, connect GitHub for auto-deploy, add CI, add AGENTS.md and this PRD, lock the site down with Cloudflare Access while unfinished. Done so far: repo, auto-deploy via Workers Builds (verified 2026-10-22), CI, AGENTS.md, PRD, coverage thresholds frozen so CI can pass, Cloudflare Access with Cloudflare-account login (verified 2026-10-22), Workers Builds command set to run the checks before building (2026-10-22, not yet verified). Still to do:
   - [ ] **Verify the deploy gate.** (1) Open the Workers Builds log for a recent build and confirm `typecheck`, `lint` and `test` run before `build`. (2) Push a throwaway branch `chore/test-deploy-gate` with a test that always fails (`expect(1).toBe(2)`); confirm its preview build fails at `test`, nothing is uploaded, and the live site is unchanged; then delete the branch. Needs builds for non-production branches turned on; do not test on `main`, because a broken gate would put the failing code live.
-- [ ] **M1 Persistence and index:** remove the 99-hour expiry (including for existing documents); shared parser, including the `wikilink` mark definition; `WorkspaceAgent` index with page registry and parser-versioned rebuild; documents report to the index and retry until confirmed; weekly index check (can land after M2).
-- [ ] **M2 Notes core:** page identity and titles, journal feed, tab indent, tasks, ID-based wikilinks with autocomplete, backlinks, rename, sidebars, search.
+- [ ] **M1 Persistence and index:** remove the 99-hour expiry (including for existing documents); shared parser, including the `wikilink` mark definition; `WorkspaceAgent` index with page registry and parser-versioned rebuild; documents report to the index and retry until confirmed; weekly index check (can land after M2); remove Mist's Fathom analytics.
+- [ ] **M2 Notes core:** page identity, titles and readable URLs; journal feed (replaces Mist's landing page and `/new`); bullets and indent; tasks; ID-based wikilinks with autocomplete and placeholder pages; backlinks below the page; rename; sidebars with Cmd/Ctrl+click to open in the right panel; search; responsive layout. Build order and UI details are agreed through a clickable prototype first.
 - [ ] **M3 Portability and offline:** export to Logseq markdown, offline editing.
 - [ ] **M4 Sharing:** accounts, visibility model, share dialog, permission-aware backlinks and search.
 - [ ] **M5 Quality-of-life:** all pages list, fuzzy dates, pomodoro.
@@ -163,12 +168,9 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced, using its 
 
 ## 9. Open questions
 
-1. Do Mist's comments and suggest mode (F16) stay? They work today, but they add complexity to the editor and to export.
-2. Fuzzy date trigger syntax and the journal title display format.
-3. Single user only at first, or teams/workspaces from the start? (The index is one Durable Object per workspace either way.)
-4. Keep Mist's Fathom analytics hooks, or remove them?
-5. Do we want a read-only public site for link-shared pages, or require login to view?
-6. Page URLs: keep Mist's random-ID URLs (`/docs/k3x9…`), or show a readable slug that redirects to the ID?
+1. **Design later:** how Mist's collaborative features (comments, suggest mode, live editing) fit the new architecture. For example: whether pending suggestions and comment text are indexed, how they appear in exported markdown, and how they interact with sharing permissions (M4).
+2. Do we want a read-only public site for link-shared pages, or require login to view? Decide at M4.
+3. **Revisit after M2:** Mist's document header is shown on every day in the journal feed. Check whether it clutters the feed once real notes build up; the alternative is hiding it per day and showing it when a day is opened on its own.
 
 ## 10. Risks
 
@@ -204,6 +206,20 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced, using its 
 | 2026-10-22 | Index keeps a page registry that rebuilds never clear | Makes "rebuild from documents" possible when documents cannot be listed |
 | 2026-10-22 | Reuse `DocumentAgent.alarm()` for debounced indexing and retries | Old deletion alarms become harmless re-indexes instead of needing cleanup |
 | 2026-10-22 | Index drift handled by retry-until-confirmed, parser-version rebuilds and a weekly check; UI signals only when results may be incomplete | Drift fixes itself without bothering the user; full rebuilds are rare |
+| 2026-10-22 | Readable page URLs (`/page/<slug>`), with old slugs redirecting after a rename | Shareable, memorable links; the permanent ID stays internal |
+| 2026-10-22 | Page titles unique ignoring case; renaming to an existing title is refused until merge (F32) exists | Avoids ambiguous links and autocomplete |
+| 2026-10-22 | Linking to a new title creates an empty placeholder page | ID links need an ID at link time; matches Logseq |
+| 2026-10-22 | Enter and Backspace follow Logseq bullet behaviour | Tab alone does not feel like Logseq |
+| 2026-10-22 | Tasks are styled text in the editor, not checkboxes | Keeps the editor plain text; the Tasks view has checkboxes |
+| 2026-10-22 | Backlinks sit below the page; the right panel is for pages opened side by side with Cmd/Ctrl+click | Logseq's layout for backlinks, Roam's for side-by-side reading |
+| 2026-10-22 | Backspace after a link reopens it for editing; Esc restores the original link | Logseq muscle memory, without ever leaving a link broken by accident |
+| 2026-10-22 | Fuzzy dates trigger with both `@` and inside `[[ ]]` | Both felt natural in the prototype; `@` only after a space avoids email addresses |
+| 2026-10-22 | Show Mist's document header on every day in the journal feed, to revisit after M2 | Keeps Mist's controls one click away; may clutter the feed later |
+| 2026-10-22 | Phone editing uses a keyboard toolbar | One tap for every action, works on any phone, matches Logseq mobile |
+| 2026-10-22 | Journal titles use Logseq's default format (`Oct 22nd, 2026`) | Exported files match what Logseq expects |
+| 2026-10-22 | Keep Mist's collaborative features: comments, suggest mode and live editing | They are a reason to build on Mist; how they fit the architecture is designed later |
+| 2026-10-22 | Remove Mist's Fathom analytics | A private notes app should not report page views |
+| 2026-10-22 | Single user first | The index is per workspace, so teams can be added later |
 | 2026-10-22 | Gate deploys by running the checks in the Workers Builds command | Workers Builds ignores GitHub CI; this is the smallest change that stops failing code going live |
 
 ## 12. Changelog
@@ -214,3 +230,5 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced, using its 
 - 2026-10-22: Cloudflare Access is on (Cloudflare-account login). Updated F12, section 7 Access, M0 progress, and replaced the open-access risk with an edge-only-access risk.
 - 2026-10-22: Workers Builds command now runs the checks. Added an M0 task to verify the deploy gate with a throwaway failing branch.
 - 2026-10-22: Index design: page registry, retry until confirmed, parser-version rebuilds, weekly check, and when the UI signals possible drift (details in `docs/technical-architecture.md`). `wikilink` mark defined in M1. No backfill. Rewrote the index drift risk and added a registry risk.
+- 2026-10-22: Phase 2 review: readable URLs, unique titles, placeholder pages, Logseq bullet keys, tasks as styled text, backlinks below the page. Added F17 responsive layout, F18 Cmd/Ctrl+click to the right panel, F32 merge pages, F33 live title updates. Resolved the URL question; added questions on the feed header and phone controls.
+- 2026-10-22: Decisions from the clickable prototype: link editing reopens on Backspace, both date triggers, keyboard toolbar on phones, Logseq journal title format, Mist header on every feed day (to revisit). Kept Mist's collaborative features (comments, suggest mode, live editing), removing Fathom (added to M1), single user first. Open questions reduced to fitting the collaborative features into the architecture, public shared pages (M4) and the feed header revisit.
