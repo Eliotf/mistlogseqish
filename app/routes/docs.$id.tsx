@@ -87,7 +87,7 @@ function DocumentLayout({ id, createdAt }: { id: string; createdAt: number | nul
           to="/"
           className="flex items-center bg-ink px-4 py-2 font-medium text-paper transition-colors hover:bg-chartreuse hover:text-[#1a1a1a]"
         >
-          mist
+          mistlogseqish
         </Link>
         <div className="flex grow shrink-0 items-center px-4">
           <span className="font-mono font-bold">{id}</span>
