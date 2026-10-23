@@ -47,7 +47,7 @@ describe("WorkspaceIndex", () => {
   describe("updatePage", () => {
     it("stores the page and returns an acknowledgement", () => {
       const ack = index.updatePage(page(MIST, "  Mistlog  ", [line("hello")], 1234));
-      expect(ack).toEqual({ pageId: MIST, parserVersion: PARSER_VERSION, updatedAt: 1234 });
+      expect(ack).toEqual({ pageId: MIST, parserVersion: PARSER_VERSION, updatedAt: 1234, applied: true });
       expect(index.getPage(MIST)).toEqual({
         pageId: MIST,
         kind: "page",
@@ -107,6 +107,25 @@ describe("WorkspaceIndex", () => {
       expect(() => index.updatePage(page(MIST, "Renamed", [line("TODO replaced #tag")]))).toThrow("boom");
       expect(index.getPage(MIST)?.title).toBe("Mistlog");
       expect(index.tasks().map((t) => t.text)).toEqual(["keep me"]);
+    });
+
+    it("ignores an update older than the one it holds", () => {
+      index.updatePage(page(MIST, "Mistlog", [line("TODO newer")], 2000));
+      const ack = index.updatePage(page(MIST, "Old title", [line("TODO older")], 1000));
+      expect(ack).toEqual({ pageId: MIST, parserVersion: PARSER_VERSION, updatedAt: 2000, applied: false });
+      expect(index.getPage(MIST)).toMatchObject({ title: "Mistlog", updatedAt: 2000 });
+      expect(index.tasks().map((t) => t.text)).toEqual(["newer"]);
+    });
+
+    it("applies an update with the same time again, and a newer one", () => {
+      index.updatePage(page(MIST, "Mistlog", [line("first")], 2000));
+      expect(index.updatePage(page(MIST, "Mistlog", [line("same time")], 2000)).applied).toBe(true);
+      expect(index.updatePage(page(MIST, "Mistlog", [line("later")], 2001)).applied).toBe(true);
+      expect(index.search("later").map((h) => h.pageId)).toEqual([MIST]);
+    });
+
+    it("applies the first update for a page at any time", () => {
+      expect(index.updatePage(page(MIST, "Mistlog", [line("x")], 0)).applied).toBe(true);
     });
 
     it("registers the page if it was not registered", () => {

@@ -96,6 +96,7 @@ PRD.md        Product spec and roadmap
 - Coverage thresholds in `vitest.config.ts` are fixed floors. When your tests raise coverage, raise the floors in the same PR; never lower them. See PRD section 7, "Quality gates".
 - Every push to `main` deploys to the live site through Cloudflare Workers Builds, which does not wait for GitHub CI.
 - The Agents SDK router exposes every agent at `/agents/<name>/<id>`. Agents that only other Durable Objects should call (like `WorkspaceAgent`) must be refused in `workers/app.ts` and in the agent itself.
+- `DocumentAgent` reports to the workspace index from its Yjs update handler. Anything added there must never throw or wait on the index: indexing runs later through `this.schedule("reindex")`.
 - Workspace index tests run real SQL on Node's built-in SQLite through `tests/helpers/sqlite.ts`; Node prints an experimental-feature warning, which is expected.
 
 ## Cloudflare notes

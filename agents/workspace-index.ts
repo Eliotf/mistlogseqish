@@ -83,7 +83,10 @@ export interface PageUpdate {
 export interface PageUpdateAck {
   pageId: string;
   parserVersion: number;
+  /** The update time the index now holds for this page. */
   updatedAt: number;
+  /** False when the update was older than what the index holds, and was ignored. */
+  applied: boolean;
 }
 
 export interface IndexedPage {
@@ -170,8 +173,10 @@ export class WorkspaceIndex {
 
   /**
    * Replace everything the index holds for one page, atomically. Re-indexing
-   * the same content gives the same rows. Returns an acknowledgement the
-   * document keeps until its next edit (retry until confirmed, chunk 1.5).
+   * the same content gives the same rows. An update older than the one the
+   * index holds is ignored, so a slow retry can never overwrite newer content;
+   * documents send strictly increasing updatedAt values. Returns an
+   * acknowledgement the document keeps (retry until confirmed).
    */
   updatePage(update: PageUpdate): PageUpdateAck {
     const { pageId, updatedAt, lines } = update;
@@ -182,7 +187,11 @@ export class WorkspaceIndex {
     const parsed = parseNote(lines);
     const hasContent = parsed.text.trim() !== "" ? 1 : 0;
 
-    this.db.transaction(() => {
+    return this.db.transaction((): PageUpdateAck => {
+      const held = this.db.exec(`SELECT updated_at FROM pages WHERE page_id = ?`, pageId)[0]?.updated_at as number | undefined;
+      if (held !== undefined && updatedAt < held) {
+        return { pageId, parserVersion: PARSER_VERSION, updatedAt: held, applied: false };
+      }
       this.db.exec(`INSERT OR IGNORE INTO registry (page_id, created_at) VALUES (?, ?)`, pageId, updatedAt);
       for (const table of ["links", "tags", "tasks", "pages_fts"]) {
         const col = table === "links" ? "source_id" : "page_id";
@@ -213,9 +222,8 @@ export class WorkspaceIndex {
         );
       }
       this.db.exec(`INSERT INTO pages_fts (page_id, title, body) VALUES (?, ?, ?)`, pageId, title, parsed.text);
+      return { pageId, parserVersion: PARSER_VERSION, updatedAt, applied: true };
     });
-
-    return { pageId, parserVersion: PARSER_VERSION, updatedAt };
   }
 
   getPage(pageId: string): IndexedPage | null {

@@ -86,8 +86,11 @@ Each page is an isolated Durable Object, so cross-page features (backlinks, `[[`
 
 ### How it stays correct
 
-1. **On every edit.** After edits pause (about 2 seconds), the `DocumentAgent` runs the shared parser and sends that page's entry to the index. Only that page's rows are replaced. Re-indexing the same content twice gives the same result.
-2. **Retry until confirmed.** Each document remembers whether the index has confirmed its latest entry. Until it has, the document retries using the Agents SDK's `this.schedule()`. Lost updates (index briefly unreachable, a restart) fix themselves within seconds or minutes.
+1. **On every edit.** Each Yjs update marks the document as needing indexing and, if nothing is scheduled, schedules `reindex` in 2 seconds (`INDEX_DELAY_SECONDS`). This is a throttle, not a debounce: while someone types, the index is updated about every 2 seconds, and once more after they stop. `reindex` sends `{ pageId, title, updatedAt, lines }` (lines from `linesFromYjs`); the index parses them and replaces only that page's rows. Re-indexing the same content twice gives the same result.
+2. **Retry until confirmed.** Each document keeps an index state record in its own storage (`doc_state` key `index`): unsent edits, the last `updatedAt` sent, the last acknowledgement, and a retry count. A failed call retries after 5 s, 30 s, 2 min, then every 10 min (`INDEX_RETRY_SECONDS`), resetting after a success. Schedules are stored by the Agents SDK, so they survive restarts. Index failures are logged and never affect editing or sync.
+   - **Ordering.** Each document sends strictly increasing `updatedAt` values (`max(now, lastSent + 1)`), and the index ignores any update older than the one it holds, so a slow retry can never overwrite newer content. If the index reports it holds something newer (for example after lost local state), the document sends again with a later time.
+   - **Which documents.** Only documents created through `POST` (the `exists` marker) with a valid page ID are indexed or registered, so a WebSocket to an arbitrary ID cannot add entries.
+   - **On open.** A document re-indexes when a client connects if it was never indexed, was indexed by an older parser, or has unsent edits. New documents register in the registry when created.
 3. **Rebuild when the parser changes.** Bumping the parser version triggers one rebuild: clear the derived tables, then ask every page in the registry and every journal to re-index. Expect a handful a year, never on a schedule.
 4. **Weekly check.** Once a week the index asks each registered page whether its entry is current, by comparing a short content summary, and re-indexes only those that differ (M1, chunk 1.6; can land after M2).
 

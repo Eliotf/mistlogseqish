@@ -1,4 +1,4 @@
-import { Agent } from "agents";
+import { Agent, getAgentByName } from "agents";
 import type { Connection, ConnectionContext, WSMessage } from "agents";
 import * as Y from "yjs";
 import * as syncProtocol from "y-protocols/sync";
@@ -6,6 +6,10 @@ import * as awarenessProtocol from "y-protocols/awareness";
 import * as encoding from "lib0/encoding";
 import * as decoding from "lib0/decoding";
 import { MSG_SYNC, MSG_AWARENESS, DOC_FORMAT_VERSION } from "../app/shared/constants";
+import { linesFromYjs } from "../app/lib/note-lines";
+import { PARSER_VERSION } from "../app/lib/note-parser";
+import { isPageId } from "../app/lib/note-ids";
+import { WORKSPACE_NAME } from "./workspace";
 
 /**
  * Durable Objects SQLite accepts Uint8Array for BLOB columns via the
@@ -16,9 +20,30 @@ function sqlBlob(data: Uint8Array): string {
   return data as unknown as string;
 }
 
+/** Seconds from the first unindexed edit to re-indexing (throttle, not debounce). */
+export const INDEX_DELAY_SECONDS = 2;
+/** Seconds to wait before each retry after a failed index update; the last repeats. */
+export const INDEX_RETRY_SECONDS = [5, 30, 120, 600];
+
+/** What this document knows about its entry in the workspace index. */
+interface IndexState {
+  /** Edits not yet sent to the index. */
+  dirty: boolean;
+  /** The last updatedAt sent. Each update is strictly later, so the index can ignore stale retries. */
+  lastSent: number;
+  /** The index's last acknowledgement. */
+  ack: { updatedAt: number; parserVersion: number } | null;
+  /** Failed attempts since the last success. */
+  retries: number;
+}
+
+const NEW_INDEX_STATE: IndexState = { dirty: false, lastSent: 0, ack: null, retries: 0 };
+
 class DocumentAgent extends Agent {
   private doc: Y.Doc | null = null;
   private awareness: awarenessProtocol.Awareness | null = null;
+  /** A reindex is scheduled. Lost on restart, so markForIndex also runs on connect. */
+  private reindexPending = false;
 
   private ensureInitialised(): { doc: Y.Doc; awareness: awarenessProtocol.Awareness } {
     if (this.doc && this.awareness) {
@@ -46,13 +71,14 @@ class DocumentAgent extends Agent {
       Y.applyUpdate(this.doc, state);
     }
 
-    // Persist on every update
+    // Persist on every update, then queue it for the workspace index
     this.doc.on("update", () => {
       const state = Y.encodeStateAsUpdate(this.doc!);
       this.sql`
         INSERT INTO doc_state (key, value) VALUES ('state', ${sqlBlob(state)})
         ON CONFLICT(key) DO UPDATE SET value = excluded.value
       `;
+      this.markForIndex();
     });
 
     return { doc: this.doc, awareness: this.awareness };
@@ -60,6 +86,13 @@ class DocumentAgent extends Agent {
 
   async onConnect(connection: Connection, _ctx: ConnectionContext) {
     const { doc, awareness } = this.ensureInitialised();
+
+    // Index on open if never indexed (Mist-era documents), indexed by an
+    // older parser, or left with unsent edits by a restart
+    const indexState = this.readIndexState();
+    if (!indexState.ack || indexState.ack.parserVersion < PARSER_VERSION || indexState.dirty) {
+      this.markForIndex();
+    }
 
     // Send SyncStep1 to the new client
     const syncEncoder = encoding.createEncoder();
@@ -174,6 +207,7 @@ class DocumentAgent extends Agent {
         INSERT INTO doc_state (key, value) VALUES ('createdAt', ${sqlBlob(new Uint8Array(new Float64Array([now]).buffer))})
         ON CONFLICT(key) DO UPDATE SET value = excluded.value
       `;
+      await this.registerWithIndex(now);
 
       // If the request has a JSON body with content, populate the Yjs doc
       const contentType = request.headers.get("Content-Type") || "";
@@ -253,6 +287,109 @@ class DocumentAgent extends Agent {
     }
 
     return new Response("Not found", { status: 404 });
+  }
+
+  /* ---------- Workspace index (docs/technical-architecture.md) ---------- */
+
+  /** Only documents created through POST, with a valid page ID, are indexed. */
+  private isIndexable(): boolean {
+    if (!isPageId(this.name)) return false;
+    return this.sql<{ value: ArrayBuffer }>`SELECT value FROM doc_state WHERE key = 'exists'`.length > 0;
+  }
+
+  private readIndexState(): IndexState {
+    const rows = this.sql<{ value: ArrayBuffer }>`SELECT value FROM doc_state WHERE key = 'index'`;
+    if (!rows.length) return { ...NEW_INDEX_STATE };
+    try {
+      return { ...NEW_INDEX_STATE, ...(JSON.parse(new TextDecoder().decode(rows[0].value)) as Partial<IndexState>) };
+    } catch {
+      return { ...NEW_INDEX_STATE };
+    }
+  }
+
+  private writeIndexState(state: IndexState): void {
+    const value = new TextEncoder().encode(JSON.stringify(state));
+    this.sql`
+      INSERT INTO doc_state (key, value) VALUES ('index', ${sqlBlob(value)})
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    `;
+  }
+
+  /** Note unsent edits and make sure a reindex is scheduled. Never throws. */
+  private markForIndex(): void {
+    try {
+      if (!this.isIndexable()) return;
+      const state = this.readIndexState();
+      if (!state.dirty) this.writeIndexState({ ...state, dirty: true });
+      this.scheduleReindex(INDEX_DELAY_SECONDS);
+    } catch (err) {
+      console.error("markForIndex failed", err);
+    }
+  }
+
+  private scheduleReindex(seconds: number): void {
+    if (this.reindexPending) return;
+    this.reindexPending = true;
+    this.schedule(seconds, "reindex").catch((err: unknown) => {
+      this.reindexPending = false;
+      console.error("Could not schedule reindex", err);
+    });
+  }
+
+  /**
+   * Send this document to the workspace index. Called by the Agents SDK
+   * scheduler. Edits made while the call is in flight set dirty again and
+   * schedule the next round. A failure retries with backoff and never
+   * affects editing or sync.
+   */
+  async reindex(): Promise<void> {
+    this.reindexPending = false;
+    const { doc } = this.ensureInitialised();
+    if (!this.isIndexable()) return;
+    const before = this.readIndexState();
+    if (!before.dirty) return;
+
+    const updatedAt = Math.max(Date.now(), before.lastSent + 1);
+    this.writeIndexState({ ...before, dirty: false, lastSent: updatedAt });
+    const title = doc.getMap<unknown>("meta").get("title");
+
+    try {
+      const index = await getAgentByName(this.env.WorkspaceAgent, WORKSPACE_NAME);
+      const ack = await index.updatePage({
+        pageId: this.name,
+        title: typeof title === "string" ? title : "",
+        updatedAt,
+        lines: linesFromYjs(doc.getXmlFragment("default")),
+      });
+      const now = this.readIndexState();
+      // If the index held something newer (lost local state), send again after it
+      const stale = !ack.applied;
+      this.writeIndexState({
+        ...now,
+        dirty: now.dirty || stale,
+        lastSent: Math.max(now.lastSent, ack.updatedAt),
+        ack: { updatedAt: ack.updatedAt, parserVersion: ack.parserVersion },
+        retries: 0,
+      });
+      if (now.dirty || stale) this.scheduleReindex(INDEX_DELAY_SECONDS);
+    } catch (err) {
+      const now = this.readIndexState();
+      const retries = now.retries + 1;
+      this.writeIndexState({ ...now, dirty: true, retries });
+      console.error(`Index update failed (attempt ${retries})`, err);
+      this.scheduleReindex(INDEX_RETRY_SECONDS[Math.min(retries, INDEX_RETRY_SECONDS.length) - 1]);
+    }
+  }
+
+  /** Record this new document in the index's registry. A failure is logged; the first reindex registers it too. */
+  private async registerWithIndex(createdAt: number): Promise<void> {
+    if (!isPageId(this.name)) return;
+    try {
+      const index = await getAgentByName(this.env.WorkspaceAgent, WORKSPACE_NAME);
+      await index.registerPage(this.name, createdAt);
+    } catch (err) {
+      console.error("Could not register with the workspace index", err);
+    }
   }
 
   private broadcastBinary(message: WSMessage, excludeId: string) {
