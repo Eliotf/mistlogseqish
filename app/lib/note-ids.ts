@@ -31,6 +31,22 @@ export function parseJournalDate(id: string): string | null {
   return `${m[1]}-${m[2]}-${m[3]}`;
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function ordinal(n: number): string {
+  const v = n % 100;
+  if (v >= 11 && v <= 13) return `${n}th`;
+  return n + (["th", "st", "nd", "rd"][n % 10] ?? "th");
+}
+
+/** A journal's title in Logseq's default format (MMM do, yyyy), e.g. "Oct 22nd, 2026". */
+export function journalTitle(date: string): string {
+  const parsed = parseJournalDate(JOURNAL_PREFIX + date);
+  if (parsed === null) throw new Error(`Invalid journal date: ${date}`);
+  const [y, m, d] = parsed.split("-").map(Number);
+  return `${MONTHS[m - 1]} ${ordinal(d)}, ${y}`;
+}
+
 export function isJournalId(id: string): boolean {
   return parseJournalDate(id) !== null;
 }

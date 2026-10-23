@@ -7,7 +7,7 @@ Technology choices, rules, and architectural decisions for Mistlog. Product scop
 Everything runs on Cloudflare. No other hosting, no external databases, no separate asset storage.
 
 - **Cloudflare Workers** — single worker serving the entire application.
-- **Durable Objects** — each page and each journal day is a `DocumentAgent` Durable Object holding a Yjs document in its built-in SQLite. A single `WorkspaceAgent` Durable Object holds the workspace index (see below; planned for M1).
+- **Durable Objects** — each page and each journal day is a `DocumentAgent` Durable Object holding a Yjs document in its built-in SQLite. A single `WorkspaceAgent` Durable Object (instance `default`) holds the workspace index (see below).
 - **Cloudflare Access** — gates the whole `workers.dev` address; visitors sign in with a Cloudflare account. The Worker does not verify the Access token itself yet (planned for M4).
 
 ## Framework Stack
@@ -68,6 +68,15 @@ Tests in `tests/unit/lib/note-*.test.ts` include a round trip through Yjs using 
 ## Workspace Index
 
 Each page is an isolated Durable Object, so cross-page features (backlinks, `[[` autocomplete, search, the Tasks view, the journal feed) query one `WorkspaceAgent` instead. The index is always derived from documents, never the other way round.
+
+### Implementation
+
+- `agents/workspace-index.ts`: `WorkspaceIndex`, all schema, updates and queries, written against a two-method SQL interface (`exec`, `transaction`).
+- `agents/workspace.ts`: `WorkspaceAgent`, which adapts Durable Object storage (`storage.sql.exec`, `storage.transactionSync`) to that interface and exposes the index's methods over Durable Object RPC.
+- **Private.** Only other Durable Objects call it. The Worker refuses `/agents/workspace-agent/*` before the agent router (`isPrivateAgentPath`), and the agent refuses HTTP requests and WebSocket connections. UI queries will go through server routes that can check permissions (M4).
+- **Updates.** A document sends `{ pageId, title, updatedAt, lines }`. The index runs the shared parser and replaces that page's rows in one transaction, then returns an acknowledgement. Journals are titled from their date (`journalTitle`).
+- **Search.** FTS5 with `unicode61 remove_diacritics 2`. Input is quoted word by word (`ftsQuery`), so FTS syntax in user input is searched literally.
+- **Tests** run the real SQL on Node's built-in SQLite (`tests/helpers/sqlite.ts`). The same code was also run once inside local `workerd` (Miniflare) to confirm FTS5, transactions and the schema work on Cloudflare's SQLite.
 
 ### What it holds
 

@@ -10,11 +10,14 @@
 	},
 	"durable_objects": {
 		"bindings": [
-			{ "name": "DocumentAgent", "class_name": "DocumentAgent" }
+			{ "name": "DocumentAgent", "class_name": "DocumentAgent" },
+			{ "name": "WorkspaceAgent", "class_name": "WorkspaceAgent" }
 		]
 	},
+	// Append-only: never edit or remove an entry that has been deployed
 	"migrations": [
-		{ "tag": "v1", "new_sqlite_classes": ["DocumentAgent"] }
+		{ "tag": "v1", "new_sqlite_classes": ["DocumentAgent"] },
+		{ "tag": "v2", "new_sqlite_classes": ["WorkspaceAgent"] }
 	],
 	"keep_vars": true
 }

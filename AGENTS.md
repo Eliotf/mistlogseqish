@@ -95,6 +95,8 @@ PRD.md        Product spec and roadmap
 - `DocumentAgent` must not override `alarm()`: the Agents SDK uses it to run `this.schedule()` tasks. Documents created before the expiry was removed still have a deletion alarm scheduled, which only stays harmless while the SDK's handler is in place. Scheduled work must never delete document data.
 - Coverage thresholds in `vitest.config.ts` are fixed floors. When your tests raise coverage, raise the floors in the same PR; never lower them. See PRD section 7, "Quality gates".
 - Every push to `main` deploys to the live site through Cloudflare Workers Builds, which does not wait for GitHub CI.
+- The Agents SDK router exposes every agent at `/agents/<name>/<id>`. Agents that only other Durable Objects should call (like `WorkspaceAgent`) must be refused in `workers/app.ts` and in the agent itself.
+- Workspace index tests run real SQL on Node's built-in SQLite through `tests/helpers/sqlite.ts`; Node prints an experimental-feature warning, which is expected.
 
 ## Cloudflare notes
 

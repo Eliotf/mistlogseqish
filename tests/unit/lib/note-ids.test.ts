@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { journalId, parseJournalDate, isJournalId, isPageId } from "~/lib/note-ids";
+import { journalId, journalTitle, parseJournalDate, isJournalId, isPageId } from "~/lib/note-ids";
 import { generateDocumentId } from "~/shared/constants";
 
 describe("journalId", () => {
@@ -31,6 +31,26 @@ describe("parseJournalDate", () => {
     "abcd1234",
   ])("returns null for %j", (id) => {
     expect(parseJournalDate(id)).toBeNull();
+  });
+});
+
+describe("journalTitle", () => {
+  it.each([
+    ["2026-10-22", "Oct 22nd, 2026"],
+    ["2026-11-01", "Nov 1st, 2026"],
+    ["2026-11-03", "Nov 3rd, 2026"],
+    ["2026-01-11", "Jan 11th, 2026"],
+    ["2026-01-12", "Jan 12th, 2026"],
+    ["2026-01-13", "Jan 13th, 2026"],
+    ["2026-12-21", "Dec 21st, 2026"],
+    ["2026-05-24", "May 24th, 2026"],
+    ["2026-03-30", "Mar 30th, 2026"],
+  ])("formats %s as %s", (date, title) => {
+    expect(journalTitle(date)).toBe(title);
+  });
+
+  it("rejects an invalid date", () => {
+    expect(() => journalTitle("2026-02-30")).toThrow("Invalid journal date");
   });
 });
 
