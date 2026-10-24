@@ -186,6 +186,29 @@ describe("WorkspaceIndex", () => {
     });
   });
 
+  describe("findByTitle", () => {
+    beforeEach(() => {
+      index.updatePage(page(MIST, "Mistlog", [line("x")]));
+      index.updatePage(page(TODAY, "", [line("x")]));
+    });
+
+    it("finds a page by title, ignoring case and surrounding spaces", () => {
+      expect(index.findByTitle("  mistLOG ")?.pageId).toBe(MIST);
+    });
+
+    it("finds journals by their date title", () => {
+      expect(index.findByTitle("oct 22nd, 2026")?.pageId).toBe(TODAY);
+    });
+
+    it("ignores the page being renamed", () => {
+      expect(index.findByTitle("Mistlog", MIST)).toBeNull();
+    });
+
+    it("needs an exact match, not a prefix", () => {
+      expect(index.findByTitle("Mist")).toBeNull();
+    });
+  });
+
   describe("searchTitles", () => {
     beforeEach(() => {
       index.updatePage(page(MIST, "Mistlog", [line("x")], 300));

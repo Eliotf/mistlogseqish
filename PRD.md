@@ -50,7 +50,7 @@ It starts from [Mist](https://github.com/inanimate-tech/mist) (Cloudflare Worker
 | F2 | Pages with titles and readable URLs | ✅ | M2 | One document per page with a random permanent ID. The title lives in the page's document and is copied to the index. Titles are unique ignoring case; renaming to an existing title is refused (merge is F32). URLs are `/page/<slug>` and `/journal/YYYY-MM-DD`; after a rename the old slug redirects |
 | F3 | `[[wikilinks]]` by page ID, with auto-pair and title autocomplete | ✅ | M2 | See 6.1. Linking to a new title creates an empty placeholder page |
 | F4 | Backlinks / linked references panel | ✅ | M2 | Below the page content, grouped by linking page. Query on the workspace index |
-| F5 | Editable page titles; rename updates every link instantly | ✅ | M2 | One title change in the index; no linking page is rewritten (see 6.1). Journal titles are dates, not editable |
+| F5 | Editable page titles; rename updates every link instantly | 🟢 titles | M2 | One title change in the index; no linking page is rewritten (see 6.1). Journal titles are dates, not editable |
 | F6 | Tasks: `TODO` / `DOING` / `DONE` and a Tasks view | ✅ | M2 | Cmd/Ctrl+Enter cycles. Shown as styled text in the editor (no checkbox). Checkbox in the Tasks view toggles; the target page matches the line by text and refuses if not unique |
 | F7 | Bullets and indent | ✅ | M2 | Tab / Shift+Tab indent with a tab character, children move with their parent. Enter continues a bullet at the same level; Backspace on an empty bullet outdents, then removes it. Logseq-compatible text |
 | F8 | Collapsible left and right sidebars (`t l`, `t r`) | ✅ | M2 | Left: Journals, Tasks, Search, recent pages, index status line. Right: pages opened side by side (F18) |
@@ -149,7 +149,7 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced with the Ag
 
 **Quality gates:**
 - CI (`.github/workflows/ci.yml`) runs typecheck, lint and tests on every push and pull request.
-- Coverage thresholds in `vitest.config.ts` are fixed floors (lines 61, branches 51, functions 55, statements 58 as of 2026-10-23, raised with index reporting). They stop coverage falling but do not rise on their own. Mist's original thresholds rose with the calendar towards 80 / 75 / 80 / 80 and failed CI on every commit, so they were frozen.
+- Coverage thresholds in `vitest.config.ts` are fixed floors (lines 63, branches 53, functions 57, statements 60 as of 2026-10-24, raised with page titles). They stop coverage falling but do not rise on their own. Mist's original thresholds rose with the calendar towards 80 / 75 / 80 / 80 and failed CI on every commit, so they were frozen.
 - **Coverage must be raised back towards 80 / 75 / 80 / 80.** Raise the floors by hand in the same PR whenever new tests lift coverage, and review progress at the end of each milestone. Most of the current gap is in Mist code (routes, hooks) that M1 and M2 will replace, so new code should arrive well tested.
 - Cloudflare Workers Builds deploys every push to `main` and does not wait for GitHub CI, so its build command runs `npm run typecheck && npm run lint && npm run test && npm run build` itself. If any check fails, nothing deploys. This gate has not been verified yet (M0 task).
 
@@ -159,8 +159,8 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced with the Ag
 
 - [ ] **M0 Foundation:** import Mist into our own repo, deploy it to Cloudflare, connect GitHub for auto-deploy, add CI, add AGENTS.md and this PRD, lock the site down with Cloudflare Access while unfinished. Done so far: repo, auto-deploy via Workers Builds (verified 2026-10-22), CI, AGENTS.md, PRD, coverage thresholds frozen so CI can pass, Cloudflare Access with Cloudflare-account login (verified 2026-10-22), Workers Builds command set to run the checks before building (2026-10-22, not yet verified). Still to do:
   - [ ] **Verify the deploy gate.** (1) Open the Workers Builds log for a recent build and confirm `typecheck`, `lint` and `test` run before `build`. (2) Push a throwaway branch `chore/test-deploy-gate` with a test that always fails (`expect(1).toBe(2)`); confirm its preview build fails at `test`, nothing is uploaded, and the live site is unchanged; then delete the branch. Needs builds for non-production branches turned on; do not test on `main`, because a broken gate would put the failing code live.
-- [ ] **M1 Persistence and index:** ~~remove the 99-hour expiry (including for existing documents)~~ (done 2026-10-22); ~~shared parser, including the `wikilink` mark definition~~ (done 2026-10-22); ~~`WorkspaceAgent` index with page registry and parser-versioned rebuild~~ (done 2026-10-23; the rebuild itself runs in the weekly check chunk); ~~documents report to the index and retry until confirmed~~ (done 2026-10-23); weekly index check (can land after M2); remove Mist's Fathom analytics.
-- [ ] **M2 Notes core:** page identity, titles and readable URLs; journal feed (replaces Mist's landing page and `/new`); bullets and indent; tasks; ID-based wikilinks with autocomplete and placeholder pages; backlinks below the page; rename; sidebars with Cmd/Ctrl+click to open in the right panel; search; responsive layout. Build order and UI details are agreed through a clickable prototype first.
+- [ ] **M1 Persistence and index:** ~~remove the 99-hour expiry (including for existing documents)~~ (done 2026-10-22); ~~shared parser, including the `wikilink` mark definition~~ (done 2026-10-22); ~~`WorkspaceAgent` index with page registry and parser-versioned rebuild~~ (done 2026-10-23; the rebuild itself runs in the weekly check chunk); ~~documents report to the index and retry until confirmed~~ (done 2026-10-23); weekly index check (can land after M2). ~~Remove Mist's Fathom analytics~~ (kept, 2026-10-24).
+- [ ] **M2 Notes core:** page identity in three parts: ~~2.1a titles (includes rename, formerly 2.7)~~ (done 2026-10-24), 2.1b readable URLs, 2.1c journal pages; journal feed (replaces Mist's landing page and `/new`); bullets and indent; tasks; ID-based wikilinks with autocomplete and placeholder pages; backlinks below the page; rename; sidebars with Cmd/Ctrl+click to open in the right panel; search; responsive layout. Build order and UI details are agreed through a clickable prototype first.
 - [ ] **M3 Portability and offline:** export to Logseq markdown, offline editing.
 - [ ] **M4 Sharing:** accounts, visibility model, share dialog, permission-aware backlinks and search.
 - [ ] **M5 Quality-of-life:** all pages list, fuzzy dates, pomodoro.
@@ -170,7 +170,8 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced with the Ag
 
 1. **Design later:** how Mist's collaborative features (comments, suggest mode, live editing) fit the new architecture. For example: whether pending suggestions and comment text are indexed, how they appear in exported markdown, and how they interact with sharing permissions (M4).
 2. Do we want a read-only public site for link-shared pages, or require login to view? Decide at M4.
-3. **Revisit after M2:** Mist's document header is shown on every day in the journal feed. Check whether it clutters the feed once real notes build up; the alternative is hiding it per day and showing it when a day is opened on its own.
+3. **Revisit:** page addresses. `/docs/<id>` is the permanent, canonical address and `/page/<slug>` the readable one (2.1b), with clashing slugs getting a short ID suffix. The owner likes `/docs/<id>` as the canonical source because it maps cleanly to one markdown file per page for portability (F15). Revisit whether readable slugs are worth their complexity once export exists.
+4. **Revisit after M2:** Mist's document header is shown on every day in the journal feed. Check whether it clutters the feed once real notes build up; the alternative is hiding it per day and showing it when a day is opened on its own.
 
 ## 10. Risks
 
@@ -219,7 +220,8 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced with the Ag
 | 2026-10-22 | Phone editing uses a keyboard toolbar | One tap for every action, works on any phone, matches Logseq mobile |
 | 2026-10-22 | Journal titles use Logseq's default format (`Oct 22nd, 2026`) | Exported files match what Logseq expects |
 | 2026-10-22 | Keep Mist's collaborative features: comments, suggest mode and live editing | They are a reason to build on Mist; how they fit the architecture is designed later |
-| 2026-10-22 | Remove Mist's Fathom analytics | A private notes app should not report page views |
+| 2026-10-22 | ~~Remove Mist's Fathom analytics~~ | Reversed 2026-10-24 |
+| 2026-10-24 | Keep Mist's Fathom analytics | Owner's choice; it only loads when `VITE_FATHOM_SITE_ID` is set |
 | 2026-10-22 | Single user first | The index is per workspace, so teams can be added later |
 | 2026-10-22 | Parser rules: a tag is `#` at the start of a line or after whitespace, followed by letters, digits, `_`, `-` or `/`, and not only digits; no tags or tasks inside code fences or inline code; no tags inside link text; links count everywhere, once per page per line; only tab characters indent | Matches Logseq's behaviour closely enough and avoids false positives such as headings, URL fragments and issue numbers. See `app/lib/note-parser.ts` |
 | 2026-10-22 | `DOC_FORMAT_VERSION` is bumped when the editor starts writing `wikilink` marks (chunk 2.5), not when the mark is defined | Defining the mark changes no stored document |
@@ -229,6 +231,11 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced with the Ag
 | 2026-10-23 | Documents re-index on a 2-second throttle, not a debounce | A debounce would never fire during continuous typing; with a throttle the index lags by a few seconds at most |
 | 2026-10-23 | Stale index updates are ignored using strictly increasing `updatedAt` values from each document | Retries can arrive late; this needs no schema change, unlike a separate sequence number |
 | 2026-10-23 | Pages send an empty title to the index until page titles exist (chunk 2.1); journals are titled from their date | Nothing displays index titles yet |
+| 2026-10-24 | Split chunk 2.1 into 2.1a titles, 2.1b readable URLs and 2.1c journal pages; merge 2.7 (rename) into 2.1a | With ID links, renaming is editing the title; links showing the new title belongs with links (2.5) |
+| 2026-10-24 | Page titles live in the page's Yjs document (`meta.title`) | They sync live between tabs and the index already reads them |
+| 2026-10-24 | `/docs/<id>` stays the permanent address; `/page/<slug>` redirects work for old slugs; clashing slugs get a short ID suffix | Readable links without breaking permanent ones (see open question 3) |
+| 2026-10-24 | "New page" and "Today" sit in the document header until the sidebar exists (2.8) | They need a home before the sidebar is built |
+| 2026-10-24 | Title rules: whitespace collapsed, 1 to 200 characters, no `[[` or `]]`; unique across pages and journals ignoring case; if the check fails, the rename is refused | Keeps exported `[[Title]]` links valid; failing closed avoids duplicate titles when the index is unreachable |
 | 2026-10-22 | Gate deploys by running the checks in the Workers Builds command | Workers Builds ignores GitHub CI; this is the smallest change that stops failing code going live |
 
 ## 12. Changelog
@@ -245,3 +252,5 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced with the Ag
 - 2026-10-22: Shared parser done (M1 chunk 1.3): page IDs, `wikilink` mark definition, line parser, Yjs and ProseMirror converters. Recorded the parser rules; coverage floors raised.
 - 2026-10-23: Workspace index done (M1 chunk 1.4): `WorkspaceAgent` Durable Object (binding and migration `v2`), index tables with registry and full-text search, private from browsers. Nothing reports to it until chunk 1.5. Coverage floors raised.
 - 2026-10-23: Index reporting done (M1 chunk 1.5): documents re-index about 2 seconds after edits, retry with backoff until confirmed, ignore stale updates, re-index on open and register on creation. Verified end to end locally. Coverage floors raised.
+- 2026-10-24: Fathom kept (reverses 2026-10-22). Chunk 2.1 split into titles, readable URLs and journal pages; rename merged into titles. Added open question 3 on canonical `/docs/<id>` addresses.
+- 2026-10-24: Page titles done (M2 chunk 2.1a): editable title stored in `meta.title`, uniqueness checked through `/api/title-check`, "New page" in the header. `DOC_FORMAT_VERSION` 3. Coverage floors raised.

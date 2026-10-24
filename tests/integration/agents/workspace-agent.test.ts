@@ -68,6 +68,8 @@ describe("WorkspaceAgent", () => {
       });
       expect(ack.pageId).toBe("journal-2026-10-22");
       expect((await agent.getPage("journal-2026-10-22"))?.title).toBe("Oct 22nd, 2026");
+      expect((await agent.findByTitle("OCT 22ND, 2026"))?.pageId).toBe("journal-2026-10-22");
+      expect(await agent.findByTitle("Oct 22nd, 2026", "journal-2026-10-22")).toBeNull();
       expect((await agent.backlinks("abcd1234")).map((b) => b.sourceId)).toEqual(["journal-2026-10-22"]);
       expect((await agent.searchTitles("oct")).map((p) => p.pageId)).toEqual(["journal-2026-10-22"]);
       expect((await agent.search("read")).map((h) => h.pageId)).toEqual(["journal-2026-10-22"]);

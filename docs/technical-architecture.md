@@ -65,6 +65,13 @@ One module, used by both the workspace index (server) and the editor (client), s
 
 Tests in `tests/unit/lib/note-*.test.ts` include a round trip through Yjs using y-tiptap's converters (the same code the editor syncs with) and check that the server and client produce identical parser output.
 
+## Page Titles
+
+- A page's title is `meta.title` in its Yjs document (`DOC_FORMAT_VERSION` 3), so it syncs live between tabs. `DocumentAgent` sends it to the index on each reindex. Journals are titled from their date and have no stored title.
+- `app/components/PageTitle.tsx` edits it. Enter or blur saves, Esc cancels, and changes from other tabs show unless the user is typing.
+- Rules live in `app/lib/page-title.ts` (`normalizeTitle`), used by both the editor and the server. Uniqueness is checked by `GET /api/title-check?title=&pageId=` (`app/routes/api.title-check.ts`), which asks the index's `findByTitle`. The index lags edits by about 2 seconds, so two renames to the same title within that window could both pass.
+- Because links store page IDs, renaming changes nothing else. Links will show the new title once they read it from the index (chunk 2.5).
+
 ## Workspace Index
 
 Each page is an isolated Durable Object, so cross-page features (backlinks, `[[` autocomplete, search, the Tasks view, the journal feed) query one `WorkspaceAgent` instead. The index is always derived from documents, never the other way round.

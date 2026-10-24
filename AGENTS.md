@@ -97,6 +97,8 @@ PRD.md        Product spec and roadmap
 - Every push to `main` deploys to the live site through Cloudflare Workers Builds, which does not wait for GitHub CI.
 - The Agents SDK router exposes every agent at `/agents/<name>/<id>`. Agents that only other Durable Objects should call (like `WorkspaceAgent`) must be refused in `workers/app.ts` and in the agent itself.
 - `DocumentAgent` reports to the workspace index from its Yjs update handler. Anything added there must never throw or wait on the index: indexing runs later through `this.schedule("reindex")`.
+- Browsers reach the workspace index only through server routes (`app/routes/api.*.ts`) that call it with `getAgentByName(env.WorkspaceAgent, WORKSPACE_NAME)`. Permission checks (M4) go in those routes.
+- `docs.$id.tsx` keys its screen by page ID. Keep that: without it, moving between pages reuses the previous page's Yjs doc and editor.
 - Workspace index tests run real SQL on Node's built-in SQLite through `tests/helpers/sqlite.ts`; Node prints an experimental-feature warning, which is expected.
 
 ## Cloudflare notes

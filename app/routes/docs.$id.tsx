@@ -1,7 +1,7 @@
-import { data, Link } from "react-router";
+import { data, Link, useLocation } from "react-router";
 import type { Route } from "./+types/docs.$id";
 import { getAgentByName } from "agents";
-import { isValidDocumentId } from "~/shared/constants";
+import { isValidDocumentId, APP_DISPLAY_NAME } from "~/shared/constants";
 import { getCloudflare } from "~/lib/cloudflare.server";
 import { useYjsEditor } from "~/lib/useYjsEditor";
 import { DocumentProvider, useDocument } from "~/lib/DocumentContext";
@@ -18,9 +18,11 @@ import ThreadList from "~/components/ThreadList";
 import ThemeSelector from "~/components/ThemeSelector";
 import MobilePanel from "~/components/MobilePanel";
 import OnboardingBanner from "~/components/OnboardingBanner";
+import PageTitle from "~/components/PageTitle";
+import NewPageButton from "~/components/NewPageButton";
 
 export function meta(_args: Route.MetaArgs) {
-  return [{ title: "mist" }];
+  return [{ title: APP_DISPLAY_NAME }];
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {
@@ -46,16 +48,23 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 
 export default function DocumentPage({ loaderData }: Route.ComponentProps) {
   const { id, createdAt } = loaderData;
+  const location = useLocation();
+  const focusTitle = (location.state as { focusTitle?: boolean } | null)?.focusTitle === true;
+  // Keyed by page so moving between pages gets a fresh Yjs doc and editor
+  return <DocumentScreen key={id} id={id} createdAt={createdAt} focusTitle={focusTitle} />;
+}
+
+function DocumentScreen({ id, createdAt, focusTitle }: { id: string; createdAt: number | null; focusTitle: boolean }) {
   const yjs = useYjsEditor(id);
 
   return (
     <DocumentProvider docId={id} createdAt={createdAt} yjs={yjs}>
-      <DocumentLayout id={id} />
+      <DocumentLayout id={id} focusTitle={focusTitle} />
     </DocumentProvider>
   );
 }
 
-function DocumentLayout({ id }: { id: string }) {
+function DocumentLayout({ id, focusTitle }: { id: string; focusTitle: boolean }) {
   const {
     yjs,
     showPreview,
@@ -77,8 +86,11 @@ function DocumentLayout({ id }: { id: string }) {
           to="/"
           className="flex items-center bg-ink px-4 py-2 font-medium text-paper transition-colors hover:bg-chartreuse hover:text-[#1a1a1a]"
         >
-          mistlogseqish
+          {APP_DISPLAY_NAME}
         </Link>
+        <div className="shrink-0 border-r border-border">
+          <NewPageButton />
+        </div>
         <div className="flex grow shrink-0 items-center px-4">
           <span className="font-mono font-bold">{id}</span>
         </div>
@@ -94,6 +106,7 @@ function DocumentLayout({ id }: { id: string }) {
       </header>
       <div className="flex flex-1 overflow-hidden">
         <main className="flex-1 overflow-y-auto pb-[33vh] lg:border-r lg:border-border lg:pb-0">
+          <PageTitle doc={yjs.doc} pageId={id} autoFocus={focusTitle} />
           <Editor
             yjs={yjs}
             hidden={showPreview}

@@ -2,6 +2,7 @@ import { Agent } from "agents";
 import type { Connection, ConnectionContext } from "agents";
 import type { TaskState } from "../app/lib/note-parser";
 import { WorkspaceIndex, type SqlDb, type SqlValue, type PageUpdate } from "./workspace-index";
+import { WORKSPACE_NAME } from "../app/shared/constants";
 
 /**
  * One workspace's index (one instance, named "default", while single-user).
@@ -10,7 +11,7 @@ import { WorkspaceIndex, type SqlDb, type SqlValue, type PageUpdate } from "./wo
  * onRequest and onConnect refuse as a second line of defence.
  */
 
-export const WORKSPACE_NAME = "default";
+export { WORKSPACE_NAME };
 
 const PRIVATE_AGENT_PATH = /^\/agents\/workspace-agent(\/|$)/i;
 
@@ -52,6 +53,10 @@ class WorkspaceAgent extends Agent {
 
   async getPage(pageId: string) {
     return this.index.getPage(pageId);
+  }
+
+  async findByTitle(title: string, exceptId?: string) {
+    return this.index.findByTitle(title, exceptId);
   }
 
   async backlinks(targetId: string) {

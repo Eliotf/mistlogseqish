@@ -231,6 +231,18 @@ export class WorkspaceIndex {
     return row ? toPage(row) : null;
   }
 
+  /**
+   * The page or journal with this title, ignoring case and surrounding
+   * whitespace, other than exceptId. Used to keep titles unique (PRD F2).
+   */
+  findByTitle(title: string, exceptId = ""): IndexedPage | null {
+    const row = this.db.exec(
+      `SELECT * FROM pages WHERE title_key = ? AND page_id != ? ORDER BY page_id LIMIT 1`,
+      title.trim().toLowerCase(), exceptId,
+    )[0];
+    return row ? toPage(row) : null;
+  }
+
   /** Pages linking to a page, most recently updated first, with each linking line. */
   backlinks(targetId: string): Backlink[] {
     const rows = this.db.exec(

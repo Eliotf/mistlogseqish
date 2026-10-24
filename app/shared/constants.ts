@@ -1,5 +1,8 @@
 export const APP_NAME = "mist";
 
+/** The name shown in the header and browser tab. */
+export const APP_DISPLAY_NAME = "mistlogseqish";
+
 export function isValidDocumentId(id: string): boolean {
   if (id.length !== 8) return false;
   return /^[a-z0-9]+$/.test(id);
@@ -33,8 +36,12 @@ export const USER_COLOURS = [
  *
  * v1: plain text with CriticMarkup delimiters, threads in Y.Map("threads")
  * v2: CriticMarkup stored as ProseMirror marks, threads in Y.Map("threads")
+ * v3: optional page title in Y.Map("meta").title
  */
-export const DOC_FORMAT_VERSION = 2;
+export const DOC_FORMAT_VERSION = 3;
+
+/** Name of the single WorkspaceAgent instance while Mistlog is single-user. */
+export const WORKSPACE_NAME = "default";
 
 /** Protocol message type: Yjs sync */
 export const MSG_SYNC = 0;
