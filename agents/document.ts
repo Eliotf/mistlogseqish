@@ -81,6 +81,12 @@ class DocumentAgent extends Agent {
       this.markForIndex();
     });
 
+    // A title change reindexes at once, not on the 2-second throttle: the
+    // page's address and title uniqueness depend on it
+    this.doc.getMap("meta").observe((event) => {
+      if (event.keysChanged.has("title")) this.reindexNow();
+    });
+
     return { doc: this.doc, awareness: this.awareness };
   }
 
@@ -325,6 +331,20 @@ class DocumentAgent extends Agent {
     } catch (err) {
       console.error("markForIndex failed", err);
     }
+  }
+
+  /** Reindex immediately instead of waiting for the throttle. Never throws. */
+  private reindexNow(): void {
+    try {
+      if (!this.isIndexable()) return;
+      // Yjs runs map observers before the doc's update event, so mark the edit here
+      const state = this.readIndexState();
+      if (!state.dirty) this.writeIndexState({ ...state, dirty: true });
+    } catch (err) {
+      console.error("reindexNow failed", err);
+      return;
+    }
+    this.reindex().catch((err: unknown) => console.error("Immediate reindex failed", err));
   }
 
   private scheduleReindex(seconds: number): void {

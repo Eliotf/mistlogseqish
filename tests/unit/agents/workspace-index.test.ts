@@ -279,6 +279,63 @@ describe("WorkspaceIndex", () => {
     });
   });
 
+  describe("claimTitle", () => {
+    it("records the title and returns the new slug", () => {
+      index.updatePage(page(MIST, "Old", [line("x")], 10));
+      expect(index.claimTitle(MIST, "Fresh Start", 20)).toEqual({ ok: true, title: "Fresh Start", slug: "fresh-start" });
+      expect(index.getPage(MIST)).toMatchObject({ title: "Fresh Start", updatedAt: 10 });
+      expect(index.resolveSlug("old")).toEqual({ pageId: MIST, current: false, currentSlug: "fresh-start" });
+    });
+
+    it("refuses a title another page or journal has, ignoring case", () => {
+      index.updatePage(page(ACCESS, "Cloudflare Access", [line("x")]));
+      index.updatePage(page(TODAY, "", [line("x")]));
+      expect(index.claimTitle(MIST, "cloudflare access", 1)).toEqual({
+        ok: false,
+        reason: "taken",
+        holder: { pageId: ACCESS, title: "Cloudflare Access" },
+      });
+      expect(index.claimTitle(MIST, "OCT 22ND, 2026", 1)).toMatchObject({ ok: false, reason: "taken" });
+      expect(index.getPage(MIST)).toBeNull();
+    });
+
+    it("lets only the first of two pages claim the same title", () => {
+      expect(index.claimTitle("aaaa1111", "Shared", 1).ok).toBe(true);
+      expect(index.claimTitle("bbbb2222", "shared", 2)).toMatchObject({ ok: false, reason: "taken" });
+    });
+
+    it("lets a page claim its own title again", () => {
+      index.claimTitle(MIST, "Mine", 1);
+      expect(index.claimTitle(MIST, "MINE", 2)).toMatchObject({ ok: true, title: "MINE", slug: "mine" });
+    });
+
+    it("refuses to rename a journal", () => {
+      expect(index.claimTitle(TODAY, "Something", 1)).toEqual({ ok: false, reason: "journal" });
+    });
+
+    it("works for a page that has not been indexed yet, and its first reindex still applies", () => {
+      expect(index.claimTitle(MIST, "Brand New", 50)).toEqual({ ok: true, title: "Brand New", slug: "brand-new" });
+      expect(index.registeredPages()).toEqual([MIST]);
+      expect(index.getPage(MIST)).toMatchObject({ title: "Brand New", hasContent: false, updatedAt: 0 });
+      expect(index.updatePage(page(MIST, "Brand New", [line("content")], 1)).applied).toBe(true);
+      expect(index.currentSlug(MIST)).toBe("brand-new");
+    });
+
+    it("ends with the claimed title even if a stale reindex with the old title arrives in between", () => {
+      index.updatePage(page(MIST, "Before", [line("x")], 10));
+      index.claimTitle(MIST, "After", 11);
+      index.updatePage(page(MIST, "Before", [line("x")], 12));
+      expect(index.currentSlug(MIST)).toBe("before");
+      index.updatePage(page(MIST, "After", [line("x")], 13));
+      expect(index.currentSlug(MIST)).toBe("after");
+      expect(index.resolveSlug("before")).toEqual({ pageId: MIST, current: false, currentSlug: "after" });
+    });
+
+    it("rejects invalid page IDs", () => {
+      expect(() => index.claimTitle("bad id", "x", 1)).toThrow("Invalid page ID");
+    });
+  });
+
   describe("migrations", () => {
     function versionOneDb() {
       const old = memoryDb();

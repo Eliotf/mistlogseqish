@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type * as Y from "yjs";
-import { normalizeTitle, UNTITLED, type TitleCheck } from "~/lib/page-title";
+import { normalizeTitle, UNTITLED, type RenameResult } from "~/lib/page-title";
 import { APP_DISPLAY_NAME } from "~/shared/constants";
 
-/** Ask the server whether a page may take a title (unique ignoring case). */
-export async function checkTitleOnServer(title: string, pageId: string): Promise<TitleCheck> {
-  const params = new URLSearchParams({ title, pageId });
-  const res = await fetch(`/api/title-check?${params}`);
-  if (!res.ok) throw new Error(`Title check failed: ${res.status}`);
-  return (await res.json()) as TitleCheck;
+/** Claim a title on the server (unique ignoring case) and get the page's new address. */
+export async function renameOnServer(title: string, pageId: string): Promise<RenameResult> {
+  const res = await fetch("/api/rename", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pageId, title }),
+  });
+  if (!res.ok) throw new Error(`Rename failed: ${res.status}`);
+  return (await res.json()) as RenameResult;
 }
 
 interface PageTitleProps {
@@ -16,15 +19,18 @@ interface PageTitleProps {
   pageId: string;
   /** Focus the title and select it, for a page that was just created. */
   autoFocus?: boolean;
-  checkTitle?: (title: string, pageId: string) => Promise<TitleCheck>;
+  rename?: (title: string, pageId: string) => Promise<RenameResult>;
+  /** Called with the page's new address after a successful rename. */
+  onRenamed?: (path: string) => void;
 }
 
 /**
  * The page's editable title, stored in the Yjs document as meta.title so it
  * syncs live between tabs. Enter or leaving the title saves it; Esc cancels.
- * With ID links, renaming is just this edit: no linking page changes.
+ * Saving claims the title on the server first (atomic uniqueness), so the
+ * new address is known at once. With ID links no linking page changes.
  */
-export default function PageTitle({ doc, pageId, autoFocus = false, checkTitle = checkTitleOnServer }: PageTitleProps) {
+export default function PageTitle({ doc, pageId, autoFocus = false, rename = renameOnServer, onRenamed }: PageTitleProps) {
   const meta = useMemo(() => doc.getMap<unknown>("meta"), [doc]);
   const ref = useRef<HTMLHeadingElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -81,17 +87,18 @@ export default function PageTitle({ doc, pageId, autoFocus = false, checkTitle =
     }
     setSaving(true);
     try {
-      const check = await checkTitle(result.title, pageId);
-      if (!check.available) {
-        setError(`${check.reason} The title was not changed.`);
+      const answer = await rename(result.title, pageId);
+      if (!answer.ok) {
+        setError(`${answer.reason} The title was not changed.`);
         el.textContent = stored();
         return;
       }
-      meta.set("title", result.title);
-      el.textContent = result.title;
+      meta.set("title", answer.title);
+      el.textContent = answer.title;
       setError(null);
+      onRenamed?.(answer.path);
     } catch {
-      setError("Couldn't check the title. Check your connection and try again.");
+      setError("Couldn't save the title. Check your connection and try again.");
       el.textContent = stored();
     } finally {
       setSaving(false);

@@ -1,4 +1,4 @@
-import { data, Link, redirect, useLocation } from "react-router";
+import { data, Link, redirect, useLocation, useNavigate } from "react-router";
 import type { Route } from "./+types/docs.$id";
 import { isValidDocumentId, APP_DISPLAY_NAME } from "~/shared/constants";
 import { currentSlugOrNull, loadDocument } from "~/lib/document-loader.server";
@@ -64,6 +64,11 @@ function DocumentScreen({ id, createdAt, path, focusTitle }: ScreenProps) {
 }
 
 function DocumentLayout({ id, path, focusTitle }: Omit<ScreenProps, "createdAt">) {
+  const navigate = useNavigate();
+  // Move to the new address straight away; the index already knows it
+  const onRenamed = (newPath: string) => {
+    if (newPath !== path) navigate(newPath, { replace: true });
+  };
   const {
     yjs,
     showPreview,
@@ -107,7 +112,7 @@ function DocumentLayout({ id, path, focusTitle }: Omit<ScreenProps, "createdAt">
       </header>
       <div className="flex flex-1 overflow-hidden">
         <main className="flex-1 overflow-y-auto pb-[33vh] lg:border-r lg:border-border lg:pb-0">
-          <PageTitle doc={yjs.doc} pageId={id} autoFocus={focusTitle} />
+          <PageTitle doc={yjs.doc} pageId={id} autoFocus={focusTitle} onRenamed={onRenamed} />
           <Editor
             yjs={yjs}
             hidden={showPreview}

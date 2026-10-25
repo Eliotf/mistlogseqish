@@ -3,18 +3,21 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createElement } from "react";
 import { render, fireEvent, waitFor, act, cleanup } from "@testing-library/react";
 import * as Y from "yjs";
-import PageTitle, { checkTitleOnServer } from "~/components/PageTitle";
-import type { TitleCheck } from "~/lib/page-title";
+import PageTitle, { renameOnServer } from "~/components/PageTitle";
+import type { RenameResult } from "~/lib/page-title";
 
 const PAGE_ID = "abcd1234";
 
-function setup(options: { title?: string; check?: (t: string, id: string) => Promise<TitleCheck>; autoFocus?: boolean } = {}) {
+function setup(options: { title?: string; check?: (t: string, id: string) => Promise<RenameResult>; autoFocus?: boolean } = {}) {
   const doc = new Y.Doc();
   if (options.title !== undefined) doc.getMap("meta").set("title", options.title);
-  const check = vi.fn(options.check ?? (async (title: string) => ({ available: true as const, title })));
-  const utils = render(createElement(PageTitle, { doc, pageId: PAGE_ID, checkTitle: check, autoFocus: options.autoFocus }));
+  const check = vi.fn(
+    options.check ?? (async (title: string) => ({ ok: true as const, title, path: `/page/${title.toLowerCase().replace(/ /g, "-")}` })),
+  );
+  const onRenamed = vi.fn();
+  const utils = render(createElement(PageTitle, { doc, pageId: PAGE_ID, rename: check, onRenamed, autoFocus: options.autoFocus }));
   const heading = utils.getByRole("textbox", { name: "Page title" });
-  return { ...utils, doc, check, heading };
+  return { ...utils, doc, check, onRenamed, heading };
 }
 
 /** Type a new title and leave the field, as a user would. */
@@ -43,12 +46,32 @@ describe("PageTitle", () => {
     expect(document.title).toBe("Untitled · mistlogseqish");
   });
 
-  it("saves a new title to the Yjs document after checking it", async () => {
+  it("claims the title on the server, then saves it to the Yjs document", async () => {
     const { heading, doc, check } = setup({ title: "Old" });
     await rename(heading, "  New   name ");
     expect(check).toHaveBeenCalledWith("New name", PAGE_ID);
     await waitFor(() => expect(doc.getMap("meta").get("title")).toBe("New name"));
     expect(heading.textContent).toBe("New name");
+  });
+
+  it("reports the new address after a rename", async () => {
+    const { heading, onRenamed } = setup({ title: "Old" });
+    await rename(heading, "Fresh Start");
+    await waitFor(() => expect(onRenamed).toHaveBeenCalledWith("/page/fresh-start"));
+  });
+
+  it("does not save or report an address when the server refuses", async () => {
+    const { heading, onRenamed, doc } = setup({ title: "Mine", check: async () => ({ ok: false, reason: "Taken." }) });
+    await rename(heading, "Other");
+    await act(async () => {});
+    expect(onRenamed).not.toHaveBeenCalled();
+    expect(doc.getMap("meta").get("title")).toBe("Mine");
+  });
+
+  it("saves the title the server returns", async () => {
+    const { heading, doc } = setup({ title: "Old", check: async () => ({ ok: true, title: "Server Title", path: "/page/x" }) });
+    await rename(heading, "typed");
+    await waitFor(() => expect(doc.getMap("meta").get("title")).toBe("Server Title"));
   });
 
   it("saves on Enter", async () => {
@@ -71,7 +94,7 @@ describe("PageTitle", () => {
   it("refuses a title another page has, and keeps the old one", async () => {
     const { heading, doc, findByRole } = setup({
       title: "Mine",
-      check: async () => ({ available: false, reason: "A page called “Taken” already exists." }),
+      check: async () => ({ ok: false, reason: "A page called “Taken” already exists." }),
     });
     await rename(heading, "taken");
     const alert = await findByRole("alert");
@@ -97,7 +120,7 @@ describe("PageTitle", () => {
       },
     });
     await rename(heading, "New");
-    expect((await findByRole("alert")).textContent).toContain("Couldn't check the title");
+    expect((await findByRole("alert")).textContent).toContain("Couldn't save the title");
     expect(doc.getMap("meta").get("title")).toBe("Mine");
   });
 
@@ -114,7 +137,7 @@ describe("PageTitle", () => {
     let free = false;
     const { heading, queryByRole } = setup({
       title: "Mine",
-      check: async (title) => (free ? { available: true, title } : { available: false, reason: "Taken." }),
+      check: async (title) => (free ? { ok: true, title, path: "/page/other" } : { ok: false, reason: "Taken." }),
     });
     await rename(heading, "Other");
     await waitFor(() => expect(queryByRole("alert")).not.toBeNull());
@@ -159,7 +182,7 @@ describe("PageTitle", () => {
   });
 });
 
-describe("checkTitleOnServer", () => {
+describe("renameOnServer", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn());
   });
@@ -167,14 +190,18 @@ describe("checkTitleOnServer", () => {
     vi.unstubAllGlobals();
   });
 
-  it("calls the title check route with the title and page", async () => {
-    vi.mocked(fetch).mockResolvedValue(Response.json({ available: true, title: "A & B" }));
-    expect(await checkTitleOnServer("A & B", PAGE_ID)).toEqual({ available: true, title: "A & B" });
-    expect(fetch).toHaveBeenCalledWith("/api/title-check?title=A+%26+B&pageId=abcd1234");
+  it("posts the page and title to the rename route as JSON", async () => {
+    vi.mocked(fetch).mockResolvedValue(Response.json({ ok: true, title: "A & B", path: "/page/a-b" }));
+    expect(await renameOnServer("A & B", PAGE_ID)).toEqual({ ok: true, title: "A & B", path: "/page/a-b" });
+    expect(fetch).toHaveBeenCalledWith("/api/rename", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pageId: PAGE_ID, title: "A & B" }),
+    });
   });
 
   it("throws when the server fails", async () => {
     vi.mocked(fetch).mockResolvedValue(new Response("nope", { status: 500 }));
-    await expect(checkTitleOnServer("A", PAGE_ID)).rejects.toThrow("Title check failed: 500");
+    await expect(renameOnServer("A", PAGE_ID)).rejects.toThrow("Rename failed: 500");
   });
 });

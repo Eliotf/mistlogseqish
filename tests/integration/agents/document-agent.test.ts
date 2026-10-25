@@ -890,6 +890,63 @@ describe("DocumentAgent", () => {
       vi.restoreAllMocks();
     });
 
+    it("reindexes at once when the title changes, without waiting for the throttle", async () => {
+      await create("body text");
+      await agent.reindex();
+      const client = connectYjsClient();
+      updates = [];
+      mockSchedules = [];
+
+      client.doc.getMap("meta").set("title", "Renamed Page");
+      await vi.waitFor(() => expect(updates).toHaveLength(1));
+
+      expect(updates[0].title).toBe("Renamed Page");
+      expect(index.getPage(PAGE_ID)?.title).toBe("Renamed Page");
+      expect(index.currentSlug(PAGE_ID)).toBe("renamed-page");
+      cleanup(client);
+    });
+
+    it("keeps body edits on the throttle", async () => {
+      await create("body text");
+      await agent.reindex();
+      const client = connectYjsClient();
+      updates = [];
+      mockSchedules = [];
+      addLine(client, "just typing");
+      await Promise.resolve();
+      expect(updates).toEqual([]);
+      expect(reindexes()).toEqual([[2, "reindex"]]);
+      cleanup(client);
+    });
+
+    it("keeps editing working if the immediate reindex bookkeeping fails", async () => {
+      await create("body");
+      await agent.reindex();
+      const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+      const realSql = (agent as unknown as { sql: (...a: unknown[]) => unknown }).sql.bind(agent);
+      const a = connectYjsClient();
+      const b = connectYjsClient();
+      vi.spyOn(agent as unknown as { sql: (...a: unknown[]) => unknown }, "sql").mockImplementation(
+        (strings: unknown, ...values: unknown[]) => {
+          if ((strings as string[]).join("").includes("key = 'exists'")) throw new Error("disk full");
+          return realSql(strings, ...values);
+        },
+      );
+      a.doc.getMap("meta").set("title", "Still syncs");
+      expect(errors).toHaveBeenCalledWith("reindexNow failed", expect.any(Error));
+      expect(b.doc.getMap("meta").get("title")).toBe("Still syncs");
+      cleanup(a, b);
+      vi.restoreAllMocks();
+    });
+
+    it("does not reindex a never-created document when its title changes", async () => {
+      const client = connectYjsClient();
+      client.doc.getMap("meta").set("title", "Sneaky");
+      await Promise.resolve();
+      expect(updates).toEqual([]);
+      cleanup(client);
+    });
+
     it("still creates the document if registration fails", async () => {
       mockIndexStub.registerPage = async () => {
         throw new Error("index unavailable");

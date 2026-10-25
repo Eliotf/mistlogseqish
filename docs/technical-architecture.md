@@ -69,7 +69,10 @@ Tests in `tests/unit/lib/note-*.test.ts` include a round trip through Yjs using 
 
 - A page's title is `meta.title` in its Yjs document (`DOC_FORMAT_VERSION` 3), so it syncs live between tabs. `DocumentAgent` sends it to the index on each reindex. Journals are titled from their date and have no stored title.
 - `app/components/PageTitle.tsx` edits it. Enter or blur saves, Esc cancels, and changes from other tabs show unless the user is typing.
-- Rules live in `app/lib/page-title.ts` (`normalizeTitle`), used by both the editor and the server. Uniqueness is checked by `GET /api/title-check?title=&pageId=` (`app/routes/api.title-check.ts`), which asks the index's `findByTitle`. The index lags edits by about 2 seconds, so two renames to the same title within that window could both pass.
+- Rules live in `app/lib/page-title.ts` (`normalizeTitle`), used by both the editor and the server.
+- **Renaming goes through the server.** `PageTitle` calls `POST /api/rename` with JSON `{ pageId, title }` (`app/routes/api.rename.ts`; non-JSON bodies are refused so another site's form cannot rename). The route calls the index's `claimTitle`, which in one transaction refuses a title another page or journal has (ignoring case), records the title and assigns the slug, then returns the new address. Only then does the client save `meta.title` to the Yjs doc and switch the browser to the new address. The index handles one call at a time, so two renames to the same title cannot both succeed.
+- If the client never saves the title (for example the tab closes), the next reindex puts the document's title back in the index: the document stays the source of truth.
+- A `meta.title` change, from any client, makes `DocumentAgent` re-index immediately (`reindexNow`) instead of waiting for the 2-second throttle.
 - Because links store page IDs, renaming changes nothing else. Links will show the new title once they read it from the index (chunk 2.5).
 
 ## Readable URLs
@@ -78,7 +81,7 @@ Tests in `tests/unit/lib/note-*.test.ts` include a round trip through Yjs using 
 - `slugify` (`app/lib/slug.ts`) lowercases, keeps letters, digits and marks from any script, turns everything else into `-`, and caps at 80 code points.
 - The index assigns slugs in `updatePage` (`assignSlug` in `agents/workspace-index.ts`). A slug another page currently holds gets a suffix: the first 4 characters of the page ID, then the full ID. A slug that is only another page's old redirect is taken over. Re-indexing keeps a page's slug stable.
 - `/page/:slug` (`app/routes/page.$slug.tsx`) resolves through the index. Old slugs, and other case or accent forms, redirect to the canonical address; unknown slugs are 404. Both routes share `app/lib/document-loader.server.ts`. The `/docs/<id>` slug lookup fails open if the index is unreachable.
-- After a rename the browser keeps its current address until the next load, because the index learns the new title about 2 seconds later.
+- After a rename the browser moves to the new address at once: `claimTitle` has already assigned the slug (chunk 2.1d).
 
 ## Workspace Index
 

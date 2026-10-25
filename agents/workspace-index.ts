@@ -120,6 +120,11 @@ function assignSlug(db: SqlDb, pageId: string, title: string): string | null {
   throw new Error(`No free slug for ${pageId}`);
 }
 
+export type ClaimResult =
+  | { ok: true; title: string; slug: string | null }
+  | { ok: false; reason: "taken"; holder: { pageId: string; title: string } }
+  | { ok: false; reason: "journal" };
+
 export interface ResolvedSlug {
   pageId: string;
   /** Whether the requested slug is the page's current one (false means redirect). */
@@ -311,6 +316,34 @@ export class WorkspaceIndex {
   getPage(pageId: string): IndexedPage | null {
     const row = this.db.exec(`SELECT * FROM pages WHERE page_id = ?`, pageId)[0];
     return row ? toPage(row) : null;
+  }
+
+  /**
+   * Rename a page in the index, atomically: refuse if another page or journal
+   * has the title, otherwise record it and assign its slug. The index handles
+   * one call at a time, so two renames to the same title cannot both succeed.
+   *
+   * The document is the source of truth: after a successful claim the client
+   * saves the title to the page's Yjs doc, and the next reindex confirms it.
+   * If that never happens, the next reindex puts the document's title back.
+   * The caller must pass a title that has already passed normalizeTitle.
+   */
+  claimTitle(pageId: string, title: string, at: number): ClaimResult {
+    if (!isPageId(pageId)) throw new Error(`Invalid page ID: ${pageId}`);
+    if (isJournalId(pageId)) return { ok: false, reason: "journal" };
+    return this.db.transaction((): ClaimResult => {
+      const holder = this.findByTitle(title, pageId);
+      if (holder) return { ok: false, reason: "taken", holder: { pageId: holder.pageId, title: holder.title } };
+      this.db.exec(`INSERT OR IGNORE INTO registry (page_id, created_at) VALUES (?, ?)`, pageId, at);
+      // A page created moments ago may not be indexed yet; updated_at 0 lets its first reindex apply
+      this.db.exec(
+        `INSERT INTO pages (page_id, kind, title, title_key, journal_date, has_content, updated_at, parser_version)
+         VALUES (?, 'page', ?, ?, NULL, 0, 0, ?)
+         ON CONFLICT (page_id) DO UPDATE SET title = excluded.title, title_key = excluded.title_key`,
+        pageId, title, title.toLowerCase(), PARSER_VERSION,
+      );
+      return { ok: true, title, slug: assignSlug(this.db, pageId, title) };
+    });
   }
 
   /**

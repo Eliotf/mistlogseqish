@@ -1,5 +1,5 @@
 /**
- * Page title rules, shared by the title editor and the server's title check.
+ * Page title rules, shared by the title editor and the server's rename route.
  * Titles live in the page's Yjs document (meta.title) and are unique across
  * pages and journals, ignoring case (PRD F2).
  */
@@ -8,8 +8,8 @@ export const MAX_TITLE_LENGTH = 200;
 
 export type TitleResult = { ok: true; title: string } | { ok: false; reason: string };
 
-/** What the server says about a proposed title. */
-export type TitleCheck = { available: true; title: string } | { available: false; reason: string };
+/** The server's answer to a rename: the saved title and the page's new address, or why not. */
+export type RenameResult = { ok: true; title: string; path: string } | { ok: false; reason: string };
 
 /** Collapse whitespace and validate. Returns the title to store, or why it cannot be used. */
 export function normalizeTitle(raw: string): TitleResult {
