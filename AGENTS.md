@@ -99,6 +99,7 @@ PRD.md        Product spec and roadmap
 - `DocumentAgent` reports to the workspace index from its Yjs update handler. Anything added there must never throw or wait on the index: indexing runs later through `this.schedule("reindex")`.
 - Browsers reach the workspace index only through server routes (`app/routes/api.*.ts`) that call it with `getAgentByName(env.WorkspaceAgent, WORKSPACE_NAME)`. Permission checks (M4) go in those routes.
 - `docs.$id.tsx` keys its screen by page ID. Keep that: without it, moving between pages reuses the previous page's Yjs doc and editor.
+- Workspace index schema changes are migrations: append to `MIGRATIONS` in `agents/workspace-index.ts` and bump `SCHEMA_VERSION`. Never edit `SCHEMA_V1` or a shipped migration, and test the upgrade from the previous version.
 - Workspace index tests run real SQL on Node's built-in SQLite through `tests/helpers/sqlite.ts`; Node prints an experimental-feature warning, which is expected.
 
 ## Cloudflare notes

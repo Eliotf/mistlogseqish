@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { WorkspaceIndex, SCHEMA_VERSION, SNIPPET_START, SNIPPET_END, ftsQuery, type PageUpdate } from "../../../agents/workspace-index";
+import { WorkspaceIndex, SCHEMA_V1, SCHEMA_VERSION, SNIPPET_START, SNIPPET_END, ftsQuery, type PageUpdate } from "../../../agents/workspace-index";
 import { PARSER_VERSION, type DocLine } from "~/lib/note-parser";
 import { WIKILINK_MARK } from "~/lib/wikilink";
 import { memoryDb } from "../../helpers/sqlite";
@@ -183,6 +183,149 @@ describe("WorkspaceIndex", () => {
     it("works for pages that are linked but not yet indexed themselves", () => {
       index.updatePage(page(MIST, "Mistlog", [line("see New", [[4, 7, "newpage1"]])]));
       expect(index.backlinks("newpage1").map((b) => b.sourceId)).toEqual([MIST]);
+    });
+  });
+
+  describe("slugs", () => {
+    const rename = (pageId: string, title: string, at = Date.now()) => index.updatePage(page(pageId, title, [line("x")], at));
+
+    it("gives a titled page a slug from its title", () => {
+      rename(MIST, "Meeting Notes");
+      expect(index.currentSlug(MIST)).toBe("meeting-notes");
+      expect(index.resolveSlug("meeting-notes")).toEqual({ pageId: MIST, current: true, currentSlug: "meeting-notes" });
+    });
+
+    it("gives untitled pages, symbol-only titles and journals no slug", () => {
+      rename(MIST, "");
+      rename(ACCESS, "!!!");
+      rename(TODAY, "");
+      expect([index.currentSlug(MIST), index.currentSlug(ACCESS), index.currentSlug(TODAY)]).toEqual([null, null, null]);
+      expect(count("slugs")).toBe(0);
+    });
+
+    it("keeps the same slug when the page is re-indexed", () => {
+      rename(MIST, "Notes", 1);
+      rename(MIST, "Notes", 2);
+      rename(MIST, "Notes", 3);
+      expect(db.exec(`SELECT slug, current FROM slugs`)).toEqual([{ slug: "notes", current: 1 }]);
+    });
+
+    it("keeps old slugs as redirects after a rename", () => {
+      rename(MIST, "First name", 1);
+      rename(MIST, "Second name", 2);
+      expect(index.currentSlug(MIST)).toBe("second-name");
+      expect(index.resolveSlug("first-name")).toEqual({ pageId: MIST, current: false, currentSlug: "second-name" });
+    });
+
+    it("makes an old slug current again when the title is changed back", () => {
+      rename(MIST, "Alpha", 1);
+      rename(MIST, "Beta", 2);
+      rename(MIST, "Alpha", 3);
+      expect(index.resolveSlug("alpha")?.current).toBe(true);
+      expect(index.resolveSlug("beta")).toEqual({ pageId: MIST, current: false, currentSlug: "alpha" });
+    });
+
+    it("adds a short ID suffix when another page holds the slug", () => {
+      rename("cccc1111", "C");
+      rename("dddd2222", "C++");
+      expect(index.currentSlug("cccc1111")).toBe("c");
+      expect(index.currentSlug("dddd2222")).toBe("c-dddd");
+    });
+
+    it("falls back to the full ID when the suffixed slug is also taken", () => {
+      rename("cccc1111", "C");
+      rename("dddd0001", "C++");
+      rename("dddd0002", "C#");
+      expect(index.currentSlug("dddd0001")).toBe("c-dddd");
+      expect(index.currentSlug("dddd0002")).toBe("c-dddd0002");
+    });
+
+    it("keeps a suffixed slug stable even after the plain one frees up", () => {
+      rename("cccc1111", "C", 1);
+      rename("dddd2222", "C++", 2);
+      rename("cccc1111", "Something else", 3);
+      rename("dddd2222", "C++", 4);
+      expect(index.currentSlug("dddd2222")).toBe("c-dddd");
+    });
+
+    it("lets a page take over a slug that is only another page's old redirect", () => {
+      rename(MIST, "Notes", 1);
+      rename(MIST, "Ideas", 2);
+      rename(ACCESS, "Notes", 3);
+      expect(index.resolveSlug("notes")).toEqual({ pageId: ACCESS, current: true, currentSlug: "notes" });
+      expect(index.resolveSlug("ideas")?.pageId).toBe(MIST);
+    });
+
+    it("drops the current slug when the title loses its letters, keeping redirects", () => {
+      rename(MIST, "Named", 1);
+      rename(MIST, "???", 2);
+      expect(index.currentSlug(MIST)).toBeNull();
+      expect(index.resolveSlug("named")).toEqual({ pageId: MIST, current: false, currentSlug: null });
+    });
+
+    it("resolves slugs regardless of case and accent composition", () => {
+      rename(MIST, "Café");
+      expect(index.resolveSlug("CAFÉ")?.pageId).toBe(MIST);
+      expect(index.resolveSlug("café")?.pageId).toBe(MIST);
+      expect(index.resolveSlug("unknown")).toBeNull();
+    });
+
+    it("keeps slugs, including redirects, through clearDerived", () => {
+      rename(MIST, "Old", 1);
+      rename(MIST, "New", 2);
+      index.clearDerived();
+      expect(index.resolveSlug("old")).toEqual({ pageId: MIST, current: false, currentSlug: "new" });
+      expect(index.resolveSlug("new")?.current).toBe(true);
+    });
+  });
+
+  describe("migrations", () => {
+    function versionOneDb() {
+      const old = memoryDb();
+      for (const stmt of SCHEMA_V1) old.exec(stmt);
+      old.exec(`INSERT INTO meta (key, value) VALUES ('schema_version', '1')`);
+      const insert = `INSERT INTO pages (page_id, kind, title, title_key, journal_date, has_content, updated_at, parser_version)
+                      VALUES (?, ?, ?, ?, ?, 1, 1, 1)`;
+      old.exec(insert, "bbbb2222", "page", "Meeting Notes", "meeting notes", null);
+      old.exec(insert, "aaaa1111", "page", "Meeting notes!", "meeting notes!", null);
+      old.exec(insert, "cccc3333", "page", "", "", null);
+      old.exec(insert, TODAY, "journal", "Oct 22nd, 2026", "oct 22nd, 2026", "2026-10-22");
+      return old;
+    }
+
+    it("upgrades a version 1 index and gives every titled page a slug", () => {
+      const old = versionOneDb();
+      const upgraded = new WorkspaceIndex(old);
+      expect(upgraded.schemaVersion()).toBe(SCHEMA_VERSION);
+      // Pages are slugged in ID order, so the earlier ID keeps the plain slug
+      expect(upgraded.currentSlug("aaaa1111")).toBe("meeting-notes");
+      expect(upgraded.currentSlug("bbbb2222")).toBe("meeting-notes-bbbb");
+      expect(upgraded.currentSlug("cccc3333")).toBeNull();
+      expect(upgraded.currentSlug(TODAY)).toBeNull();
+      expect(upgraded.getPage("bbbb2222")?.title).toBe("Meeting Notes");
+    });
+
+    it("migrates only once", () => {
+      const old = versionOneDb();
+      new WorkspaceIndex(old);
+      old.exec(`DELETE FROM slugs`);
+      new WorkspaceIndex(old);
+      expect(Number(old.exec(`SELECT COUNT(*) AS n FROM slugs`)[0].n)).toBe(0);
+    });
+
+    it("leaves a version 1 index untouched if the migration fails", () => {
+      const old = versionOneDb();
+      old.raw.exec(`CREATE TABLE slugs (slug TEXT PRIMARY KEY, page_id TEXT NOT NULL, current INTEGER NOT NULL)`);
+      old.raw.exec(`CREATE TRIGGER fail_slugs BEFORE INSERT ON slugs BEGIN SELECT RAISE(ABORT, 'boom'); END`);
+      expect(() => new WorkspaceIndex(old)).toThrow("boom");
+      expect(old.exec(`SELECT value FROM meta WHERE key = 'schema_version'`)[0].value).toBe("1");
+    });
+
+    it("refuses to open an index newer than the code", () => {
+      const future = memoryDb();
+      for (const stmt of SCHEMA_V1) future.exec(stmt);
+      future.exec(`INSERT INTO meta (key, value) VALUES ('schema_version', '99')`);
+      expect(() => new WorkspaceIndex(future)).toThrow("newer than this code");
     });
   });
 

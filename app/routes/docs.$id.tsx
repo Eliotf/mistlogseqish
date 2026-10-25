@@ -1,8 +1,8 @@
-import { data, Link, useLocation } from "react-router";
+import { data, Link, redirect, useLocation } from "react-router";
 import type { Route } from "./+types/docs.$id";
-import { getAgentByName } from "agents";
 import { isValidDocumentId, APP_DISPLAY_NAME } from "~/shared/constants";
-import { getCloudflare } from "~/lib/cloudflare.server";
+import { currentSlugOrNull, loadDocument } from "~/lib/document-loader.server";
+import { pagePath } from "~/lib/slug";
 import { useYjsEditor } from "~/lib/useYjsEditor";
 import { DocumentProvider, useDocument } from "~/lib/DocumentContext";
 import Editor from "~/components/Editor";
@@ -30,41 +30,40 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   if (!isValidDocumentId(id)) {
     throw data(null, { status: 404 });
   }
-
-  const { env } = getCloudflare(context);
-  const stub = await getAgentByName(env.DocumentAgent, id);
-  const res = await stub.fetch(new Request("https://do/"));
-  const { exists, createdAt } = (await res.json()) as {
-    exists: boolean;
-    createdAt: number | null;
-  };
-
-  if (!exists) {
-    throw data(null, { status: 404 });
-  }
-
-  return { id, createdAt };
+  // /docs/<id> is the permanent address; pages with a title live at /page/<slug>
+  const slug = await currentSlugOrNull(context, id);
+  if (slug) throw redirect(pagePath(id, slug));
+  const doc = await loadDocument(context, id);
+  return { ...doc, path: pagePath(id, null) };
 }
 
 export default function DocumentPage({ loaderData }: Route.ComponentProps) {
-  const { id, createdAt } = loaderData;
+  const { id, createdAt, path } = loaderData;
   const location = useLocation();
   const focusTitle = (location.state as { focusTitle?: boolean } | null)?.focusTitle === true;
   // Keyed by page so moving between pages gets a fresh Yjs doc and editor
-  return <DocumentScreen key={id} id={id} createdAt={createdAt} focusTitle={focusTitle} />;
+  return <DocumentScreen key={id} id={id} createdAt={createdAt} path={path} focusTitle={focusTitle} />;
 }
 
-function DocumentScreen({ id, createdAt, focusTitle }: { id: string; createdAt: number | null; focusTitle: boolean }) {
+interface ScreenProps {
+  id: string;
+  createdAt: number | null;
+  /** The address the page was loaded at: /page/<slug> or /docs/<id>. */
+  path: string;
+  focusTitle: boolean;
+}
+
+function DocumentScreen({ id, createdAt, path, focusTitle }: ScreenProps) {
   const yjs = useYjsEditor(id);
 
   return (
     <DocumentProvider docId={id} createdAt={createdAt} yjs={yjs}>
-      <DocumentLayout id={id} focusTitle={focusTitle} />
+      <DocumentLayout id={id} path={path} focusTitle={focusTitle} />
     </DocumentProvider>
   );
 }
 
-function DocumentLayout({ id, focusTitle }: { id: string; focusTitle: boolean }) {
+function DocumentLayout({ id, path, focusTitle }: Omit<ScreenProps, "createdAt">) {
   const {
     yjs,
     showPreview,
@@ -92,7 +91,9 @@ function DocumentLayout({ id, focusTitle }: { id: string; focusTitle: boolean })
           <NewPageButton />
         </div>
         <div className="flex grow shrink-0 items-center px-4">
-          <span className="font-mono font-bold">{id}</span>
+          <span className="font-mono text-sm text-muted" title="This page's address">
+            {decodeURIComponent(path)}
+          </span>
         </div>
         <div className="flex shrink-0 items-center border-l border-border px-3">
           <ConnectionStatus />

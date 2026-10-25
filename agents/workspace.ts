@@ -55,6 +55,14 @@ class WorkspaceAgent extends Agent {
     return this.index.getPage(pageId);
   }
 
+  async currentSlug(pageId: string) {
+    return this.index.currentSlug(pageId);
+  }
+
+  async resolveSlug(slug: string) {
+    return this.index.resolveSlug(slug);
+  }
+
   async findByTitle(title: string, exceptId?: string) {
     return this.index.findByTitle(title, exceptId);
   }

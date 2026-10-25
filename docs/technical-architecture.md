@@ -72,11 +72,21 @@ Tests in `tests/unit/lib/note-*.test.ts` include a round trip through Yjs using 
 - Rules live in `app/lib/page-title.ts` (`normalizeTitle`), used by both the editor and the server. Uniqueness is checked by `GET /api/title-check?title=&pageId=` (`app/routes/api.title-check.ts`), which asks the index's `findByTitle`. The index lags edits by about 2 seconds, so two renames to the same title within that window could both pass.
 - Because links store page IDs, renaming changes nothing else. Links will show the new title once they read it from the index (chunk 2.5).
 
+## Readable URLs
+
+- `/page/<slug>` is a page's readable address; `/docs/<id>` is its permanent one and redirects (302) to the slug when the page has one. Untitled pages, and titles with no letters or digits, stay at `/docs/<id>`.
+- `slugify` (`app/lib/slug.ts`) lowercases, keeps letters, digits and marks from any script, turns everything else into `-`, and caps at 80 code points.
+- The index assigns slugs in `updatePage` (`assignSlug` in `agents/workspace-index.ts`). A slug another page currently holds gets a suffix: the first 4 characters of the page ID, then the full ID. A slug that is only another page's old redirect is taken over. Re-indexing keeps a page's slug stable.
+- `/page/:slug` (`app/routes/page.$slug.tsx`) resolves through the index. Old slugs, and other case or accent forms, redirect to the canonical address; unknown slugs are 404. Both routes share `app/lib/document-loader.server.ts`. The `/docs/<id>` slug lookup fails open if the index is unreachable.
+- After a rename the browser keeps its current address until the next load, because the index learns the new title about 2 seconds later.
+
 ## Workspace Index
 
 Each page is an isolated Durable Object, so cross-page features (backlinks, `[[` autocomplete, search, the Tasks view, the journal feed) query one `WorkspaceAgent` instead. The index is always derived from documents, never the other way round.
 
 ### Implementation
+
+- **Schema versions.** `SCHEMA_V1` is frozen as shipped. `MIGRATIONS` is an append-only list; entry *n* upgrades version *n* to *n+1*. Opening the index runs any pending migrations in one transaction, and refuses an index newer than the code. Version 2 (chunk 2.1b) adds `slugs` and slugs every titled page.
 
 - `agents/workspace-index.ts`: `WorkspaceIndex`, all schema, updates and queries, written against a two-method SQL interface (`exec`, `transaction`).
 - `agents/workspace.ts`: `WorkspaceAgent`, which adapts Durable Object storage (`storage.sql.exec`, `storage.transactionSync`) to that interface and exposes the index's methods over Durable Object RPC.
@@ -88,6 +98,7 @@ Each page is an isolated Durable Object, so cross-page features (backlinks, `[[`
 ### What it holds
 
 - **Page registry** — every page ID and its creation date, recorded when the page is created. This is the only part of the index that cannot be rebuilt (Durable Objects cannot be listed), so rebuilds never clear it. Journals have date-based IDs (`journal-YYYY-MM-DD`) and can always be found by date.
+- **Slugs** — every slug each page has had (`slugs`: `slug`, `page_id`, `current`). Like the registry, never cleared by a rebuild, because old slugs are not recorded in documents and old links must keep redirecting.
 - **Derived tables** — `pages` (title, kind, journal date, updated), `links`, `tasks`, and a full-text search table. These can be cleared and rebuilt at any time.
 - **Parser version** — the version of the shared parser that built each page's entry.
 

@@ -1,5 +1,6 @@
 import { parseNote, PARSER_VERSION, type DocLine, type TaskState } from "../app/lib/note-parser";
 import { isJournalId, isPageId, journalTitle, parseJournalDate } from "../app/lib/note-ids";
+import { slugify } from "../app/lib/slug";
 
 /**
  * The workspace index: everything cross-page features query (backlinks,
@@ -24,10 +25,12 @@ export interface SqlDb {
   transaction<T>(fn: () => T): T;
 }
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
-// One statement per entry: Node's SQLite prepares a single statement at a time.
-export const SCHEMA: string[] = [
+// Version 1, as shipped in chunk 1.4. Never edit: later versions migrate
+// from it (MIGRATIONS). One statement per entry, because Node's SQLite
+// prepares a single statement at a time.
+export const SCHEMA_V1: string[] = [
   `CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
   // Never cleared by a rebuild: it is how a rebuild finds every page.
   `CREATE TABLE IF NOT EXISTS registry (page_id TEXT PRIMARY KEY, created_at INTEGER NOT NULL)`,
@@ -66,7 +69,64 @@ export const SCHEMA: string[] = [
   `CREATE VIRTUAL TABLE IF NOT EXISTS pages_fts USING fts5(page_id UNINDEXED, title, body, tokenize = 'unicode61 remove_diacritics 2')`,
 ];
 
+/**
+ * Each entry upgrades the index by one version: MIGRATIONS[0] takes it from
+ * 1 to 2, and so on. Append only; never edit an entry that has shipped.
+ */
+const MIGRATIONS: Array<(db: SqlDb) => void> = [
+  // 1 -> 2: readable URLs (chunk 2.1b). Give every titled page its slug.
+  (db) => {
+    db.exec(`CREATE TABLE IF NOT EXISTS slugs (slug TEXT PRIMARY KEY, page_id TEXT NOT NULL, current INTEGER NOT NULL)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS slugs_page ON slugs (page_id)`);
+    const titled = db.exec(`SELECT page_id, title FROM pages WHERE kind = 'page' AND title != '' ORDER BY page_id`);
+    for (const row of titled) assignSlug(db, row.page_id as string, row.title as string);
+  },
+];
+
+// Rebuilt from documents. Not listed, so never cleared: registry (how a
+// rebuild finds pages) and slugs (old slugs are not recorded in documents,
+// and old links must keep redirecting).
 const DERIVED_TABLES = ["pages", "links", "tags", "tasks", "pages_fts"];
+
+/**
+ * Give a page the slug for its title and return it, keeping its old slugs as
+ * redirects. A slug another page currently holds gets a short ID suffix; a
+ * slug that is only another page's old redirect is taken over, since a real
+ * title beats a leftover redirect. Returns null for titles with no letters
+ * or digits, which keep the /docs/<id> address.
+ */
+function assignSlug(db: SqlDb, pageId: string, title: string): string | null {
+  const base = slugify(title);
+  if (!base) {
+    db.exec(`UPDATE slugs SET current = 0 WHERE page_id = ?`, pageId);
+    return null;
+  }
+  const candidates = [base, `${base}-${pageId.slice(0, 4)}`, `${base}-${pageId}`];
+  const held = db.exec(`SELECT slug FROM slugs WHERE page_id = ? AND current = 1`, pageId)[0]?.slug as string | undefined;
+  // Re-indexing an unchanged title keeps the same slug, even a suffixed one
+  if (held && candidates.includes(held)) return held;
+  for (const slug of candidates) {
+    const owner = db.exec(`SELECT page_id, current FROM slugs WHERE slug = ?`, slug)[0];
+    if (owner && owner.page_id !== pageId && owner.current === 1) continue;
+    db.exec(`UPDATE slugs SET current = 0 WHERE page_id = ?`, pageId);
+    db.exec(
+      `INSERT INTO slugs (slug, page_id, current) VALUES (?, ?, 1)
+       ON CONFLICT (slug) DO UPDATE SET page_id = excluded.page_id, current = 1`,
+      slug, pageId,
+    );
+    return slug;
+  }
+  // Unreachable: the last candidate contains the page's own unique ID
+  throw new Error(`No free slug for ${pageId}`);
+}
+
+export interface ResolvedSlug {
+  pageId: string;
+  /** Whether the requested slug is the page's current one (false means redirect). */
+  current: boolean;
+  /** The page's current slug, or null if it has none (use /docs/<id>). */
+  currentSlug: string | null;
+}
 
 /** Markers around matched words in search snippets; the UI turns them into highlights. */
 export const SNIPPET_START = "\u0002";
@@ -156,8 +216,16 @@ export function ftsQuery(input: string): string | null {
 export class WorkspaceIndex {
   constructor(private readonly db: SqlDb) {
     db.transaction(() => {
-      for (const stmt of SCHEMA) db.exec(stmt);
-      db.exec(`INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', ?)`, String(SCHEMA_VERSION));
+      for (const stmt of SCHEMA_V1) db.exec(stmt);
+      db.exec(`INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', '1')`);
+      let version = Number(db.exec(`SELECT value FROM meta WHERE key = 'schema_version'`)[0].value);
+      if (version > SCHEMA_VERSION) {
+        throw new Error(`Index schema ${version} is newer than this code (${SCHEMA_VERSION})`);
+      }
+      for (; version < SCHEMA_VERSION; version++) {
+        MIGRATIONS[version - 1](db);
+        db.exec(`UPDATE meta SET value = ? WHERE key = 'schema_version'`, String(version + 1));
+      }
     });
   }
 
@@ -222,8 +290,22 @@ export class WorkspaceIndex {
         );
       }
       this.db.exec(`INSERT INTO pages_fts (page_id, title, body) VALUES (?, ?, ?)`, pageId, title, parsed.text);
+      if (kind === "page") assignSlug(this.db, pageId, title);
       return { pageId, parserVersion: PARSER_VERSION, updatedAt, applied: true };
     });
+  }
+
+  /** A page's current slug, or null if it has none. */
+  currentSlug(pageId: string): string | null {
+    return (this.db.exec(`SELECT slug FROM slugs WHERE page_id = ? AND current = 1`, pageId)[0]?.slug as string) ?? null;
+  }
+
+  /** Which page a slug belongs to, and whether it is that page's current slug. */
+  resolveSlug(slug: string): ResolvedSlug | null {
+    const row = this.db.exec(`SELECT page_id, current FROM slugs WHERE slug = ?`, slug.normalize("NFC").toLowerCase())[0];
+    if (!row) return null;
+    const pageId = row.page_id as string;
+    return { pageId, current: row.current === 1, currentSlug: this.currentSlug(pageId) };
   }
 
   getPage(pageId: string): IndexedPage | null {
@@ -335,7 +417,7 @@ export class WorkspaceIndex {
     return Number(this.db.exec(`SELECT COUNT(*) AS n FROM pages WHERE parser_version < ?`, PARSER_VERSION)[0].n);
   }
 
-  /** Clear everything derived, ready for a rebuild. The registry is kept. */
+  /** Clear everything derived, ready for a rebuild. The registry and slugs are kept. */
   clearDerived(): void {
     this.db.transaction(() => {
       for (const table of DERIVED_TABLES) this.db.exec(`DELETE FROM ${table}`);
