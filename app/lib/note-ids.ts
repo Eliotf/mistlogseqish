@@ -63,6 +63,17 @@ export function isJournalTitle(title: string): boolean {
   return parseJournalDate(JOURNAL_PREFIX + date) !== null;
 }
 
+/** A Date as YYYY-MM-DD in the local time zone of wherever this runs (use in the browser for "today"). */
+export function localDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** Day of the week for a YYYY-MM-DD date, the same in every time zone. */
+export function weekdayOf(date: string): string {
+  const [y, m, d] = date.split("-").map(Number);
+  return ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+}
+
 export function isJournalId(id: string): boolean {
   return parseJournalDate(id) !== null;
 }

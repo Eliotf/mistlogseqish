@@ -18,6 +18,7 @@ vi.mock("~/components/Editor", () => ({ default: () => null }));
 
 import { loader as docsLoader } from "~/routes/docs.$id";
 import { loader as pageLoader } from "~/routes/page.$slug";
+import { loader as journalLoader } from "~/routes/journal.$date";
 
 function exists(createdAt = 123) {
   mockDocFetch.mockResolvedValue(Response.json({ exists: true, createdAt }));
@@ -37,6 +38,7 @@ async function thrown(promise: Promise<unknown>): Promise<Response> {
 
 const docs = (id: string) => docsLoader({ params: { id }, context: {} } as never);
 const page = (slug: string) => pageLoader({ params: { slug }, context: {} } as never);
+const journal = (date: string) => journalLoader({ params: { date }, context: {} } as never);
 
 describe("page routes", () => {
   beforeEach(() => {
@@ -62,7 +64,7 @@ describe("page routes", () => {
 
     it("shows an untitled page at its permanent address", async () => {
       exists(456);
-      expect(await docs("abcd1234")).toEqual({ id: "abcd1234", createdAt: 456, path: "/docs/abcd1234" });
+      expect(await docs("abcd1234")).toEqual({ id: "abcd1234", createdAt: 456, exists: true, path: "/docs/abcd1234" });
     });
 
     it("still loads the page if the index is unreachable", async () => {
@@ -78,6 +80,13 @@ describe("page routes", () => {
       expect((await thrown(docs("abcd1234"))).status).toBe(404);
     });
 
+    it("redirects a journal ID to its journal address", async () => {
+      const res = await thrown(docs("journal-2026-10-26"));
+      expect(res.status).toBe(302);
+      expect(res.headers.get("Location")).toBe("/journal/2026-10-26");
+      expect(mockGetAgentByName).not.toHaveBeenCalled();
+    });
+
     it("is 404 for an invalid ID without asking anything", async () => {
       expect((await thrown(docs("NOT-AN-ID"))).status).toBe(404);
       expect(mockGetAgentByName).not.toHaveBeenCalled();
@@ -88,7 +97,7 @@ describe("page routes", () => {
     it("shows the page for its current slug", async () => {
       mockIndex.resolveSlug.mockResolvedValue({ pageId: "abcd1234", current: true, currentSlug: "meeting-notes" });
       exists(789);
-      expect(await page("meeting-notes")).toEqual({ id: "abcd1234", createdAt: 789, path: "/page/meeting-notes" });
+      expect(await page("meeting-notes")).toEqual({ id: "abcd1234", createdAt: 789, exists: true, path: "/page/meeting-notes" });
       expect(mockIndex.resolveSlug).toHaveBeenCalledWith("meeting-notes");
     });
 
@@ -120,6 +129,29 @@ describe("page routes", () => {
     it("is 404 for an unknown slug", async () => {
       expect((await thrown(page("nothing-here"))).status).toBe(404);
       expect(mockDocFetch).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("/journal/:date", () => {
+    it("opens a day nobody has written in yet", async () => {
+      mockDocFetch.mockResolvedValue(Response.json({ exists: false, createdAt: null }));
+      expect(await journal("2026-10-26")).toEqual({
+        id: "journal-2026-10-26",
+        createdAt: null,
+        exists: false,
+        path: "/journal/2026-10-26",
+      });
+      expect(mockGetAgentByName).toHaveBeenCalledWith("documents", "journal-2026-10-26");
+    });
+
+    it("opens a day that has been written in", async () => {
+      exists(321);
+      expect(await journal("2026-10-25")).toMatchObject({ exists: true, createdAt: 321 });
+    });
+
+    it.each(["2026-02-30", "2026-13-01", "26-10-26", "today", "2026-10-26x"])("is 404 for %j", async (date) => {
+      expect((await thrown(journal(date))).status).toBe(404);
+      expect(mockGetAgentByName).not.toHaveBeenCalled();
     });
   });
 });

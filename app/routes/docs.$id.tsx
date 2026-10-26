@@ -20,6 +20,9 @@ import MobilePanel from "~/components/MobilePanel";
 import OnboardingBanner from "~/components/OnboardingBanner";
 import PageTitle from "~/components/PageTitle";
 import NewPageButton from "~/components/NewPageButton";
+import JournalHeading from "~/components/JournalHeading";
+import TodayButton from "~/components/TodayButton";
+import { isJournalId } from "~/lib/note-ids";
 
 export function meta(_args: Route.MetaArgs) {
   return [{ title: APP_DISPLAY_NAME }];
@@ -27,6 +30,8 @@ export function meta(_args: Route.MetaArgs) {
 
 export async function loader({ params, context }: Route.LoaderArgs) {
   const id = params.id;
+  // Journals live at /journal/<date>
+  if (isJournalId(id)) throw redirect(pagePath(id, null));
   if (!isValidDocumentId(id)) {
     throw data(null, { status: 404 });
   }
@@ -38,32 +43,34 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 }
 
 export default function DocumentPage({ loaderData }: Route.ComponentProps) {
-  const { id, createdAt, path } = loaderData;
+  const { id, createdAt, path, exists } = loaderData;
   const location = useLocation();
   const focusTitle = (location.state as { focusTitle?: boolean } | null)?.focusTitle === true;
   // Keyed by page so moving between pages gets a fresh Yjs doc and editor
-  return <DocumentScreen key={id} id={id} createdAt={createdAt} path={path} focusTitle={focusTitle} />;
+  return <DocumentScreen key={id} id={id} createdAt={createdAt} exists={exists} path={path} focusTitle={focusTitle} />;
 }
 
 interface ScreenProps {
   id: string;
   createdAt: number | null;
+  /** False only for a journal day nobody has written in yet. */
+  exists: boolean;
   /** The address the page was loaded at: /page/<slug> or /docs/<id>. */
   path: string;
   focusTitle: boolean;
 }
 
-function DocumentScreen({ id, createdAt, path, focusTitle }: ScreenProps) {
+function DocumentScreen({ id, createdAt, exists, path, focusTitle }: ScreenProps) {
   const yjs = useYjsEditor(id);
 
   return (
     <DocumentProvider docId={id} createdAt={createdAt} yjs={yjs}>
-      <DocumentLayout id={id} path={path} focusTitle={focusTitle} />
+      <DocumentLayout id={id} exists={exists} path={path} focusTitle={focusTitle} />
     </DocumentProvider>
   );
 }
 
-function DocumentLayout({ id, path, focusTitle }: Omit<ScreenProps, "createdAt">) {
+function DocumentLayout({ id, exists, path, focusTitle }: Omit<ScreenProps, "createdAt">) {
   const navigate = useNavigate();
   // Move to the new address straight away; the index already knows it
   const onRenamed = (newPath: string) => {
@@ -93,6 +100,9 @@ function DocumentLayout({ id, path, focusTitle }: Omit<ScreenProps, "createdAt">
           {APP_DISPLAY_NAME}
         </Link>
         <div className="shrink-0 border-r border-border">
+          <TodayButton />
+        </div>
+        <div className="shrink-0 border-r border-border">
           <NewPageButton />
         </div>
         <div className="flex grow shrink-0 items-center px-4">
@@ -112,7 +122,11 @@ function DocumentLayout({ id, path, focusTitle }: Omit<ScreenProps, "createdAt">
       </header>
       <div className="flex flex-1 overflow-hidden">
         <main className="flex-1 overflow-y-auto pb-[33vh] lg:border-r lg:border-border lg:pb-0">
-          <PageTitle doc={yjs.doc} pageId={id} autoFocus={focusTitle} onRenamed={onRenamed} />
+          {isJournalId(id) ? (
+            <JournalHeading doc={yjs.doc} pageId={id} exists={exists} />
+          ) : (
+            <PageTitle doc={yjs.doc} pageId={id} autoFocus={focusTitle} onRenamed={onRenamed} />
+          )}
           <Editor
             yjs={yjs}
             hidden={showPreview}

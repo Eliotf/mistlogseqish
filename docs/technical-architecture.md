@@ -80,6 +80,14 @@ Tests in `tests/unit/lib/note-*.test.ts` include a round trip through Yjs using 
 - **Residual risk.** The server writes `meta.title` in the same synchronous step that `claimTitle` returns in. If the process died between the two, the index would hold a title the document lacks until the next reindex reverts it.
 - Because links store page IDs, renaming changes nothing else. Links will show the new title once they read it from the index (chunk 2.5).
 
+## Journal Pages
+
+- A journal day is the `DocumentAgent` named `journal-YYYY-MM-DD`, opened at `/journal/YYYY-MM-DD` (`app/routes/journal.$date.tsx`). Any real date can be opened; invalid dates are 404, and `/docs/journal-…` redirects. `pagePath` returns the journal address for journal IDs.
+- **Created by its first real text.** Journals have no `POST`. `DocumentAgent`'s update handler, for a journal without the `exists` marker, checks whether the document now has non-whitespace text (`createJournalIfWritten`). If so it records `exists` and `createdAt`, stamps `DOC_FORMAT_VERSION` and registers with the index. Until then it **does not persist** the Yjs state, so opening a day leaves nothing behind; the first text persists the whole document. Tabs still sync before creation. (The TipTap editor writes nothing into an empty document when it opens; the text check is a safety net.)
+- Titles are the date (`journalTitle`), shown read-only by `JournalHeading`; `meta.title` writes are reverted and renames refused. The weekday is rendered on the server (it is the same in every time zone); "Today" and the "Not saved yet" note are decided in the browser with `useSyncExternalStore`.
+- The header's "Today" button navigates to `/journal/<localDate(now)>`, computed in the browser's time zone when clicked.
+- `onConnect` sends the document to the new tab first, then runs `indexOnOpen` (never throws), so indexing can never stop a tab receiving its document.
+
 ## Readable URLs
 
 - `/page/<slug>` is a page's readable address; `/docs/<id>` is its permanent one and redirects (302) to the slug when the page has one. Untitled pages, and titles with no letters or digits, stay at `/docs/<id>`.

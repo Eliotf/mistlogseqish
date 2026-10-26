@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { journalId, journalTitle, parseJournalDate, isJournalId, isJournalTitle, isPageId } from "~/lib/note-ids";
+import { journalId, journalTitle, parseJournalDate, isJournalId, isJournalTitle, isPageId, localDate, weekdayOf } from "~/lib/note-ids";
 import { generateDocumentId } from "~/shared/constants";
 
 describe("journalId", () => {
@@ -73,6 +73,22 @@ describe("isJournalTitle", () => {
     for (const date of ["2026-01-01", "2026-02-02", "2026-03-03", "2026-04-11", "2026-12-31"]) {
       expect(isJournalTitle(journalTitle(date))).toBe(true);
     }
+  });
+});
+
+describe("localDate and weekdayOf", () => {
+  it("formats a date in local time, padding month and day", () => {
+    expect(localDate(new Date(2026, 0, 5, 23, 59))).toBe("2026-01-05");
+    expect(localDate(new Date(2026, 9, 26, 0, 0))).toBe("2026-10-26");
+  });
+
+  it.each([
+    ["2026-10-26", "Monday"],
+    ["2026-10-25", "Sunday"],
+    ["2028-02-29", "Tuesday"],
+    ["2000-01-01", "Saturday"],
+  ])("knows %s is a %s", (date, day) => {
+    expect(weekdayOf(date)).toBe(day);
   });
 });
 

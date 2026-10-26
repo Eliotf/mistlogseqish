@@ -17,14 +17,31 @@ export function documentAgent(context: LoaderContext, pageId: string) {
   return getAgentByName(env.DocumentAgent, pageId);
 }
 
-/** Load a document's metadata, or throw a 404 if it was never created. */
-export async function loadDocument(context: LoaderContext, id: string): Promise<{ id: string; createdAt: number | null }> {
+export interface LoadedDocument {
+  id: string;
+  createdAt: number | null;
+  /** False only for a journal day nobody has written in yet. */
+  exists: boolean;
+}
+
+async function documentStatus(context: LoaderContext, id: string): Promise<LoadedDocument> {
   const { env } = getCloudflare(context);
   const stub = await getAgentByName(env.DocumentAgent, id);
   const res = await stub.fetch(new Request("https://do/"));
   const { exists, createdAt } = (await res.json()) as { exists: boolean; createdAt: number | null };
-  if (!exists) throw data(null, { status: 404 });
-  return { id, createdAt };
+  return { id, createdAt, exists };
+}
+
+/** Load a page's metadata, or throw a 404 if it was never created. */
+export async function loadDocument(context: LoaderContext, id: string): Promise<LoadedDocument> {
+  const doc = await documentStatus(context, id);
+  if (!doc.exists) throw data(null, { status: 404 });
+  return doc;
+}
+
+/** Load a journal day, which can be opened before anyone has written in it. */
+export function loadJournal(context: LoaderContext, id: string): Promise<LoadedDocument> {
+  return documentStatus(context, id);
 }
 
 /**

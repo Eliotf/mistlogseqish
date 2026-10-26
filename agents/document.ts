@@ -92,13 +92,15 @@ class DocumentAgent extends Agent {
     // Browsers' updates are relayed by onMessage; the server's own changes
     // (such as a rename, or reverting a browser's title change) are sent here.
     this.doc.on("update", (update: Uint8Array, origin: unknown) => {
+      if (origin !== CLIENT_ORIGIN) this.broadcastUpdate(update);
+      // A journal is created by its first real text; until then nothing is saved
+      if (this.isUncreatedJournal() && !this.createJournalIfWritten()) return;
       const state = Y.encodeStateAsUpdate(this.doc!);
       this.sql`
         INSERT INTO doc_state (key, value) VALUES ('state', ${sqlBlob(state)})
         ON CONFLICT(key) DO UPDATE SET value = excluded.value
       `;
       this.markForIndex();
-      if (origin !== CLIENT_ORIGIN) this.broadcastUpdate(update);
     });
 
     // Only the server sets the title (rename, after the index claims it), so
@@ -125,13 +127,6 @@ class DocumentAgent extends Agent {
   async onConnect(connection: Connection, _ctx: ConnectionContext) {
     const { doc, awareness } = this.ensureInitialised();
 
-    // Index on open if never indexed (Mist-era documents), indexed by an
-    // older parser, or left with unsent edits by a restart
-    const indexState = this.readIndexState();
-    if (!indexState.ack || indexState.ack.parserVersion < PARSER_VERSION || indexState.dirty) {
-      this.markForIndex();
-    }
-
     // Send SyncStep1 to the new client
     const syncEncoder = encoding.createEncoder();
     encoding.writeVarUint(syncEncoder, MSG_SYNC);
@@ -153,6 +148,25 @@ class DocumentAgent extends Agent {
       encoding.writeVarUint(awarenessEncoder, MSG_AWARENESS);
       encoding.writeVarUint8Array(awarenessEncoder, update);
       connection.send(encoding.toUint8Array(awarenessEncoder));
+    }
+
+    // Only after the client has the document, so indexing can never block it
+    this.indexOnOpen();
+  }
+
+  /**
+   * Index on open if never indexed (Mist-era documents), indexed by an older
+   * parser, or left with unsent edits by a restart. Never throws.
+   */
+  private indexOnOpen(): void {
+    try {
+      if (!this.isIndexable()) return;
+      const indexState = this.readIndexState();
+      if (!indexState.ack || indexState.ack.parserVersion < PARSER_VERSION || indexState.dirty) {
+        this.markForIndex();
+      }
+    } catch (err) {
+      console.error("indexOnOpen failed", err);
     }
   }
 
@@ -232,6 +246,7 @@ class DocumentAgent extends Agent {
         INSERT INTO doc_state (key, value) VALUES ('exists', ${sqlBlob(new Uint8Array([1]))})
         ON CONFLICT(key) DO UPDATE SET value = excluded.value
       `;
+      this.existsCache = true;
 
       // Stamp doc format version in Yjs metadata
       const meta = doc.getMap<number>("meta");
@@ -327,12 +342,51 @@ class DocumentAgent extends Agent {
     return new Response("Not found", { status: 404 });
   }
 
+  /* ---------- Journals (docs/technical-architecture.md, "Journal Pages") ---------- */
+
+  /** Cached 'exists' marker; null until read. */
+  private existsCache: boolean | null = null;
+
+  private exists(): boolean {
+    this.existsCache ??= this.sql<{ value: ArrayBuffer }>`SELECT value FROM doc_state WHERE key = 'exists'`.length > 0;
+    return this.existsCache;
+  }
+
+  /** A journal day nobody has written in yet. It has no POST: it is created by its first text. */
+  private isUncreatedJournal(): boolean {
+    return isJournalId(this.name) && !this.exists();
+  }
+
+  /**
+   * Create this journal if its document now has real text: mark it as
+   * existing, record when, stamp the format version and register it with the
+   * index. Opening a day, or the editor adding an empty paragraph, does not
+   * count. Returns whether the journal exists now.
+   */
+  private createJournalIfWritten(): boolean {
+    const hasText = linesFromYjs(this.doc!.getXmlFragment("default")).some((line) => line.text.trim() !== "");
+    if (!hasText) return false;
+    const now = Date.now();
+    this.sql`
+      INSERT INTO doc_state (key, value) VALUES ('exists', ${sqlBlob(new Uint8Array([1]))})
+      ON CONFLICT(key) DO NOTHING
+    `;
+    this.sql`
+      INSERT INTO doc_state (key, value) VALUES ('createdAt', ${sqlBlob(new Uint8Array(new Float64Array([now]).buffer))})
+      ON CONFLICT(key) DO NOTHING
+    `;
+    this.existsCache = true;
+    const meta = this.doc!.getMap<unknown>("meta");
+    if (!meta.has("version")) this.doc!.transact(() => meta.set("version", DOC_FORMAT_VERSION), SERVER_ORIGIN);
+    void this.registerWithIndex(now);
+    return true;
+  }
+
   /* ---------- Workspace index (docs/technical-architecture.md) ---------- */
 
   /** Only documents created through POST, with a valid page ID, are indexed. */
   private isIndexable(): boolean {
-    if (!isPageId(this.name)) return false;
-    return this.sql<{ value: ArrayBuffer }>`SELECT value FROM doc_state WHERE key = 'exists'`.length > 0;
+    return isPageId(this.name) && this.exists();
   }
 
   private readIndexState(): IndexState {

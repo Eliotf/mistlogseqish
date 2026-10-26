@@ -45,6 +45,11 @@ describe("pagePath", () => {
     expect(pagePath("abcd1234", "café")).toBe("/page/caf%C3%A9");
   });
 
+  it("uses the journal address for journals, whatever the slug", () => {
+    expect(pagePath("journal-2026-10-26", null)).toBe("/journal/2026-10-26");
+    expect(pagePath("journal-2026-10-26", "ignored")).toBe("/journal/2026-10-26");
+  });
+
   it("falls back to the permanent address", () => {
     expect(pagePath("abcd1234", null)).toBe("/docs/abcd1234");
   });

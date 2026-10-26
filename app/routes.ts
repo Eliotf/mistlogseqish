@@ -5,5 +5,6 @@ export default [
   route("new", "routes/new.ts"),
   route("docs/:id", "routes/docs.$id.tsx"),
   route("page/:slug", "routes/page.$slug.tsx"),
+  route("journal/:date", "routes/journal.$date.tsx"),
   route("api/rename", "routes/api.rename.ts"),
 ] satisfies RouteConfig;

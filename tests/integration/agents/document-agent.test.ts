@@ -892,7 +892,7 @@ describe("DocumentAgent", () => {
       const realSql = (agent as unknown as { sql: (...a: unknown[]) => unknown }).sql.bind(agent);
       vi.spyOn(agent as unknown as { sql: (...a: unknown[]) => unknown }, "sql").mockImplementation(
         (strings: unknown, ...values: unknown[]) => {
-          if ((strings as string[]).join("").includes("key = 'exists'")) throw new Error("disk full");
+          if ((strings as string[]).join("").includes("key = 'index'")) throw new Error("disk full");
           return realSql(strings, ...values);
         },
       );
@@ -1107,6 +1107,118 @@ describe("DocumentAgent", () => {
       expect(updates).toEqual([]);
       cleanup(client);
       vi.restoreAllMocks();
+    });
+
+    it("still sends the document to a new tab if the index check on open fails", async () => {
+      await create("must arrive");
+      const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+      const realSql = (agent as unknown as { sql: (...a: unknown[]) => unknown }).sql.bind(agent);
+      vi.spyOn(agent as unknown as { sql: (...a: unknown[]) => unknown }, "sql").mockImplementation(
+        (strings: unknown, ...values: unknown[]) => {
+          if ((strings as string[]).join("").includes("key = 'index'")) throw new Error("disk full");
+          return realSql(strings, ...values);
+        },
+      );
+      const client = connectYjsClient();
+      await Promise.resolve();
+      expect(client.doc.getXmlFragment("default").toString()).toContain("must arrive");
+      expect(errors).toHaveBeenCalledWith("indexOnOpen failed", expect.any(Error));
+      cleanup(client);
+      vi.restoreAllMocks();
+    });
+
+    /* ---- Journals: created by their first real text ---- */
+
+    describe("journals", () => {
+      const DAY = "journal-2026-10-26";
+      beforeEach(() => {
+        (agent as unknown as { name: string }).name = DAY;
+      });
+
+      async function status() {
+        const res = await agent.onRequest(new Request("https://do/"));
+        return (await res.json()) as { exists: boolean; createdAt: number | null };
+      }
+
+      it("is not created, saved or indexed just by opening it", async () => {
+        const client = connectYjsClient();
+        expect(await status()).toEqual({ exists: false, createdAt: null });
+        expect(mockSqlStore.has("state")).toBe(false);
+        expect(index.registeredPages()).toEqual([]);
+        cleanup(client);
+      });
+
+      it("is not created by an empty paragraph or whitespace", async () => {
+        const client = connectYjsClient();
+        addLine(client, "");
+        addLine(client, "   \t ");
+        await agent.reindex();
+        expect(await status()).toEqual({ exists: false, createdAt: null });
+        expect(mockSqlStore.has("state")).toBe(false);
+        expect(updates).toEqual([]);
+        cleanup(client);
+      });
+
+      it("is created, saved, registered and indexed by its first real text", async () => {
+        const client = connectYjsClient();
+        addLine(client, "First thought of the day");
+        await Promise.resolve();
+
+        const now = await status();
+        expect(now.exists).toBe(true);
+        expect(now.createdAt).toEqual(expect.any(Number));
+        expect(mockSqlStore.has("state")).toBe(true);
+        expect(client.doc.getMap("meta").get("version")).toBe(DOC_FORMAT_VERSION);
+        await vi.waitFor(() => expect(index.registeredPages()).toEqual([DAY]));
+        expect(reindexes().length).toBeGreaterThan(0);
+        await agent.reindex();
+        expect(index.getPage(DAY)).toMatchObject({ kind: "journal", title: "Oct 26th, 2026", hasContent: true });
+        cleanup(client);
+      });
+
+      it("saves the whole document, including what was there before the first text", async () => {
+        const client = connectYjsClient();
+        addLine(client, "");
+        addLine(client, "Now with text");
+        const fresh = new DocumentAgent({} as never, {} as never);
+        (fresh as unknown as { name: string }).name = DAY;
+        const reopened = connectYjsClient(fresh);
+        expect(reopened.doc.getXmlFragment("default").toString()).toContain("Now with text");
+        cleanup(client, reopened);
+      });
+
+      it("is created once when two tabs type the first letter at the same time", async () => {
+        const a = connectYjsClient();
+        const b = connectYjsClient();
+        addLine(a, "A");
+        addLine(b, "B");
+        const first = (await status()).createdAt;
+        addLine(a, "more");
+        expect((await status()).createdAt).toBe(first);
+        expect(a.doc.getXmlFragment("default").toString()).toContain("B");
+        expect(b.doc.getXmlFragment("default").toString()).toContain("A");
+        await vi.waitFor(() => expect(index.registeredPages()).toEqual([DAY]));
+        cleanup(a, b);
+      });
+
+      it("still syncs between tabs before it is created", async () => {
+        const a = connectYjsClient();
+        const b = connectYjsClient();
+        addLine(a, "");
+        expect(b.doc.getXmlFragment("default").length).toBe(1);
+        cleanup(a, b);
+      });
+
+      it("removes a title a browser tries to give it", async () => {
+        const client = connectYjsClient();
+        addLine(client, "written");
+        vi.spyOn(console, "warn").mockImplementation(() => {});
+        client.doc.getMap("meta").set("title", "Not a date");
+        expect(client.doc.getMap("meta").has("title")).toBe(false);
+        expect(await agent.rename("Not a date")).toEqual({ ok: false, code: "journal" });
+        cleanup(client);
+        vi.restoreAllMocks();
+      });
     });
 
     it("still creates the document if registration fails", async () => {

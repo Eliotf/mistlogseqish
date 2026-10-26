@@ -4,15 +4,15 @@ import tsconfigPaths from "vite-tsconfig-paths";
 
 /**
  * Fixed coverage floors, set just below actual coverage (last raised
- * 2026-10-25 with instant renames). They stop coverage falling but
+ * 2026-10-26 with journal pages). They stop coverage falling but
  * never rise on their own. Raise them by hand as tests are added (target:
  * 80 / 75 / 80 / 80). See PRD.md section 7, "Quality gates".
  */
 const coverageThresholds = {
-  lines: 66,
+  lines: 67,
   branches: 57,
-  functions: 59,
-  statements: 64,
+  functions: 61,
+  statements: 65,
 };
 
 export default defineConfig({

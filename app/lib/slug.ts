@@ -1,3 +1,5 @@
+import { parseJournalDate } from "./note-ids";
+
 /**
  * Readable page addresses (/page/<slug>, PRD F2). Slugs keep letters and
  * digits from any script, accents included, lowercased; anything else becomes
@@ -21,7 +23,9 @@ export function slugify(title: string): string {
   return (dash > MAX_SLUG_LENGTH / 2 ? cut.slice(0, dash) : cut).replace(/-+$/, "");
 }
 
-/** The path for a page: its readable slug, or its permanent ID address. */
+/** The path for a page: /journal/<date> for journals, else its readable slug, else its permanent ID address. */
 export function pagePath(pageId: string, slug: string | null): string {
+  const date = parseJournalDate(pageId);
+  if (date) return `/journal/${date}`;
   return slug ? `/page/${encodeURIComponent(slug)}` : `/docs/${pageId}`;
 }
