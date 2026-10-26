@@ -8,12 +8,27 @@ export const MAX_TITLE_LENGTH = 200;
 
 export type TitleResult = { ok: true; title: string } | { ok: false; reason: string };
 
+/** What DocumentAgent.rename reports. The rename route turns it into a RenameResult. */
+export type DocumentRenameResult =
+  | { ok: true; title: string; slug: string | null }
+  | { ok: false; code: "taken"; holderTitle: string }
+  | { ok: false; code: "invalid"; reason: string }
+  | { ok: false; code: "journal" | "journal-title" | "missing" };
+
 /** The server's answer to a rename: the saved title and the page's new address, or why not. */
 export type RenameResult = { ok: true; title: string; path: string } | { ok: false; reason: string };
 
-/** Collapse whitespace and validate. Returns the title to store, or why it cannot be used. */
+// Zero-width characters, word joiner, BOM, soft hyphen and bidirectional
+// controls: invisible, so two titles that look the same could differ
+const INVISIBLE_RE = /[\u00AD\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g;
+
+/**
+ * Normalise and validate a title. Returns the title to store, or why it
+ * cannot be used. Titles are NFC, so composed and decomposed accents
+ * compare equal, and invisible characters are removed.
+ */
 export function normalizeTitle(raw: string): TitleResult {
-  const title = raw.replace(/\s+/g, " ").trim();
+  const title = raw.normalize("NFC").replace(INVISIBLE_RE, "").replace(/\s+/g, " ").trim();
   if (!title) return { ok: false, reason: "A page needs a title." };
   if (title.length > MAX_TITLE_LENGTH) {
     return { ok: false, reason: `Titles can be up to ${MAX_TITLE_LENGTH} characters.` };

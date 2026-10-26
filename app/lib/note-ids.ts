@@ -47,6 +47,22 @@ export function journalTitle(date: string): string {
   return `${MONTHS[m - 1]} ${ordinal(d)}, ${y}`;
 }
 
+const JOURNAL_TITLE_RE = /^([a-z]{3}) (\d{1,2})(st|nd|rd|th), (\d{4})$/i;
+
+/**
+ * True if a title reads as a journal's title ("Oct 26th, 2026", ignoring case
+ * and which ordinal suffix is used), whether or not that journal exists yet.
+ * Pages may not take these titles.
+ */
+export function isJournalTitle(title: string): boolean {
+  const m = JOURNAL_TITLE_RE.exec(title.trim());
+  if (!m) return false;
+  const month = MONTHS.findIndex((name) => name.toLowerCase() === m[1].toLowerCase());
+  if (month < 0) return false;
+  const date = `${m[4]}-${String(month + 1).padStart(2, "0")}-${m[2].padStart(2, "0")}`;
+  return parseJournalDate(JOURNAL_PREFIX + date) !== null;
+}
+
 export function isJournalId(id: string): boolean {
   return parseJournalDate(id) !== null;
 }

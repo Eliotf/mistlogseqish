@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { mockClaimTitle, mockGetAgentByName } = vi.hoisted(() => ({
-  mockClaimTitle: vi.fn(),
+const { mockRename, mockGetAgentByName } = vi.hoisted(() => ({
+  mockRename: vi.fn(),
   mockGetAgentByName: vi.fn(),
 }));
 
@@ -24,57 +24,60 @@ function post(body: unknown, init: { method?: string; contentType?: string } = {
 
 describe("POST /api/rename", () => {
   beforeEach(() => {
-    mockClaimTitle.mockReset().mockResolvedValue({ ok: true, title: "Meeting notes", slug: "meeting-notes" });
-    mockGetAgentByName.mockReset().mockResolvedValue({ claimTitle: mockClaimTitle });
+    mockRename.mockReset().mockResolvedValue({ ok: true, title: "Meeting notes", slug: "meeting-notes" });
+    mockGetAgentByName.mockReset().mockResolvedValue({ rename: mockRename });
   });
 
-  it("claims a normalised title and returns the new address", async () => {
+  it("asks the page's DocumentAgent to rename and returns the new address", async () => {
     const res = await post({ pageId: "abcd1234", title: "  Meeting   notes " });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, title: "Meeting notes", path: "/page/meeting-notes" });
-    expect(mockGetAgentByName).toHaveBeenCalledWith("workspace", "default");
-    expect(mockClaimTitle).toHaveBeenCalledWith("abcd1234", "Meeting notes", expect.any(Number));
+    expect(mockGetAgentByName).toHaveBeenCalledWith("documents", "abcd1234");
+    expect(mockRename).toHaveBeenCalledWith("  Meeting   notes ");
   });
 
   it("returns the permanent address when the title has no slug", async () => {
-    mockClaimTitle.mockResolvedValue({ ok: true, title: "!!!", slug: null });
+    mockRename.mockResolvedValue({ ok: true, title: "!!!", slug: null });
     expect(await (await post({ pageId: "abcd1234", title: "!!!" })).json()).toEqual({ ok: true, title: "!!!", path: "/docs/abcd1234" });
   });
 
   it("encodes accented slugs in the address", async () => {
-    mockClaimTitle.mockResolvedValue({ ok: true, title: "Café", slug: "café" });
+    mockRename.mockResolvedValue({ ok: true, title: "Café", slug: "café" });
     expect((await (await post({ pageId: "abcd1234", title: "Café" })).json()).path).toBe("/page/caf%C3%A9");
   });
 
-  it("refuses a title another page has", async () => {
-    mockClaimTitle.mockResolvedValue({ ok: false, reason: "taken", holder: { pageId: "zzzz9999", title: "Meeting Notes" } });
-    expect(await (await post({ pageId: "abcd1234", title: "meeting notes" })).json()).toEqual({
-      ok: false,
-      reason: "A page called “Meeting Notes” already exists.",
-    });
+  it.each([
+    [{ ok: false, code: "taken", holderTitle: "Meeting Notes" }, "A page called “Meeting Notes” already exists.", 200],
+    [{ ok: false, code: "invalid", reason: "Titles can't contain [[ or ]]." }, "Titles can't contain [[ or ]].", 200],
+    [{ ok: false, code: "journal-title" }, "Dates like this are journal titles. Choose another title.", 200],
+    [{ ok: false, code: "journal" }, "Journal titles are dates and can't be renamed.", 200],
+    [{ ok: false, code: "missing" }, "This page doesn't exist.", 404],
+  ])("explains a refusal %j", async (outcome, reason, status) => {
+    mockRename.mockResolvedValue(outcome);
+    const res = await post({ pageId: "abcd1234", title: "x" });
+    expect(res.status).toBe(status);
+    expect(await res.json()).toEqual({ ok: false, reason });
   });
 
-  it("refuses to rename a journal", async () => {
-    mockClaimTitle.mockResolvedValue({ ok: false, reason: "journal" });
-    expect(await (await post({ pageId: "journal-2026-10-25", title: "x" })).json()).toEqual({
-      ok: false,
-      reason: "Journal titles are dates and can't be renamed.",
-    });
+  it("returns 503 when the rename cannot reach the index", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mockRename.mockRejectedValue(new Error("index down"));
+    const res = await post({ pageId: "abcd1234", title: "x" });
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ ok: false, reason: "Couldn't save the title right now. Try again in a moment." });
+    vi.restoreAllMocks();
   });
 
-  it("refuses an invalid title without asking the index", async () => {
-    expect(await (await post({ pageId: "abcd1234", title: "a [[b]]" })).json()).toEqual({
-      ok: false,
-      reason: "Titles can't contain [[ or ]].",
-    });
-    expect(await (await post({ pageId: "abcd1234" })).json()).toEqual({ ok: false, reason: "A page needs a title." });
-    expect(mockGetAgentByName).not.toHaveBeenCalled();
+  it("passes a missing title through as empty, for the agent to refuse", async () => {
+    await post({ pageId: "abcd1234" });
+    expect(mockRename).toHaveBeenCalledWith("");
   });
 
   it.each([
     ["no page", { title: "Fine" }],
     ["an invalid page", { pageId: "Not An Id", title: "Fine" }],
     ["a non-string page", { pageId: 12345678, title: "Fine" }],
+    ["a non-object body", null],
   ])("returns 400 for %s", async (_name, body) => {
     expect((await post(body)).status).toBe(400);
     expect(mockGetAgentByName).not.toHaveBeenCalled();

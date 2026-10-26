@@ -46,11 +46,22 @@ describe("PageTitle", () => {
     expect(document.title).toBe("Untitled · mistlogseqish");
   });
 
-  it("claims the title on the server, then saves it to the Yjs document", async () => {
-    const { heading, doc, check } = setup({ title: "Old" });
+  it("asks the server to rename and shows the saved title, without writing meta.title itself", async () => {
+    const { heading, doc, check, onRenamed } = setup({ title: "Old" });
     await rename(heading, "  New   name ");
     expect(check).toHaveBeenCalledWith("New name", PAGE_ID);
-    await waitFor(() => expect(doc.getMap("meta").get("title")).toBe("New name"));
+    await waitFor(() => expect(onRenamed).toHaveBeenCalled());
+    expect(heading.textContent).toBe("New name");
+    // Only the server writes the title; it arrives through Yjs
+    expect(doc.getMap("meta").get("title")).toBe("Old");
+  });
+
+  it("shows the title once the server's change arrives through Yjs", async () => {
+    const { heading, doc } = setup({ title: "Old" });
+    await rename(heading, "New name");
+    act(() => {
+      doc.getMap("meta").set("title", "New name");
+    });
     expect(heading.textContent).toBe("New name");
   });
 
@@ -68,16 +79,17 @@ describe("PageTitle", () => {
     expect(doc.getMap("meta").get("title")).toBe("Mine");
   });
 
-  it("saves the title the server returns", async () => {
-    const { heading, doc } = setup({ title: "Old", check: async () => ({ ok: true, title: "Server Title", path: "/page/x" }) });
+  it("shows the title the server returns", async () => {
+    const { heading, onRenamed } = setup({ title: "Old", check: async () => ({ ok: true, title: "Server Title", path: "/page/x" }) });
     await rename(heading, "typed");
-    await waitFor(() => expect(doc.getMap("meta").get("title")).toBe("Server Title"));
+    await waitFor(() => expect(onRenamed).toHaveBeenCalledWith("/page/x"));
+    expect(heading.textContent).toBe("Server Title");
   });
 
   it("saves on Enter", async () => {
-    const { heading, doc } = setup({ title: "Old" });
+    const { heading, check } = setup({ title: "Old" });
     await rename(heading, "Entered", "enter");
-    await waitFor(() => expect(doc.getMap("meta").get("title")).toBe("Entered"));
+    await waitFor(() => expect(check).toHaveBeenCalledWith("Entered", PAGE_ID));
   });
 
   it("cancels on Escape", async () => {

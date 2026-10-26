@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { journalId, journalTitle, parseJournalDate, isJournalId, isPageId } from "~/lib/note-ids";
+import { journalId, journalTitle, parseJournalDate, isJournalId, isJournalTitle, isPageId } from "~/lib/note-ids";
 import { generateDocumentId } from "~/shared/constants";
 
 describe("journalId", () => {
@@ -51,6 +51,28 @@ describe("journalTitle", () => {
 
   it("rejects an invalid date", () => {
     expect(() => journalTitle("2026-02-30")).toThrow("Invalid journal date");
+  });
+});
+
+describe("isJournalTitle", () => {
+  it.each(["Oct 26th, 2026", "oct 26th, 2026", "OCT 26TH, 2026", "  Jan 1st, 2030 ", "Feb 29th, 2028", "Oct 26st, 2026"])(
+    "recognises %j",
+    (title) => {
+      expect(isJournalTitle(title)).toBe(true);
+    },
+  );
+
+  it.each(["Oct 26, 2026", "October 26th, 2026", "Feb 29th, 2026", "Oct 32nd, 2026", "Foo 1st, 2026", "Oct 26th 2026", "Meeting notes"])(
+    "does not treat %j as a journal title",
+    (title) => {
+      expect(isJournalTitle(title)).toBe(false);
+    },
+  );
+
+  it("matches every title journalTitle produces", () => {
+    for (const date of ["2026-01-01", "2026-02-02", "2026-03-03", "2026-04-11", "2026-12-31"]) {
+      expect(isJournalTitle(journalTitle(date))).toBe(true);
+    }
   });
 });
 

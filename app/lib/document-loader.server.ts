@@ -11,6 +11,12 @@ export function workspaceIndex(context: LoaderContext) {
   return getAgentByName(env.WorkspaceAgent, WORKSPACE_NAME);
 }
 
+/** A page's DocumentAgent, for server routes. */
+export function documentAgent(context: LoaderContext, pageId: string) {
+  const { env } = getCloudflare(context);
+  return getAgentByName(env.DocumentAgent, pageId);
+}
+
 /** Load a document's metadata, or throw a 404 if it was never created. */
 export async function loadDocument(context: LoaderContext, id: string): Promise<{ id: string; createdAt: number | null }> {
   const { env } = getCloudflare(context);

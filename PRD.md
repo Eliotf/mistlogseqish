@@ -149,7 +149,7 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced with the Ag
 
 **Quality gates:**
 - CI (`.github/workflows/ci.yml`) runs typecheck, lint and tests on every push and pull request.
-- Coverage thresholds in `vitest.config.ts` are fixed floors (lines 65, branches 55, functions 58, statements 62 as of 2026-10-25, raised with instant renames). They stop coverage falling but do not rise on their own. Mist's original thresholds rose with the calendar towards 80 / 75 / 80 / 80 and failed CI on every commit, so they were frozen.
+- Coverage thresholds in `vitest.config.ts` are fixed floors (lines 66, branches 57, functions 59, statements 64 as of 2026-10-26, raised with server-owned titles). They stop coverage falling but do not rise on their own. Mist's original thresholds rose with the calendar towards 80 / 75 / 80 / 80 and failed CI on every commit, so they were frozen.
 - **Coverage must be raised back towards 80 / 75 / 80 / 80.** Raise the floors by hand in the same PR whenever new tests lift coverage, and review progress at the end of each milestone. Most of the current gap is in Mist code (routes, hooks) that M1 and M2 will replace, so new code should arrive well tested.
 - Cloudflare Workers Builds deploys every push to `main` and does not wait for GitHub CI, so its build command runs `npm run typecheck && npm run lint && npm run test && npm run build` itself. If any check fails, nothing deploys. This gate has not been verified yet (M0 task).
 
@@ -243,6 +243,10 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced with the Ag
 | 2026-10-25 | If the index is unreachable, `/docs/<id>` still loads the page (slug lookup fails open) | An index problem must never lock the user out of a page |
 | 2026-10-25 | Rename through the server: `POST /api/rename` claims the title in the index atomically (unique check, title and slug in one step) and returns the new address; the browser switches to it at once (chunk 2.1d) | The new address works immediately, and two renames to the same title can no longer both succeed |
 | 2026-10-25 | A page re-indexes immediately when its title changes; other edits keep the 2-second throttle | Titles drive addresses and uniqueness; typing does not need to be faster yet (revisit with search and backlinks) |
+| 2026-10-26 | Only the server writes page titles. `/api/rename` calls the page's `DocumentAgent`, which (holding a per-document lock shared with reindexing) claims the title in the index and only then writes `meta.title`; title writes from browsers are reverted | Uniqueness was enforced on the index's copy while browsers could write the original, and a reindex in flight could carry an old title past a claim. With one writer and one lock, neither can happen |
+| 2026-10-26 | Journal-date titles ("Oct 30th, 2026", any ordinal) are reserved for journals, even before the journal exists | Otherwise a page could take a future journal's title and clash when the journal is first written |
+| 2026-10-26 | Titles are stored in Unicode NFC with invisible characters removed, and compared NFC-lowercase | Two titles that look identical must not both pass |
+| 2026-10-26 | Renames must pause while the index rebuilds (constraint for chunk 1.6) | A claim against a half-rebuilt index could allow a duplicate |
 | 2026-10-22 | Gate deploys by running the checks in the Workers Builds command | Workers Builds ignores GitHub CI; this is the smallest change that stops failing code going live |
 
 ## 12. Changelog
@@ -263,3 +267,4 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced with the Ag
 - 2026-10-24: Page titles done (M2 chunk 2.1a): editable title stored in `meta.title`, uniqueness checked through `/api/title-check`, "New page" in the header. `DOC_FORMAT_VERSION` 3. Coverage floors raised.
 - 2026-10-25: Readable URLs done (M2 chunk 2.1b): `/page/<slug>` with redirects from old slugs and from `/docs/<id>`; index schema version 2 (first index migration, with a `slugs` table). Coverage floors raised.
 - 2026-10-25: Instant renames done (M2 chunk 2.1d): `POST /api/rename` replaces `/api/title-check`, claims titles atomically and returns the new address; title changes re-index immediately. Closes the 2.1a uniqueness race and reverses the 2.1b "address updates on next load" decision.
+- 2026-10-26: Server-owned titles (part of 2.1d, before it shipped): a review of every title write path found uniqueness could be bypassed or raced. Renames now go through `DocumentAgent.rename` under a per-document lock; browsers can't write `meta.title`; journal-date titles reserved; NFC and invisible-character normalisation. Recorded a rebuild constraint for 1.6.

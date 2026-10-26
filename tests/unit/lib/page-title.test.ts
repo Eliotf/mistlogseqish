@@ -30,6 +30,25 @@ describe("normalizeTitle", () => {
     expect(normalizeTitle(raw)).toEqual({ ok: false, reason: "Titles can't contain [[ or ]]." });
   });
 
+  it("stores one Unicode form, so composed and decomposed accents match", () => {
+    expect(normalizeTitle("Cafe\u0301")).toEqual({ ok: true, title: "Caf\u00e9" });
+  });
+
+  it.each([
+    ["zero-width space", "Mist\u200Blog"],
+    ["zero-width joiner", "Mist\u200Dlog"],
+    ["byte order mark", "\uFEFFMistlog"],
+    ["soft hyphen", "Mist\u00ADlog"],
+    ["right-to-left override", "Mist\u202Elog"],
+    ["word joiner", "Mist\u2060log"],
+  ])("removes invisible characters (%s)", (_name, raw) => {
+    expect(normalizeTitle(raw)).toEqual({ ok: true, title: "Mistlog" });
+  });
+
+  it("treats a title of only invisible characters as empty", () => {
+    expect(normalizeTitle("\u200B\u200B")).toEqual({ ok: false, reason: "A page needs a title." });
+  });
+
   it("allows single brackets", () => {
     expect(normalizeTitle("[draft] notes]").ok).toBe(true);
   });

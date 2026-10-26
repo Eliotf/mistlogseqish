@@ -8,7 +8,8 @@ import * as decoding from "lib0/decoding";
 import { MSG_SYNC, MSG_AWARENESS, DOC_FORMAT_VERSION } from "../app/shared/constants";
 import { linesFromYjs } from "../app/lib/note-lines";
 import { PARSER_VERSION } from "../app/lib/note-parser";
-import { isPageId } from "../app/lib/note-ids";
+import { isJournalId, isPageId } from "../app/lib/note-ids";
+import { normalizeTitle, type DocumentRenameResult } from "../app/lib/page-title";
 import { WORKSPACE_NAME } from "./workspace";
 
 /**
@@ -19,6 +20,11 @@ import { WORKSPACE_NAME } from "./workspace";
 function sqlBlob(data: Uint8Array): string {
   return data as unknown as string;
 }
+
+/** Yjs transaction origin for updates received from browsers. */
+const CLIENT_ORIGIN = Symbol("client");
+/** Yjs transaction origin for changes the server makes itself, which it broadcasts. */
+const SERVER_ORIGIN = Symbol("server");
 
 /** Seconds from the first unindexed edit to re-indexing (throttle, not debounce). */
 export const INDEX_DELAY_SECONDS = 2;
@@ -44,6 +50,14 @@ class DocumentAgent extends Agent {
   private awareness: awarenessProtocol.Awareness | null = null;
   /** A reindex is scheduled. Lost on restart, so markForIndex also runs on connect. */
   private reindexPending = false;
+  /**
+   * Serialises reindex and rename. A rename claims its title only after any
+   * reindex in flight has finished, so no reindex with the old title can
+   * reach the index after the claim (docs/technical-architecture.md).
+   */
+  private indexLock: Promise<void> = Promise.resolve();
+  /** The title the server last approved; browsers cannot change meta.title. */
+  private approvedTitle: unknown = undefined;
 
   private ensureInitialised(): { doc: Y.Doc; awareness: awarenessProtocol.Awareness } {
     if (this.doc && this.awareness) {
@@ -71,20 +85,38 @@ class DocumentAgent extends Agent {
       Y.applyUpdate(this.doc, state);
     }
 
-    // Persist on every update, then queue it for the workspace index
-    this.doc.on("update", () => {
+    const meta = this.doc.getMap<unknown>("meta");
+    this.approvedTitle = meta.get("title");
+
+    // Persist on every update, then queue it for the workspace index.
+    // Browsers' updates are relayed by onMessage; the server's own changes
+    // (such as a rename, or reverting a browser's title change) are sent here.
+    this.doc.on("update", (update: Uint8Array, origin: unknown) => {
       const state = Y.encodeStateAsUpdate(this.doc!);
       this.sql`
         INSERT INTO doc_state (key, value) VALUES ('state', ${sqlBlob(state)})
         ON CONFLICT(key) DO UPDATE SET value = excluded.value
       `;
       this.markForIndex();
+      if (origin !== CLIENT_ORIGIN) this.broadcastUpdate(update);
     });
 
-    // A title change reindexes at once, not on the 2-second throttle: the
-    // page's address and title uniqueness depend on it
-    this.doc.getMap("meta").observe((event) => {
-      if (event.keysChanged.has("title")) this.reindexNow();
+    // Only the server sets the title (rename, after the index claims it), so
+    // titles stay unique. A browser's change to it is reverted for everyone.
+    // A server change reindexes at once instead of on the 2-second throttle.
+    meta.observe((event) => {
+      if (!event.keysChanged.has("title")) return;
+      if (event.transaction.origin === CLIENT_ORIGIN) {
+        console.warn("Reverted a title change made outside rename");
+        const approved = this.approvedTitle;
+        this.doc!.transact(() => {
+          if (approved === undefined) meta.delete("title");
+          else meta.set("title", approved);
+        }, SERVER_ORIGIN);
+        return;
+      }
+      this.approvedTitle = meta.get("title");
+      this.reindexNow();
     });
 
     return { doc: this.doc, awareness: this.awareness };
@@ -147,7 +179,7 @@ class DocumentAgent extends Agent {
       case MSG_SYNC: {
         const encoder = encoding.createEncoder();
         encoding.writeVarUint(encoder, MSG_SYNC);
-        syncProtocol.readSyncMessage(decoder, encoder, doc, null);
+        syncProtocol.readSyncMessage(decoder, encoder, doc, CLIENT_ORIGIN);
 
         // If there's a response (e.g. SyncStep2 reply), send it back
         if (encoding.length(encoder) > 1) {
@@ -356,13 +388,55 @@ class DocumentAgent extends Agent {
     });
   }
 
+  private withIndexLock<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.indexLock.then(fn);
+    this.indexLock = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
+  /**
+   * Rename this page. Called by the /api/rename route. Holding the index
+   * lock, ask the index to claim the title (unique across pages and
+   * journals), and only then write meta.title, which syncs to every tab.
+   * Throws if the index cannot be reached; the title is then unchanged.
+   */
+  async rename(rawTitle: string): Promise<DocumentRenameResult> {
+    const { doc } = this.ensureInitialised();
+    if (isJournalId(this.name)) return { ok: false, code: "journal" };
+    if (!this.isIndexable()) return { ok: false, code: "missing" };
+    const result = normalizeTitle(rawTitle);
+    if (!result.ok) return { ok: false, code: "invalid", reason: result.reason };
+
+    return this.withIndexLock(async (): Promise<DocumentRenameResult> => {
+      const index = await getAgentByName(this.env.WorkspaceAgent, WORKSPACE_NAME);
+      const claim = await index.claimTitle(this.name, result.title, Date.now());
+      if (!claim.ok) {
+        return claim.reason === "taken"
+          ? { ok: false, code: "taken", holderTitle: claim.holder.title }
+          : { ok: false, code: claim.reason };
+      }
+      const meta = doc.getMap<unknown>("meta");
+      if (meta.get("title") !== result.title) {
+        doc.transact(() => meta.set("title", result.title), SERVER_ORIGIN);
+      }
+      return { ok: true, title: result.title, slug: claim.slug };
+    });
+  }
+
   /**
    * Send this document to the workspace index. Called by the Agents SDK
    * scheduler. Edits made while the call is in flight set dirty again and
    * schedule the next round. A failure retries with backoff and never
-   * affects editing or sync.
+   * affects editing or sync. Runs under the index lock.
    */
   async reindex(): Promise<void> {
+    return this.withIndexLock(() => this.reindexLocked());
+  }
+
+  private async reindexLocked(): Promise<void> {
     this.reindexPending = false;
     const { doc } = this.ensureInitialised();
     if (!this.isIndexable()) return;
@@ -410,6 +484,15 @@ class DocumentAgent extends Agent {
     } catch (err) {
       console.error("Could not register with the workspace index", err);
     }
+  }
+
+  /** Send a change the server made to every connected browser. */
+  private broadcastUpdate(update: Uint8Array) {
+    const encoder = encoding.createEncoder();
+    encoding.writeVarUint(encoder, MSG_SYNC);
+    syncProtocol.writeUpdate(encoder, update);
+    const message = encoding.toUint8Array(encoder);
+    for (const conn of this.getConnections()) conn.send(message);
   }
 
   private broadcastBinary(message: WSMessage, excludeId: string) {

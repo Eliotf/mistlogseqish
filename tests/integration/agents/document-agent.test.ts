@@ -16,7 +16,7 @@ import * as awarenessProtocol from "y-protocols/awareness";
 import { DOC_FORMAT_VERSION } from "~/shared/constants";
 import { YjsProvider } from "~/lib/yjs-provider";
 import { PARSER_VERSION } from "~/lib/note-parser";
-import { WorkspaceIndex, type PageUpdate, type PageUpdateAck } from "../../../agents/workspace-index";
+import { WorkspaceIndex, type PageUpdate, type PageUpdateAck, type ClaimResult } from "../../../agents/workspace-index";
 import { memoryDb } from "../../helpers/sqlite";
 
 /* ------------------------------------------------------------------ */
@@ -32,6 +32,7 @@ let mockSchedules: Array<[number, string]>;
 let mockIndexStub: {
   updatePage: (update: PageUpdate) => Promise<PageUpdateAck>;
   registerPage: (pageId: string, createdAt: number) => Promise<void>;
+  claimTitle: (pageId: string, title: string, at: number) => Promise<ClaimResult>;
 };
 
 vi.mock("agents", () => ({
@@ -181,6 +182,9 @@ describe("DocumentAgent", () => {
         throw new Error("index not set up in this test");
       },
       registerPage: async () => {},
+      claimTitle: async () => {
+        throw new Error("index not set up in this test");
+      },
     };
     nextConnId = 1;
 
@@ -594,16 +598,24 @@ describe("DocumentAgent", () => {
     const PAGE_ID = "abcd1234";
     let index: WorkspaceIndex;
     let updates: PageUpdate[];
+    /** Order of calls reaching the index, for the race tests. */
+    let calls: string[];
 
     beforeEach(() => {
       index = new WorkspaceIndex(memoryDb());
       updates = [];
+      calls = [];
       mockIndexStub = {
         updatePage: async (update) => {
           updates.push(update);
+          calls.push(`update ${update.title}`);
           return index.updatePage(update);
         },
         registerPage: async (pageId, createdAt) => index.registerPage(pageId, createdAt),
+        claimTitle: async (pageId, title, at) => {
+          calls.push(`claim ${title}`);
+          return index.claimTitle(pageId, title, at);
+        },
       };
       (agent as unknown as { name: string }).name = PAGE_ID;
     });
@@ -686,14 +698,18 @@ describe("DocumentAgent", () => {
     it("schedules another round for edits made while an update is in flight", async () => {
       await create("first");
       let release!: () => void;
+      let entered!: () => void;
       const gate = new Promise<void>((resolve) => (release = resolve));
+      const inCall = new Promise<void>((resolve) => (entered = resolve));
       mockIndexStub.updatePage = async (update) => {
+        entered();
         await gate;
         updates.push(update);
         return index.updatePage(update);
       };
       const client = connectYjsClient();
       const inFlight = agent.reindex();
+      await inCall; // the index call is now really in flight
       mockSchedules = [];
       addLine(client, "typed during the call");
       release();
@@ -890,20 +906,165 @@ describe("DocumentAgent", () => {
       vi.restoreAllMocks();
     });
 
-    it("reindexes at once when the title changes, without waiting for the throttle", async () => {
+    /* ---- Renames: only the server writes meta.title ---- */
+
+    it("renames: claims the title, writes meta.title on the server, and syncs it to every tab", async () => {
       await create("body text");
       await agent.reindex();
+      const a = connectYjsClient();
+      const b = connectYjsClient();
+      updates = [];
+
+      const result = await agent.rename("  Renamed   Page ");
+
+      expect(result).toEqual({ ok: true, title: "Renamed Page", slug: "renamed-page" });
+      expect(a.doc.getMap("meta").get("title")).toBe("Renamed Page");
+      expect(b.doc.getMap("meta").get("title")).toBe("Renamed Page");
+      await vi.waitFor(() => expect(updates.at(-1)?.title).toBe("Renamed Page"));
+      expect(index.currentSlug(PAGE_ID)).toBe("renamed-page");
+      cleanup(a, b);
+    });
+
+    it("reverts a title written directly by a browser, for every tab", async () => {
+      await create("body");
+      await agent.rename("Approved");
+      const a = connectYjsClient();
+      const b = connectYjsClient();
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      updates = [];
+
+      a.doc.getMap("meta").set("title", "Sneaky Duplicate");
+
+      expect(warn).toHaveBeenCalledWith("Reverted a title change made outside rename");
+      expect(a.doc.getMap("meta").get("title")).toBe("Approved");
+      expect(b.doc.getMap("meta").get("title")).toBe("Approved");
+      await agent.reindex();
+      expect(updates.every((u) => u.title === "Approved")).toBe(true);
+      expect(index.getPage(PAGE_ID)?.title).toBe("Approved");
+      cleanup(a, b);
+      warn.mockRestore();
+    });
+
+    it("reverts a browser's title on a page that never had one by removing it", async () => {
+      await create("body");
+      const a = connectYjsClient();
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      a.doc.getMap("meta").set("title", "Unapproved");
+      expect(a.doc.getMap("meta").has("title")).toBe(false);
+      cleanup(a);
+      vi.restoreAllMocks();
+    });
+
+    it("waits for a reindex in flight before claiming, so the old title cannot land after the claim", async () => {
+      await create("body");
+      await agent.rename("Plans");
+      await agent.reindex();
+      // Hold a reindex that carries the old title in flight
+      let release!: () => void;
+      let entered!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      const inCall = new Promise<void>((resolve) => (entered = resolve));
+      const realUpdate = mockIndexStub.updatePage;
+      mockIndexStub.updatePage = async (update) => {
+        if (update.title === "Plans") {
+          entered();
+          await gate;
+        }
+        return realUpdate(update);
+      };
       const client = connectYjsClient();
+      addLine(client, "edit that triggers a reindex");
+      calls = [];
+      const staleReindex = agent.reindex();
+      await inCall;
+
+      const renaming = agent.rename("Notes");
+      await Promise.resolve();
+      expect(calls).toEqual([]); // the claim has not been sent while the old title is in flight
+      release();
+      await staleReindex;
+      await renaming;
+      await vi.waitFor(() => expect(calls.at(-1)).toBe("update Notes"));
+
+      expect(calls.slice(0, 2)).toEqual(["update Plans", "claim Notes"]);
+      expect(index.getPage(PAGE_ID)?.title).toBe("Notes");
+      // Another page cannot now take "Notes", and "Plans" is free
+      expect(index.claimTitle("bbbb2222", "notes", 1)).toMatchObject({ ok: false, reason: "taken" });
+      expect(index.claimTitle("bbbb2222", "Plans", 1)).toMatchObject({ ok: true });
+      cleanup(client);
+    });
+
+    it("serialises two renames of the same page; the last one wins everywhere", async () => {
+      await create("body");
+      const client = connectYjsClient();
+      const [first, second] = await Promise.all([agent.rename("First"), agent.rename("Second")]);
+      expect(first.ok && second.ok).toBe(true);
+      expect(client.doc.getMap("meta").get("title")).toBe("Second");
+      await vi.waitFor(() => expect(index.getPage(PAGE_ID)?.title).toBe("Second"));
+      expect(index.currentSlug(PAGE_ID)).toBe("second");
+      cleanup(client);
+    });
+
+    it("refuses a title another page has, leaving meta.title unchanged", async () => {
+      index.updatePage({ pageId: "bbbb2222", title: "Taken", updatedAt: 1, lines: [] });
+      await create("body");
+      await agent.rename("Mine");
+      expect(await agent.rename("taken")).toEqual({ ok: false, code: "taken", holderTitle: "Taken" });
+      expect(connectYjsClient().doc.getMap("meta").get("title")).toBe("Mine");
+    });
+
+    it("refuses journal-date titles and invalid titles", async () => {
+      await create("body");
+      expect(await agent.rename("Oct 30th, 2026")).toEqual({ ok: false, code: "journal-title" });
+      expect(await agent.rename("a [[b]]")).toEqual({ ok: false, code: "invalid", reason: "Titles can't contain [[ or ]]." });
+      expect(await agent.rename("   ")).toEqual({ ok: false, code: "invalid", reason: "A page needs a title." });
+    });
+
+    it("refuses to rename a document that was never created, without touching the index", async () => {
+      expect(await agent.rename("Phantom")).toEqual({ ok: false, code: "missing" });
+      expect(index.registeredPages()).toEqual([]);
+      expect(calls).toEqual([]);
+    });
+
+    it("refuses to rename a journal", async () => {
+      (agent as unknown as { name: string }).name = "journal-2026-10-26";
+      expect(await agent.rename("Anything")).toEqual({ ok: false, code: "journal" });
+    });
+
+    it("leaves the title unchanged if the index cannot be reached", async () => {
+      await create("body");
+      await agent.rename("Before");
+      mockIndexStub.claimTitle = async () => {
+        throw new Error("index down");
+      };
+      await expect(agent.rename("After")).rejects.toThrow("index down");
+      expect(connectYjsClient().doc.getMap("meta").get("title")).toBe("Before");
+      // The lock is released: later reindexes still run
+      const client = connectYjsClient();
+      addLine(client, "still indexing");
+      await agent.reindex();
+      expect(index.search("still").map((h) => h.pageId)).toEqual([PAGE_ID]);
+      cleanup(client);
+    });
+
+    it("does not write meta.title again when renaming to the current title", async () => {
+      await create("body");
+      await agent.rename("Same");
+      const client = connectYjsClient();
+      const seen: unknown[] = [];
+      client.doc.getMap("meta").observe(() => seen.push(client.doc.getMap("meta").get("title")));
+      expect(await agent.rename("Same")).toMatchObject({ ok: true, title: "Same" });
+      expect(seen).toEqual([]);
+      cleanup(client);
+    });
+
+    it("reindexes at once after a rename, without waiting for the throttle", async () => {
+      await create("body");
+      await agent.reindex();
       updates = [];
       mockSchedules = [];
-
-      client.doc.getMap("meta").set("title", "Renamed Page");
-      await vi.waitFor(() => expect(updates).toHaveLength(1));
-
-      expect(updates[0].title).toBe("Renamed Page");
-      expect(index.getPage(PAGE_ID)?.title).toBe("Renamed Page");
-      expect(index.currentSlug(PAGE_ID)).toBe("renamed-page");
-      cleanup(client);
+      await agent.rename("Instant");
+      await vi.waitFor(() => expect(updates.map((u) => u.title)).toEqual(["Instant"]));
     });
 
     it("keeps body edits on the throttle", async () => {
@@ -925,26 +1086,27 @@ describe("DocumentAgent", () => {
       const errors = vi.spyOn(console, "error").mockImplementation(() => {});
       const realSql = (agent as unknown as { sql: (...a: unknown[]) => unknown }).sql.bind(agent);
       const a = connectYjsClient();
-      const b = connectYjsClient();
       vi.spyOn(agent as unknown as { sql: (...a: unknown[]) => unknown }, "sql").mockImplementation(
         (strings: unknown, ...values: unknown[]) => {
-          if ((strings as string[]).join("").includes("key = 'exists'")) throw new Error("disk full");
+          if ((strings as string[]).join("").includes("key = 'index'")) throw new Error("disk full");
           return realSql(strings, ...values);
         },
       );
-      a.doc.getMap("meta").set("title", "Still syncs");
+      expect(await agent.rename("Still syncs")).toMatchObject({ ok: true });
       expect(errors).toHaveBeenCalledWith("reindexNow failed", expect.any(Error));
-      expect(b.doc.getMap("meta").get("title")).toBe("Still syncs");
-      cleanup(a, b);
+      expect(a.doc.getMap("meta").get("title")).toBe("Still syncs");
+      cleanup(a);
       vi.restoreAllMocks();
     });
 
-    it("does not reindex a never-created document when its title changes", async () => {
+    it("does not reindex a never-created document when a browser sets its title", async () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
       const client = connectYjsClient();
       client.doc.getMap("meta").set("title", "Sneaky");
       await Promise.resolve();
       expect(updates).toEqual([]);
       cleanup(client);
+      vi.restoreAllMocks();
     });
 
     it("still creates the document if registration fails", async () => {

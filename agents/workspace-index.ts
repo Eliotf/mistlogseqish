@@ -1,5 +1,5 @@
 import { parseNote, PARSER_VERSION, type DocLine, type TaskState } from "../app/lib/note-parser";
-import { isJournalId, isPageId, journalTitle, parseJournalDate } from "../app/lib/note-ids";
+import { isJournalId, isJournalTitle, isPageId, journalTitle, parseJournalDate } from "../app/lib/note-ids";
 import { slugify } from "../app/lib/slug";
 
 /**
@@ -123,7 +123,7 @@ function assignSlug(db: SqlDb, pageId: string, title: string): string | null {
 export type ClaimResult =
   | { ok: true; title: string; slug: string | null }
   | { ok: false; reason: "taken"; holder: { pageId: string; title: string } }
-  | { ok: false; reason: "journal" };
+  | { ok: false; reason: "journal" | "journal-title" };
 
 export interface ResolvedSlug {
   pageId: string;
@@ -197,6 +197,11 @@ function toPage(row: SqlRow): IndexedPage {
     updatedAt: row.updated_at as number,
     parserVersion: row.parser_version as number,
   };
+}
+
+/** How titles are compared for uniqueness: NFC, lowercase, trimmed. */
+export function titleKey(title: string): string {
+  return title.normalize("NFC").trim().toLowerCase();
 }
 
 /** Escape LIKE wildcards; queries use ESCAPE '\'. */
@@ -277,7 +282,7 @@ export class WorkspaceIndex {
            kind = excluded.kind, title = excluded.title, title_key = excluded.title_key,
            journal_date = excluded.journal_date, has_content = excluded.has_content,
            updated_at = excluded.updated_at, parser_version = excluded.parser_version`,
-        pageId, kind, title, title.toLowerCase(), journalDate, hasContent, updatedAt, PARSER_VERSION,
+        pageId, kind, title, titleKey(title), journalDate, hasContent, updatedAt, PARSER_VERSION,
       );
       for (const link of parsed.links) {
         this.db.exec(
@@ -323,14 +328,16 @@ export class WorkspaceIndex {
    * has the title, otherwise record it and assign its slug. The index handles
    * one call at a time, so two renames to the same title cannot both succeed.
    *
-   * The document is the source of truth: after a successful claim the client
-   * saves the title to the page's Yjs doc, and the next reindex confirms it.
-   * If that never happens, the next reindex puts the document's title back.
-   * The caller must pass a title that has already passed normalizeTitle.
+   * Only DocumentAgent.rename calls this, holding the document's index lock,
+   * and writes meta.title only after a successful claim. So no reindex with
+   * an older title can arrive after the claim. The caller must pass a title
+   * that has already passed normalizeTitle.
    */
   claimTitle(pageId: string, title: string, at: number): ClaimResult {
     if (!isPageId(pageId)) throw new Error(`Invalid page ID: ${pageId}`);
     if (isJournalId(pageId)) return { ok: false, reason: "journal" };
+    // Journals are titled by date and may not be in the index yet, so reserve every date
+    if (isJournalTitle(title)) return { ok: false, reason: "journal-title" };
     return this.db.transaction((): ClaimResult => {
       const holder = this.findByTitle(title, pageId);
       if (holder) return { ok: false, reason: "taken", holder: { pageId: holder.pageId, title: holder.title } };
@@ -340,7 +347,7 @@ export class WorkspaceIndex {
         `INSERT INTO pages (page_id, kind, title, title_key, journal_date, has_content, updated_at, parser_version)
          VALUES (?, 'page', ?, ?, NULL, 0, 0, ?)
          ON CONFLICT (page_id) DO UPDATE SET title = excluded.title, title_key = excluded.title_key`,
-        pageId, title, title.toLowerCase(), PARSER_VERSION,
+        pageId, title, titleKey(title), PARSER_VERSION,
       );
       return { ok: true, title, slug: assignSlug(this.db, pageId, title) };
     });
@@ -353,7 +360,7 @@ export class WorkspaceIndex {
   findByTitle(title: string, exceptId = ""): IndexedPage | null {
     const row = this.db.exec(
       `SELECT * FROM pages WHERE title_key = ? AND page_id != ? ORDER BY page_id LIMIT 1`,
-      title.trim().toLowerCase(), exceptId,
+      titleKey(title), exceptId,
     )[0];
     return row ? toPage(row) : null;
   }
@@ -385,7 +392,7 @@ export class WorkspaceIndex {
    * titles containing it. An empty query returns recently updated pages.
    */
   searchTitles(query: string, limit = 10): IndexedPage[] {
-    const q = query.trim().toLowerCase();
+    const q = titleKey(query);
     if (!q) {
       return this.db.exec(`SELECT * FROM pages ORDER BY updated_at DESC LIMIT ?`, limit).map(toPage);
     }

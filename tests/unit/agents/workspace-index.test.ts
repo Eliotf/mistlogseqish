@@ -295,7 +295,7 @@ describe("WorkspaceIndex", () => {
         reason: "taken",
         holder: { pageId: ACCESS, title: "Cloudflare Access" },
       });
-      expect(index.claimTitle(MIST, "OCT 22ND, 2026", 1)).toMatchObject({ ok: false, reason: "taken" });
+      expect(index.claimTitle(MIST, "OCT 22ND, 2026", 1)).toEqual({ ok: false, reason: "journal-title" });
       expect(index.getPage(MIST)).toBeNull();
     });
 
@@ -311,6 +311,18 @@ describe("WorkspaceIndex", () => {
 
     it("refuses to rename a journal", () => {
       expect(index.claimTitle(TODAY, "Something", 1)).toEqual({ ok: false, reason: "journal" });
+    });
+
+    it("reserves journal titles even for journals that are not indexed yet", () => {
+      expect(index.claimTitle(MIST, "Oct 30th, 2026", 1)).toEqual({ ok: false, reason: "journal-title" });
+      expect(index.claimTitle(MIST, "dec 1ST, 2030", 1)).toEqual({ ok: false, reason: "journal-title" });
+      expect(index.claimTitle(MIST, "Oct 30, 2026", 1).ok).toBe(true);
+    });
+
+    it("compares titles in one Unicode form", () => {
+      index.claimTitle(MIST, "Café", 1);
+      expect(index.claimTitle(ACCESS, "cafe\u0301", 2)).toMatchObject({ ok: false, reason: "taken" });
+      expect(index.findByTitle("CAFE\u0301")?.pageId).toBe(MIST);
     });
 
     it("works for a page that has not been indexed yet, and its first reindex still applies", () => {

@@ -67,12 +67,17 @@ Tests in `tests/unit/lib/note-*.test.ts` include a round trip through Yjs using 
 
 ## Page Titles
 
-- A page's title is `meta.title` in its Yjs document (`DOC_FORMAT_VERSION` 3), so it syncs live between tabs. `DocumentAgent` sends it to the index on each reindex. Journals are titled from their date and have no stored title.
-- `app/components/PageTitle.tsx` edits it. Enter or blur saves, Esc cancels, and changes from other tabs show unless the user is typing.
-- Rules live in `app/lib/page-title.ts` (`normalizeTitle`), used by both the editor and the server.
-- **Renaming goes through the server.** `PageTitle` calls `POST /api/rename` with JSON `{ pageId, title }` (`app/routes/api.rename.ts`; non-JSON bodies are refused so another site's form cannot rename). The route calls the index's `claimTitle`, which in one transaction refuses a title another page or journal has (ignoring case), records the title and assigns the slug, then returns the new address. Only then does the client save `meta.title` to the Yjs doc and switch the browser to the new address. The index handles one call at a time, so two renames to the same title cannot both succeed.
-- If the client never saves the title (for example the tab closes), the next reindex puts the document's title back in the index: the document stays the source of truth.
-- A `meta.title` change, from any client, makes `DocumentAgent` re-index immediately (`reindexNow`) instead of waiting for the 2-second throttle.
+- A page's title is `meta.title` in its Yjs document (`DOC_FORMAT_VERSION` 3), so it syncs live between tabs. Journals are titled from their date and have no stored title.
+- **Only the server writes titles.** Uniqueness is a cross-page rule enforced by the index, while the title itself lives in each document, so there must be exactly one writer, and it must go through the index first.
+  - `PageTitle` (`app/components/PageTitle.tsx`) calls `POST /api/rename` with JSON `{ pageId, title }` (`app/routes/api.rename.ts`). Non-JSON bodies are refused, so another site's form cannot rename.
+  - The route calls `DocumentAgent.rename(title)` on the page's own Durable Object. It refuses journals and documents that were never created, validates with `normalizeTitle`, then, holding the document's **index lock**, calls the index's `claimTitle`.
+  - `claimTitle` runs in one transaction. It refuses a title another page or journal has (compared NFC-lowercase with `titleKey`) and any journal-date title (`isJournalTitle`), then records the title and assigns the slug.
+  - Only after a successful claim does `DocumentAgent` write `meta.title` (origin `SERVER_ORIGIN`). It broadcasts the change to every connected browser, re-indexes at once, and the route returns the new address. The browser then moves to that address.
+  - **Browsers cannot write `meta.title`.** Updates from browsers are applied with origin `CLIENT_ORIGIN`. If one changes `meta.title`, `DocumentAgent` puts the approved title back (origin `SERVER_ORIGIN`) and the revert reaches every tab.
+- **The index lock** (`withIndexLock` in `agents/document.ts`) serialises `reindex` and `rename` for one document. A rename claims only after any reindex in flight has finished, so no reindex carrying the old title can reach the index after the claim. Without it, a page could briefly appear to have its old title, letting another page take its new one. The lock is per document; the index serialises claims across documents.
+- Title rules live in `app/lib/page-title.ts` (`normalizeTitle`): NFC, invisible characters (zero-width, bidirectional controls, soft hyphen, BOM) removed, whitespace collapsed, 1 to 200 characters, no `[[` or `]]`.
+- **Rebuild constraint (chunk 1.6).** While the index is rebuilding, `claimTitle` must refuse, because titles not yet re-indexed would look free.
+- **Residual risk.** The server writes `meta.title` in the same synchronous step that `claimTitle` returns in. If the process died between the two, the index would hold a title the document lacks until the next reindex reverts it.
 - Because links store page IDs, renaming changes nothing else. Links will show the new title once they read it from the index (chunk 2.5).
 
 ## Readable URLs

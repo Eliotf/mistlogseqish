@@ -27,8 +27,10 @@ interface PageTitleProps {
 /**
  * The page's editable title, stored in the Yjs document as meta.title so it
  * syncs live between tabs. Enter or leaving the title saves it; Esc cancels.
- * Saving claims the title on the server first (atomic uniqueness), so the
- * new address is known at once. With ID links no linking page changes.
+ * Saving asks the server to rename the page: it claims the title (unique
+ * across pages and journals) and writes meta.title itself, and browsers
+ * never write it. The new address is known at once. With ID links no
+ * linking page changes.
  */
 export default function PageTitle({ doc, pageId, autoFocus = false, rename = renameOnServer, onRenamed }: PageTitleProps) {
   const meta = useMemo(() => doc.getMap<unknown>("meta"), [doc]);
@@ -93,7 +95,7 @@ export default function PageTitle({ doc, pageId, autoFocus = false, rename = ren
         el.textContent = stored();
         return;
       }
-      meta.set("title", answer.title);
+      // The server writes meta.title itself; it arrives through Yjs moments later
       el.textContent = answer.title;
       setError(null);
       onRenamed?.(answer.path);
