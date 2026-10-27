@@ -52,7 +52,7 @@ It starts from [Mist](https://github.com/inanimate-tech/mist) (Cloudflare Worker
 | F4 | Backlinks / linked references panel | ✅ | M2 | Below the page content, grouped by linking page. Query on the workspace index |
 | F5 | Editable page titles; rename updates every link instantly | 🟢 titles | M2 | One title change in the index; no linking page is rewritten (see 6.1). Journal titles are dates, not editable |
 | F6 | Tasks: `TODO` / `DOING` / `DONE` and a Tasks view | ✅ | M2 | Cmd/Ctrl+Enter cycles. Shown as styled text in the editor (no checkbox). Checkbox in the Tasks view toggles; the target page matches the line by text and refuses if not unique |
-| F7 | Bullets and indent | ✅ | M2 | Tab / Shift+Tab indent with a tab character, children move with their parent. Enter continues a bullet at the same level; Backspace on an empty bullet outdents, then removes it. Logseq-compatible text |
+| F7 | Bullets and indent | 🟢 | M2 | Tab / Shift+Tab indent with a tab character, children move with their parent. Enter continues a bullet at the same level; Backspace on an empty bullet outdents, then removes it. Logseq-compatible text |
 | F8 | Collapsible left and right sidebars (`t l`, `t r`) | ✅ | M2 | Left: Journals, Tasks, Search, recent pages, index status line. Right: pages opened side by side (F18) |
 | F9 | Live markdown formatting, always-editable | 🟢 | — | Mist's TipTap editor (each line a paragraph, markdown styled in place) |
 | F10 | Sync across devices with automatic merge | 🟢 | — | Yjs in a Durable Object per page. Offline editing is F14 |
@@ -70,6 +70,7 @@ It starts from [Mist](https://github.com/inanimate-tech/mist) (Cloudflare Worker
 | F30 | Live multiplayer on shared pages | 🟢 | — | Already how Mist works; needs permissions (M4) before it is safe to use with others |
 | F31 | Graph view, templates, Logseq import, attachments (R2) | ⬜ | M6 | Unprioritised ideas |
 | F32 | Merge pages | ⬜ | M6 | Offered when renaming a page to a title that already exists, as Logseq does. Links to both pages point to the merged page |
+| F34 | Suggesting indentation changes in suggest mode | ⬜ | Later | Design the UI first: how an indent or outdent is shown as a suggestion, and accepted or rejected. Until then, bullet keys do nothing special in suggest mode (2.3) |
 | F33 | Live title updates across open tabs and devices | ⬜ | M6 | Until then, other tabs pick up a new title on next load or focus. Needs a live connection to the index |
 
 ## 6. Feature specs
@@ -149,7 +150,7 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced with the Ag
 
 **Quality gates:**
 - CI (`.github/workflows/ci.yml`) runs typecheck, lint and tests on every push and pull request.
-- Coverage thresholds in `vitest.config.ts` are fixed floors (lines 70, branches 61, functions 66, statements 68 as of 2026-10-27, raised with the journal feed). They stop coverage falling but do not rise on their own. Mist's original thresholds rose with the calendar towards 80 / 75 / 80 / 80 and failed CI on every commit, so they were frozen.
+- Coverage thresholds in `vitest.config.ts` are fixed floors (lines 72, branches 62, functions 68, statements 70 as of 2026-10-27, raised with bullets and indenting). They stop coverage falling but do not rise on their own. Mist's original thresholds rose with the calendar towards 80 / 75 / 80 / 80 and failed CI on every commit, so they were frozen.
 - **Coverage must be raised back towards 80 / 75 / 80 / 80.** Raise the floors by hand in the same PR whenever new tests lift coverage, and review progress at the end of each milestone. Most of the current gap is in Mist code (routes, hooks) that M1 and M2 will replace, so new code should arrive well tested.
 - Cloudflare Workers Builds deploys every push to `main` and does not wait for GitHub CI, so its build command runs `npm run typecheck && npm run lint && npm run test && npm run build` itself. If any check fails, nothing deploys. This gate has not been verified yet (M0 task).
 
@@ -160,7 +161,7 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced with the Ag
 - [ ] **M0 Foundation:** import Mist into our own repo, deploy it to Cloudflare, connect GitHub for auto-deploy, add CI, add AGENTS.md and this PRD, lock the site down with Cloudflare Access while unfinished. Done so far: repo, auto-deploy via Workers Builds (verified 2026-10-22), CI, AGENTS.md, PRD, coverage thresholds frozen so CI can pass, Cloudflare Access with Cloudflare-account login (verified 2026-10-22), Workers Builds command set to run the checks before building (2026-10-22, not yet verified). Still to do:
   - [ ] **Verify the deploy gate.** (1) Open the Workers Builds log for a recent build and confirm `typecheck`, `lint` and `test` run before `build`. (2) Push a throwaway branch `chore/test-deploy-gate` with a test that always fails (`expect(1).toBe(2)`); confirm its preview build fails at `test`, nothing is uploaded, and the live site is unchanged; then delete the branch. Needs builds for non-production branches turned on; do not test on `main`, because a broken gate would put the failing code live.
 - [ ] **M1 Persistence and index:** ~~remove the 99-hour expiry (including for existing documents)~~ (done 2026-10-22); ~~shared parser, including the `wikilink` mark definition~~ (done 2026-10-22); ~~`WorkspaceAgent` index with page registry and parser-versioned rebuild~~ (done 2026-10-23; the rebuild itself runs in the weekly check chunk); ~~documents report to the index and retry until confirmed~~ (done 2026-10-23); weekly index check (can land after M2). ~~Remove Mist's Fathom analytics~~ (kept, 2026-10-24).
-- [ ] **M2 Notes core:** page identity in three parts: ~~2.1a titles (includes rename, formerly 2.7)~~ (done 2026-10-24), ~~2.1b readable URLs~~ (done 2026-10-25), ~~2.1d instant renames~~ (done 2026-10-26), ~~2.1c journal pages~~ (done 2026-10-26); ~~2.2 journal feed~~ (done 2026-10-27); journal feed (replaces Mist's landing page and `/new`); bullets and indent; tasks; ID-based wikilinks with autocomplete and placeholder pages; backlinks below the page; rename; sidebars with Cmd/Ctrl+click to open in the right panel; search; responsive layout. Build order and UI details are agreed through a clickable prototype first.
+- [ ] **M2 Notes core:** page identity in three parts: ~~2.1a titles (includes rename, formerly 2.7)~~ (done 2026-10-24), ~~2.1b readable URLs~~ (done 2026-10-25), ~~2.1d instant renames~~ (done 2026-10-26), ~~2.1c journal pages~~ (done 2026-10-26); ~~2.2 journal feed~~ (done 2026-10-27; owner checked scrolling and typing: "fine for now", revisit if it slows as days build up); ~~2.3 bullets and indenting~~ (done 2026-10-27); journal feed (replaces Mist's landing page and `/new`); bullets and indent; tasks; ID-based wikilinks with autocomplete and placeholder pages; backlinks below the page; rename; sidebars with Cmd/Ctrl+click to open in the right panel; search; responsive layout. Build order and UI details are agreed through a clickable prototype first.
 - [ ] **M3 Portability and offline:** export to Logseq markdown, offline editing.
 - [ ] **M4 Sharing:** accounts, visibility model, share dialog, permission-aware backlinks and search.
 - [ ] **M5 Quality-of-life:** all pages list, fuzzy dates, pomodoro.
@@ -254,6 +255,10 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced with the Ag
 | 2026-10-27 | The journal feed replaces Mist's home page (demo document, onboarding, drag-and-drop upload); `/new` stays for scripts with no link to it | The feed is the home of a notes app; `/new` costs nothing to keep |
 | 2026-10-27 | Each day in the feed gets a compact Mist bar (edit or suggest, connection, share, open day); comments, threads and accepting suggestions happen on the day's own page | A full side panel per day does not fit a feed |
 | 2026-10-27 | Every feed day is a live editor; days connect 1200px before reaching the screen (the first three at once) and stay connected; older days load in batches of 7 as you scroll, with a button for keyboard users | Scrolling should feel like Roam's daily notes |
+| 2026-10-27 | Tab on a plain line makes it a bullet as well as indenting it | In Logseq every nested line is a bullet; keeps exported files clean |
+| 2026-10-27 | Bullets display as dots with indentation guides; the text keeps `- ` and tabs | The prototype's look, without changing the Logseq-compatible text |
+| 2026-10-27 | In suggest mode the bullet keys do nothing special (Tab stays in the editor); designing indentation suggestions is F34, for later | Indentation changes do not fit CriticMarkup suggestions yet |
+| 2026-10-27 | Backspace right after a bullet outdents, then removes the bullet, whether or not the line has text | One consistent rule |
 | 2026-10-22 | Gate deploys by running the checks in the Workers Builds command | Workers Builds ignores GitHub CI; this is the smallest change that stops failing code going live |
 
 ## 12. Changelog
@@ -278,3 +283,4 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced with the Ag
 - 2026-10-26: Journal pages done (M2 chunk 2.1c): `/journal/YYYY-MM-DD`, created on first text, "Today" button in the header, read-only date heading. Fixed a 1.5 bug found while testing: a failing index check in `onConnect` ran before the document was sent and could stop a tab receiving it; it now runs afterwards and never throws.
 - 2026-10-27: Faster indexing: 0.3 seconds after a pause in typing (2-second maximum wait), replacing the 2-second throttle; measured locally at about 0.3 seconds from text to searchable.
 - 2026-10-27: Journal feed done (M2 chunk 2.2): `/` shows today's journal then earlier days, every day a live editor, older days loading as you scroll. Verified in headless Chrome locally: 17 live days, no long tasks while scrolling, no console errors.
+- 2026-10-27: Bullets and indenting done (M2 chunk 2.3): Tab and Shift+Tab with children, Enter continuing bullets, Backspace outdenting, dots and guides. Added F34 (suggesting indentation, for later). Owner checked the feed.

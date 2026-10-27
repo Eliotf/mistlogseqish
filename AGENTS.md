@@ -101,6 +101,7 @@ PRD.md        Product spec and roadmap
 - Only `DocumentAgent.rename` writes `meta.title`, after the index claims the title, under the document's index lock. Never set the title from the browser or elsewhere on the server: `DocumentAgent` reverts browser writes, and anything else would bypass title uniqueness.
 - Journals are created inside `DocumentAgent`'s update handler on their first real text, and their state is not persisted before that. Anything run on connect or on update must never throw or delay sending the document to the browser.
 - The journal feed renders one live editor (Yjs connection, TipTap, Mist document context) per day. Keep per-day UI light, and keep days lazily connected (`JournalDay`).
+- Locally, the first time a page uses a dependency Vite has not bundled yet (for example Radix's switch on a document page), Vite re-optimises and reloads, and a page loaded in that moment can throw React "Invalid hook call" errors. It is dev-only: load the page again.
 - Never decide "today" on the server (it runs on UTC). Use `localDate(new Date())` in the browser.
 - `docs.$id.tsx` keys its screen by page ID. Keep that: without it, moving between pages reuses the previous page's Yjs doc and editor.
 - Workspace index schema changes are migrations: append to `MIGRATIONS` in `agents/workspace-index.ts` and bump `SCHEMA_VERSION`. Never edit `SCHEMA_V1` or a shipped migration, and test the upgrade from the previous version.

@@ -46,6 +46,28 @@ body {
   margin: 0;
 }
 
+/* Bullets and indentation (app/lib/bullet-editing.ts). The text keeps its
+   tabs and "- "; only the display changes. */
+.tiptap {
+  tab-size: 1.5em;
+}
+
+.tiptap .md-indent {
+  background-image: linear-gradient(to right, transparent 0.55em, var(--color-border) 0.55em, var(--color-border) calc(0.55em + 1px), transparent calc(0.55em + 1px));
+}
+
+.tiptap .md-bullet {
+  position: relative;
+  color: transparent;
+}
+
+.tiptap .md-bullet::before {
+  content: "\2022";
+  position: absolute;
+  left: 0;
+  color: var(--color-muted);
+}
+
 .tiptap .collaboration-cursor__caret {
   position: relative;
   margin-left: -1px;

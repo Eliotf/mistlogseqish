@@ -96,6 +96,13 @@ Tests in `tests/unit/lib/note-*.test.ts` include a round trip through Yjs using 
 - `AppHeader` and `ConnectedEditor` are shared with the single-page screen (`docs.$id.tsx`), so both render the same header and editor wiring.
 - Day headings are `h2` under one visually hidden `h1` ("Journals"), and do not set the browser tab title.
 
+## Bullets and Indentation
+
+- The text stays Logseq-compatible: a bullet is `- ` after leading tab characters (PRD F7). Only keys and display change.
+- `app/lib/bullets.ts` is pure line logic. `indentPlan` moves a line or a selection with its children, at most one level below the line above, and makes indented plain lines bullets. `enterPlan` continues a bullet, starts the first child at the end of a line with children, adds an empty bullet above when the caret is before the content, and outdents or ends an empty bullet. `backspacePlan` outdents, or removes a top-level bullet, when the caret is right after `- `. Every change rewrites only the start of a line.
+- `app/lib/bullet-editing.ts` (`BulletEditing`, registered in `Editor.tsx`) applies the plans as ProseMirror transactions, so they sync over Yjs and undo normally. Inserted indentation is plain text and never takes a mark; Enter splits with `tr.split` so moved text keeps its marks. Keys are ignored during IME composition. In suggest mode, Tab and Shift+Tab are swallowed (focus stays in the editor) and Enter and Backspace are left to Mist (F34 will design indentation suggestions).
+- `bulletDecorations` draws each leading tab as a fixed-width indent with a guide (`.md-indent`) and a bullet's `-` as a dot (`.md-bullet`), skipping code fences. The caret still moves one character at a time across `- `.
+
 ## Readable URLs
 
 - `/page/<slug>` is a page's readable address; `/docs/<id>` is its permanent one and redirects (302) to the slug when the page has one. Untitled pages, and titles with no letters or digits, stay at `/docs/<id>`.

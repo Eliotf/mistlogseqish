@@ -11,6 +11,7 @@ import CollaborationCaret from "@tiptap/extension-collaboration-caret";
 import { CriticAddition, CriticDeletion, CriticComment, CriticHighlight, CriticDelimiters } from "~/lib/critic-marks";
 import { markdownDecorations, cleanViewKey } from "~/lib/markdown-decorations";
 import { suggestModePlugin } from "~/lib/suggest-mode";
+import { BulletEditing } from "~/lib/bullet-editing";
 import BubbleToolbar from "~/components/BubbleToolbar";
 import type { useYjsEditor } from "~/lib/useYjsEditor";
 
@@ -234,6 +235,7 @@ export default function Editor({
         }),
         MarkdownDecorations,
         SuggestMode.configure({ docState }),
+        BulletEditing.configure({ docState }),
         CommentClickHandler.configure({ onCommentClick }),
         CommentHighlight,
         ActiveCommentHighlight,
