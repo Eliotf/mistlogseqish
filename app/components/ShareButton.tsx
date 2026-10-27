@@ -3,15 +3,21 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { serializeThreads } from "~/lib/thread-serialization";
 import { useDocument } from "~/lib/DocumentContext";
 
-export default function ShareButton() {
+/** The absolute link to copy: `url` (a path such as /journal/2026-10-27) on this site, or the current address. */
+export function shareLink(url: string | undefined, current: { href: string; origin: string }): string {
+  return url ? new URL(url, current.origin).href : current.href;
+}
+
+/** Share menu. `url` is the link to copy; it defaults to the current page's address. */
+export default function ShareButton({ url }: { url?: string } = {}) {
   const { docId, markdown, threads } = useDocument();
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(async () => {
-    await navigator.clipboard.writeText(window.location.href);
+    await navigator.clipboard.writeText(shareLink(url, window.location));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  }, []);
+  }, [url]);
 
   const handleDownload = useCallback(() => {
     const content = serializeThreads(markdown, threads);

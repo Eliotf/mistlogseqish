@@ -1,12 +1,10 @@
-import { data, Link, redirect, useLocation, useNavigate } from "react-router";
+import { data, redirect, useLocation, useNavigate } from "react-router";
 import type { Route } from "./+types/docs.$id";
 import { isValidDocumentId, APP_DISPLAY_NAME } from "~/shared/constants";
 import { currentSlugOrNull, loadDocument } from "~/lib/document-loader.server";
 import { pagePath } from "~/lib/slug";
 import { useYjsEditor } from "~/lib/useYjsEditor";
 import { DocumentProvider, useDocument } from "~/lib/DocumentContext";
-import Editor from "~/components/Editor";
-import Preview from "~/components/Preview";
 import PreviewToggle from "~/components/PreviewToggle";
 import ConnectionStatus from "~/components/ConnectionStatus";
 import ShareButton from "~/components/ShareButton";
@@ -15,13 +13,12 @@ import CleanViewToggle from "~/components/CleanViewToggle";
 import SuggestionActions from "~/components/SuggestionActions";
 import CommentInput from "~/components/CommentInput";
 import ThreadList from "~/components/ThreadList";
-import ThemeSelector from "~/components/ThemeSelector";
 import MobilePanel from "~/components/MobilePanel";
 import OnboardingBanner from "~/components/OnboardingBanner";
 import PageTitle from "~/components/PageTitle";
-import NewPageButton from "~/components/NewPageButton";
 import JournalHeading from "~/components/JournalHeading";
-import TodayButton from "~/components/TodayButton";
+import AppHeader from "~/components/AppHeader";
+import ConnectedEditor from "~/components/ConnectedEditor";
 import { isJournalId } from "~/lib/note-ids";
 
 export function meta(_args: Route.MetaArgs) {
@@ -76,35 +73,11 @@ function DocumentLayout({ id, exists, path, focusTitle }: Omit<ScreenProps, "cre
   const onRenamed = (newPath: string) => {
     if (newPath !== path) navigate(newPath, { replace: true });
   };
-  const {
-    yjs,
-    showPreview,
-    handleEditorReady,
-    handleCommentClick,
-    commentHighlight,
-    activeCommentRange,
-    cleanView,
-    openCommentInput,
-    handleResolveAtCursor,
-    handleDeleteAtCursor,
-    mode,
-  } = useDocument();
+  const { yjs, mode } = useDocument();
 
   return (
     <div className="flex h-screen flex-col">
-      <header className="flex items-stretch overflow-x-auto scrollbar-none border-b border-border">
-        <Link
-          to="/"
-          className="flex items-center bg-ink px-4 py-2 font-medium text-paper transition-colors hover:bg-chartreuse hover:text-[#1a1a1a]"
-        >
-          {APP_DISPLAY_NAME}
-        </Link>
-        <div className="shrink-0 border-r border-border">
-          <TodayButton />
-        </div>
-        <div className="shrink-0 border-r border-border">
-          <NewPageButton />
-        </div>
+      <AppHeader>
         <div className="flex grow shrink-0 items-center px-4">
           <span className="font-mono text-sm text-muted" title="This page's address">
             {decodeURIComponent(path)}
@@ -116,10 +89,7 @@ function DocumentLayout({ id, exists, path, focusTitle }: Omit<ScreenProps, "cre
         <div className="shrink-0 border-l border-border">
           <ShareButton />
         </div>
-        <div className="flex shrink-0 items-center border-l border-border">
-          <ThemeSelector />
-        </div>
-      </header>
+      </AppHeader>
       <div className="flex flex-1 overflow-hidden">
         <main className="flex-1 overflow-y-auto pb-[33vh] lg:border-r lg:border-border lg:pb-0">
           {isJournalId(id) ? (
@@ -127,19 +97,7 @@ function DocumentLayout({ id, exists, path, focusTitle }: Omit<ScreenProps, "cre
           ) : (
             <PageTitle doc={yjs.doc} pageId={id} autoFocus={focusTitle} onRenamed={onRenamed} />
           )}
-          <Editor
-            yjs={yjs}
-            hidden={showPreview}
-            onEditorReady={handleEditorReady}
-            onCommentClick={handleCommentClick}
-            commentHighlight={commentHighlight}
-            activeCommentRange={activeCommentRange}
-            cleanView={cleanView}
-            onNewComment={openCommentInput}
-            onResolveAtCursor={handleResolveAtCursor}
-            onDeleteAtCursor={handleDeleteAtCursor}
-          />
-          {showPreview && <Preview />}
+          <ConnectedEditor />
         </main>
         <aside className="hidden w-96 flex-col overflow-hidden lg:flex">
           <div className="flex-1 overflow-y-auto">

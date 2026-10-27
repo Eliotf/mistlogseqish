@@ -88,6 +88,14 @@ Tests in `tests/unit/lib/note-*.test.ts` include a round trip through Yjs using 
 - The header's "Today" button navigates to `/journal/<localDate(now)>`, computed in the browser's time zone when clicked.
 - `onConnect` sends the document to the new tab first, then runs `indexOnOpen` (never throws), so indexing can never stop a tab receiving its document.
 
+## Journal Feed
+
+- `/` (`app/routes/home.tsx`) is the journal feed. The loader asks the index for the newest days with notes (`journals(7)`) and fails open: if the index is unreachable, the feed still shows today, with a retry for earlier days.
+- `JournalFeed` (`app/components/JournalFeed.tsx`) puts today first. Today is decided in the browser with `useSyncExternalStore`; the server renders a placeholder of the same height. Earlier days (before today, so future days are hidden) follow, newest first. Older batches load from `GET /api/journals?before=&limit=` (`app/routes/api.journals.ts`) when a sentinel near the bottom comes within 800px of the screen, or from a "Show older days" button.
+- Each day is a `JournalDay`: a live editor with its own Yjs connection and Mist document context (`DocumentProvider`, `ConnectedEditor`, `DayBar`). Days show a light placeholder until they come within 1200px of the screen (`CONNECT_MARGIN`), the first three at once, then stay connected so scrolling back is instant.
+- `AppHeader` and `ConnectedEditor` are shared with the single-page screen (`docs.$id.tsx`), so both render the same header and editor wiring.
+- Day headings are `h2` under one visually hidden `h1` ("Journals"), and do not set the browser tab title.
+
 ## Readable URLs
 
 - `/page/<slug>` is a page's readable address; `/docs/<id>` is its permanent one and redirects (302) to the slug when the page has one. Untitled pages, and titles with no letters or digits, stay at `/docs/<id>`.

@@ -7,4 +7,5 @@ export default [
   route("page/:slug", "routes/page.$slug.tsx"),
   route("journal/:date", "routes/journal.$date.tsx"),
   route("api/rename", "routes/api.rename.ts"),
+  route("api/journals", "routes/api.journals.ts"),
 ] satisfies RouteConfig;

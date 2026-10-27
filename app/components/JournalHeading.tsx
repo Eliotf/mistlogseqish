@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { Link } from "react-router";
 import type * as Y from "yjs";
 import { journalTitle, localDate, parseJournalDate, weekdayOf } from "~/lib/note-ids";
 import { linesFromYjs } from "~/lib/note-lines";
@@ -9,6 +10,14 @@ interface JournalHeadingProps {
   pageId: string;
   /** Whether the journal was already created when the page loaded. */
   exists: boolean;
+  /** In the feed: link the date to the day's own page. */
+  href?: string;
+  /** Whether the document has finished its first sync; the note waits for it so a written day never flashes it. */
+  synced?: boolean;
+  /** Set the browser tab title (on a day's own page, not in the feed). */
+  setsTitle?: boolean;
+  /** Heading level: 1 on a day's own page, 2 inside the feed. */
+  level?: 1 | 2;
 }
 
 const noSubscription = () => () => {};
@@ -19,7 +28,8 @@ const noSubscription = () => () => {};
  * "Today" is decided in the browser, in the user's time zone; the server
  * renders the weekday, which is the same everywhere.
  */
-export default function JournalHeading({ doc, pageId, exists }: JournalHeadingProps) {
+export default function JournalHeading({ doc, pageId, exists, href, synced = true, setsTitle = true, level = 1 }: JournalHeadingProps) {
+  const Heading = level === 1 ? "h1" : "h2";
   const date = parseJournalDate(pageId) ?? "";
   const title = date ? journalTitle(date) : "";
 
@@ -43,16 +53,24 @@ export default function JournalHeading({ doc, pageId, exists }: JournalHeadingPr
   );
 
   useEffect(() => {
-    document.title = `${title} · ${APP_DISPLAY_NAME}`;
-  }, [title]);
+    if (setsTitle) document.title = `${title} · ${APP_DISPLAY_NAME}`;
+  }, [title, setsTitle]);
 
   return (
     <div className="px-6 pt-6">
       <div className="flex max-w-[65ch] flex-wrap items-baseline gap-x-3">
-        <h1 className="text-[1.75rem] font-semibold leading-tight text-ink">{title}</h1>
+        <Heading className="text-[1.75rem] font-semibold leading-tight text-ink">
+          {href ? (
+            <Link to={href} className="hover:underline hover:decoration-chartreuse hover:decoration-2 hover:underline-offset-4">
+              {title}
+            </Link>
+          ) : (
+            title
+          )}
+        </Heading>
         <span className="font-mono text-sm text-muted">{isToday ? "Today" : weekdayOf(date)}</span>
       </div>
-      {!written && (
+      {synced && !written && (
         <p className="mt-2 font-mono text-xs text-muted">
           Not saved yet. {isToday ? "Today's journal" : "This day's journal"} is created when you start typing.
         </p>
