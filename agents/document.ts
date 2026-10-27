@@ -26,8 +26,16 @@ const CLIENT_ORIGIN = Symbol("client");
 /** Yjs transaction origin for changes the server makes itself, which it broadcasts. */
 const SERVER_ORIGIN = Symbol("server");
 
-/** Seconds from the first unindexed edit to re-indexing (throttle, not debounce). */
+/**
+ * Backup: seconds from the first unindexed edit to a persisted reindex. It
+ * survives the object being evicted; normally the in-memory timer below has
+ * already indexed by then and the backup finds nothing to do.
+ */
 export const INDEX_DELAY_SECONDS = 2;
+/** Reindex this long after the last edit (a pause in typing)... */
+export const INDEX_PAUSE_MS = 300;
+/** ...or this long after the first unindexed edit, whichever comes first. */
+export const INDEX_MAX_WAIT_MS = 2000;
 /** Seconds to wait before each retry after a failed index update; the last repeats. */
 export const INDEX_RETRY_SECONDS = [5, 30, 120, 600];
 
@@ -50,6 +58,10 @@ class DocumentAgent extends Agent {
   private awareness: awarenessProtocol.Awareness | null = null;
   /** A reindex is scheduled. Lost on restart, so markForIndex also runs on connect. */
   private reindexPending = false;
+  /** In-memory timer for indexing soon after a pause; lost on eviction (the backup schedule covers that). */
+  private pauseTimer: ReturnType<typeof setTimeout> | null = null;
+  /** When the current burst of unindexed edits started, for the maximum wait. */
+  private burstStartedAt = 0;
   /**
    * Serialises reindex and rename. A rename claims its title only after any
    * reindex in flight has finished, so no reindex with the old title can
@@ -414,9 +426,27 @@ class DocumentAgent extends Agent {
       const state = this.readIndexState();
       if (!state.dirty) this.writeIndexState({ ...state, dirty: true });
       this.scheduleReindex(INDEX_DELAY_SECONDS);
+      // While retrying after a failure, leave it to the backoff schedule
+      if (state.retries === 0) this.armPauseTimer();
     } catch (err) {
       console.error("markForIndex failed", err);
     }
+  }
+
+  /**
+   * Index INDEX_PAUSE_MS after the last edit, but no later than
+   * INDEX_MAX_WAIT_MS after the first unindexed edit, so continuous typing
+   * still reaches the index every couple of seconds.
+   */
+  private armPauseTimer(): void {
+    const now = Date.now();
+    if (this.pauseTimer === null) this.burstStartedAt = now;
+    else clearTimeout(this.pauseTimer);
+    const delay = Math.max(0, Math.min(INDEX_PAUSE_MS, this.burstStartedAt + INDEX_MAX_WAIT_MS - now));
+    this.pauseTimer = setTimeout(() => {
+      this.pauseTimer = null;
+      this.reindex().catch((err: unknown) => console.error("Reindex after pause failed", err));
+    }, delay);
   }
 
   /** Reindex immediately instead of waiting for the throttle. Never throws. */
@@ -521,6 +551,11 @@ class DocumentAgent extends Agent {
       });
       if (now.dirty || stale) this.scheduleReindex(INDEX_DELAY_SECONDS);
     } catch (err) {
+      // Back off: no fast reindex until a scheduled retry succeeds
+      if (this.pauseTimer !== null) {
+        clearTimeout(this.pauseTimer);
+        this.pauseTimer = null;
+      }
       const now = this.readIndexState();
       const retries = now.retries + 1;
       this.writeIndexState({ ...now, dirty: true, retries });

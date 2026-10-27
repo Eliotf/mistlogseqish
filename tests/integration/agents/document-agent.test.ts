@@ -172,6 +172,9 @@ describe("DocumentAgent", () => {
   let nextConnId: number;
 
   beforeEach(async () => {
+    // The in-memory index timer fires only when a test advances time, so no
+    // timer from one test can reach the next test's index
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     vi.stubGlobal("WebSocket", MockSocket);
     mockSqlStore = new Map();
     mockConnectionMap = new Map();
@@ -194,6 +197,8 @@ describe("DocumentAgent", () => {
   });
 
   afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -1125,6 +1130,103 @@ describe("DocumentAgent", () => {
       expect(errors).toHaveBeenCalledWith("indexOnOpen failed", expect.any(Error));
       cleanup(client);
       vi.restoreAllMocks();
+    });
+
+    /* ---- Index soon after a pause in typing ---- */
+
+    describe("indexing after a pause", () => {
+      beforeEach(() => {
+        // The 2-second limit is measured with Date.now(), so fake the clock too
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+      });
+
+      it("indexes 0.3 seconds after the last edit", async () => {
+        await create("start");
+        await agent.reindex();
+        const client = connectYjsClient();
+        updates = [];
+        addLine(client, "one");
+        await vi.advanceTimersByTimeAsync(299);
+        expect(updates).toEqual([]);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(updates.map((u) => u.lines.map((l) => l.text))).toEqual([["start", "one"]]);
+        cleanup(client);
+      });
+
+      it("waits for the pause: each edit restarts the 0.3 seconds", async () => {
+        await create("start");
+        await agent.reindex();
+        const client = connectYjsClient();
+        updates = [];
+        addLine(client, "a");
+        await vi.advanceTimersByTimeAsync(200);
+        addLine(client, "b");
+        await vi.advanceTimersByTimeAsync(200);
+        expect(updates).toEqual([]);
+        await vi.advanceTimersByTimeAsync(100);
+        expect(updates).toHaveLength(1);
+        expect(updates[0].lines.map((l) => l.text)).toEqual(["start", "a", "b"]);
+        cleanup(client);
+      });
+
+      it("still indexes every 2 seconds during continuous typing", async () => {
+        await create("start");
+        await agent.reindex();
+        const client = connectYjsClient();
+        updates = [];
+        for (let i = 0; i < 15; i++) {
+          addLine(client, `line ${i}`); // one edit every 0.2 seconds, never pausing
+          await vi.advanceTimersByTimeAsync(200);
+        }
+        // 3 seconds of typing: indexed once at the 2-second limit
+        expect(updates).toHaveLength(1);
+        expect(updates[0].lines.length).toBeGreaterThanOrEqual(10);
+        await vi.advanceTimersByTimeAsync(300);
+        expect(updates).toHaveLength(2);
+        expect(updates[1].lines.at(-1)?.text).toBe("line 14");
+        cleanup(client);
+      });
+
+      it("leaves retries to the backoff schedule while the index is failing", async () => {
+        await create("start");
+        mockIndexStub.updatePage = async () => {
+          throw new Error("index down");
+        };
+        vi.spyOn(console, "error").mockImplementation(() => {});
+        await agent.reindex(); // fails: now in backoff
+        const attempts = vi.fn();
+        mockIndexStub.updatePage = async () => {
+          attempts();
+          throw new Error("index down");
+        };
+        const client = connectYjsClient();
+        addLine(client, "typing during an outage");
+        await vi.advanceTimersByTimeAsync(5000);
+        expect(attempts).not.toHaveBeenCalled();
+        cleanup(client);
+        vi.restoreAllMocks();
+      });
+
+      it("makes the backup schedule a no-op once the pause timer has indexed", async () => {
+        await create("start");
+        await agent.reindex();
+        const client = connectYjsClient();
+        updates = [];
+        addLine(client, "edit");
+        await vi.advanceTimersByTimeAsync(300);
+        expect(updates).toHaveLength(1);
+        await agent.reindex(); // the persisted 2-second backup firing
+        expect(updates).toHaveLength(1);
+        cleanup(client);
+      });
+
+      it("does not run for documents that are not indexable", async () => {
+        const client = connectYjsClient(); // never created
+        addLine(client, "nothing to index");
+        await vi.advanceTimersByTimeAsync(3000);
+        expect(updates).toEqual([]);
+        cleanup(client);
+      });
     });
 
     /* ---- Journals: created by their first real text ---- */

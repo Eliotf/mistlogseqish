@@ -228,7 +228,7 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced with the Ag
 | 2026-10-23 | Documents send their lines to the index, and the index runs the parser | One place parses on the server and records the parser version; backlinks and search need the line text anyway |
 | 2026-10-23 | The workspace index is never reachable from a browser: the Worker refuses `/agents/workspace-agent/*`, and the agent refuses requests and connections | Only other Durable Objects call it, over RPC; UI queries will go through server routes that can check permissions |
 | 2026-10-23 | The index does not enforce unique titles | It copies what documents say; refusing an entry would make it drift. Rename checks the index before allowing a title |
-| 2026-10-23 | Documents re-index on a 2-second throttle, not a debounce | A debounce would never fire during continuous typing; with a throttle the index lags by a few seconds at most |
+| 2026-10-23 | ~~Documents re-index on a 2-second throttle, not a debounce~~ | Superseded 2026-10-27 by indexing after a pause with a 2-second maximum wait |
 | 2026-10-23 | Stale index updates are ignored using strictly increasing `updatedAt` values from each document | Retries can arrive late; this needs no schema change, unlike a separate sequence number |
 | 2026-10-23 | Pages send an empty title to the index until page titles exist (chunk 2.1); journals are titled from their date | Nothing displays index titles yet |
 | 2026-10-24 | Split chunk 2.1 into 2.1a titles, 2.1b readable URLs and 2.1c journal pages; merge 2.7 (rename) into 2.1a | With ID links, renaming is editing the title; links showing the new title belongs with links (2.5) |
@@ -250,6 +250,7 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced with the Ag
 | 2026-10-26 | A journal is created by its first real text (not by opening it, an empty paragraph or whitespace); nothing is saved for a journal before that | Matches the prototype; browsing days leaves no empty records |
 | 2026-10-26 | "Today" is decided in the browser's time zone; the server never decides today | Cloudflare runs on UTC and could be a day off |
 | 2026-10-26 | Any real date can be opened at `/journal/YYYY-MM-DD`, past or future; `/docs/journal-…` redirects there | Fuzzy-date links will point at future days |
+| 2026-10-27 | Index 0.3 seconds after a pause in typing, at most 2 seconds after the first unindexed edit; keep the persisted 2-second schedule as a backup; no fast indexing during retry backoff | Supersedes the 2-second throttle (2026-10-23): search, backlinks and the feed's day list are fresh almost immediately, with few extra index calls |
 | 2026-10-22 | Gate deploys by running the checks in the Workers Builds command | Workers Builds ignores GitHub CI; this is the smallest change that stops failing code going live |
 
 ## 12. Changelog
@@ -272,3 +273,4 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced with the Ag
 - 2026-10-25: Instant renames done (M2 chunk 2.1d): `POST /api/rename` replaces `/api/title-check`, claims titles atomically and returns the new address; title changes re-index immediately. Closes the 2.1a uniqueness race and reverses the 2.1b "address updates on next load" decision.
 - 2026-10-26: Server-owned titles (part of 2.1d, before it shipped): a review of every title write path found uniqueness could be bypassed or raced. Renames now go through `DocumentAgent.rename` under a per-document lock; browsers can't write `meta.title`; journal-date titles reserved; NFC and invisible-character normalisation. Recorded a rebuild constraint for 1.6.
 - 2026-10-26: Journal pages done (M2 chunk 2.1c): `/journal/YYYY-MM-DD`, created on first text, "Today" button in the header, read-only date heading. Fixed a 1.5 bug found while testing: a failing index check in `onConnect` ran before the document was sent and could stop a tab receiving it; it now runs afterwards and never throws.
+- 2026-10-27: Faster indexing: 0.3 seconds after a pause in typing (2-second maximum wait), replacing the 2-second throttle; measured locally at about 0.3 seconds from text to searchable.
