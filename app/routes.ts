@@ -8,5 +8,7 @@ export default [
   route("journal/:date", "routes/journal.$date.tsx"),
   route("api/rename", "routes/api.rename.ts"),
   route("api/journals", "routes/api.journals.ts"),
+  route("api/pages", "routes/api.pages.ts"),
   route("api/pages/titles", "routes/api.pages.titles.ts"),
+  route("api/pages/search", "routes/api.pages.search.ts"),
 ] satisfies RouteConfig;

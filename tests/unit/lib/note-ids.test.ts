@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { journalId, journalTitle, parseJournalDate, isJournalId, isJournalTitle, isPageId, localDate, weekdayOf } from "~/lib/note-ids";
+import { journalId, journalTitle, parseJournalDate, isJournalId, isJournalTitle, journalDateFromTitle, isPageId, localDate, weekdayOf } from "~/lib/note-ids";
 import { generateDocumentId } from "~/shared/constants";
 
 describe("journalId", () => {
@@ -51,6 +51,19 @@ describe("journalTitle", () => {
 
   it("rejects an invalid date", () => {
     expect(() => journalTitle("2026-02-30")).toThrow("Invalid journal date");
+  });
+});
+
+describe("journalDateFromTitle", () => {
+  it("reads the date a journal title names, in any case or ordinal", () => {
+    expect(journalDateFromTitle("Oct 28th, 2026")).toBe("2026-10-28");
+    expect(journalDateFromTitle(" oct 1st, 2026 ")).toBe("2026-10-01");
+    expect(journalDateFromTitle("Feb 3th, 2026")).toBe("2026-02-03");
+  });
+  it("is null for anything else, including impossible dates", () => {
+    expect(journalDateFromTitle("Books")).toBeNull();
+    expect(journalDateFromTitle("Feb 30th, 2026")).toBeNull();
+    expect(journalDateFromTitle("Foo 3rd, 2026")).toBeNull();
   });
 });
 

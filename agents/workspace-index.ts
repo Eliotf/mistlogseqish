@@ -1,3 +1,4 @@
+import { titleKey } from "../app/lib/page-title";
 import { parseNote, PARSER_VERSION, type DocLine, type TaskState } from "../app/lib/note-parser";
 import { isJournalId, isJournalTitle, isPageId, journalTitle, parseJournalDate } from "../app/lib/note-ids";
 import { slugify } from "../app/lib/slug";
@@ -202,10 +203,8 @@ function toPage(row: SqlRow): IndexedPage {
   };
 }
 
-/** How titles are compared for uniqueness: NFC, lowercase, trimmed. */
-export function titleKey(title: string): string {
-  return title.normalize("NFC").trim().toLowerCase();
-}
+// How titles are compared for uniqueness; shared with the editor's links
+export { titleKey };
 
 /** Escape LIKE wildcards; queries use ESCAPE '\'. */
 function likeEscape(s: string): string {

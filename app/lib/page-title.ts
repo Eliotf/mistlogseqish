@@ -15,6 +15,16 @@ export type DocumentRenameResult =
   | { ok: false; code: "invalid"; reason: string }
   | { ok: false; code: "journal" | "journal-title" | "missing" };
 
+/** What DocumentAgent.createWithTitle reports. */
+export type CreateWithTitleResult =
+  | { ok: true; pageId: string; title: string; slug: string | null }
+  | { ok: false; code: "taken"; holder: { pageId: string; title: string } }
+  | { ok: false; code: "invalid"; reason: string }
+  | { ok: false; code: "journal" | "exists" };
+
+/** POST /api/pages: the page a link to this title points at (found or created), or why not. */
+export type LinkPageResult = { ok: true; pageId: string; title: string; slug: string | null; kind: "page" | "journal"; empty: boolean } | { ok: false; reason: string };
+
 /** The server's answer to a rename: the saved title and the page's new address, or why not. */
 export type RenameResult = { ok: true; title: string; path: string } | { ok: false; reason: string };
 
@@ -42,3 +52,8 @@ export function normalizeTitle(raw: string): TitleResult {
 
 /** The title to display for a page with no title yet. */
 export const UNTITLED = "Untitled";
+
+/** How titles are compared for uniqueness and for links: NFC, lowercase, trimmed. */
+export function titleKey(title: string): string {
+  return title.normalize("NFC").trim().toLowerCase();
+}

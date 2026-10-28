@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { normalizeTitle, MAX_TITLE_LENGTH } from "~/lib/page-title";
+import { normalizeTitle, titleKey, MAX_TITLE_LENGTH } from "~/lib/page-title";
 
 describe("normalizeTitle", () => {
   it("trims and collapses whitespace", () => {
@@ -51,5 +51,12 @@ describe("normalizeTitle", () => {
 
   it("allows single brackets", () => {
     expect(normalizeTitle("[draft] notes]").ok).toBe(true);
+  });
+});
+
+describe("titleKey", () => {
+  it("compares titles ignoring case, surrounding space and Unicode composition", () => {
+    expect(titleKey("  Café ")).toBe(titleKey("cafe\u0301".replace("cafe\u0301", "Cafe\u0301")));
+    expect(titleKey("Books")).toBe("books");
   });
 });

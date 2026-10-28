@@ -53,7 +53,7 @@ PRD.md        Product spec and roadmap
 
 ## Product invariants (do not break these)
 
-1. **Links point to a page ID, never a title.** A link is a `wikilink` mark with a `pageId` attribute. Its displayed title is looked up from the index. Renaming a page changes the title in one place and never edits linking pages. Deleting a page leaves its links as unresolved, not removed. Pasted or imported `[[Title]]` text is converted to an ID link. See PRD 6.1.
+1. **Links point to a page ID, never a title.** A link is `[[` + title + `]]` in the text, with a `wikilink` mark carrying a `pageId` on the title. Its displayed title is looked up from the index. Renaming a page changes the title in one place and never edits linking pages. Deleting a page leaves its links as unresolved, not removed. Pasted or imported `[[Title]]` text is converted to an ID link. See PRD 6.1.
 2. **Never lose the user's text.** Edits go through Yjs so they merge; never replace a document's content wholesale on the server.
 3. **The index is derived.** The workspace index is always rebuilt from documents, never the other way round. Re-indexing must be idempotent. Backlinks are never stored by hand.
 4. **Page text follows Logseq conventions,** so export stays a straight conversion. Bullets are `- `. Nesting is a literal **tab character** before the `- `, never spaces. Tasks are `TODO`, `DOING`, `DONE` at the start of a line (after the optional `- `).
@@ -104,6 +104,7 @@ PRD.md        Product spec and roadmap
 - Locally, the first time a page uses a dependency Vite has not bundled yet (for example Radix's switch on a document page), Vite re-optimises and reloads, and a page loaded in that moment can throw React "Invalid hook call" errors. It is dev-only: load the page again.
 - **No repeating timers on a Durable Object** (`setInterval`, or a `setTimeout` that re-arms itself): they stop hibernation, and an object that never sleeps is billed all day. The free plan was exhausted this way once (2026-10-27). Use `this.schedule()` for timed work. Browser code must not send periodic messages to an agent either; see `app/lib/connection-budget.ts`.
 - A tab running older code deletes any text carrying a mark or node its editor does not know (y-tiptap drops it, and the deletion syncs everywhere). Adding a mark or node to the editor schema means bumping `DOC_FORMAT_VERSION`, which makes the Worker refuse older tabs (`refuseOutdatedEditor`). Durable Object SQLite also allows only 100 bound parameters per query; chunk `IN (...)` lists.
+- A Durable Object's `doc_state` table does not exist until `ensureInitialised()` runs; call it before any `this.sql` on a fresh page. The agent tests' SQL mock throws in that case, as real SQLite does.
 - Never decide "today" on the server (it runs on UTC). Use `localDate(new Date())` in the browser.
 - `docs.$id.tsx` keys its screen by page ID. Keep that: without it, moving between pages reuses the previous page's Yjs doc and editor.
 - Workspace index schema changes are migrations: append to `MIGRATIONS` in `agents/workspace-index.ts` and bump `SCHEMA_VERSION`. Never edit `SCHEMA_V1` or a shipped migration, and test the upgrade from the previous version.

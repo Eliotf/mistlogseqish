@@ -433,19 +433,41 @@ body {
   }
 }
 
-/* Links (PRD 6.1). The editor shows the target's current title; a stale
-   stored copy is hidden and the title shown by a widget in its place. */
+/* Links (PRD 6.1), Logseq style: [[Title]] with faint brackets and the
+   target's current title underlined. A stale stored copy is hidden and the
+   title shown by a widget in its place. With the cursor between the
+   brackets the link is plain text (.wikilink-editing). */
 .tiptap .wikilink {
   cursor: pointer;
   text-decoration: underline 2px var(--color-chartreuse);
   text-underline-offset: 3px;
 }
 .tiptap .wikilink:hover { background-color: var(--color-border); }
+.tiptap .wikilink-bracket { color: var(--color-muted); opacity: 0.6; }
+.tiptap .wikilink-bracket[data-page-id] { cursor: pointer; }
 .tiptap .wikilink-empty { text-decoration-color: var(--color-border); }
-.tiptap .wikilink-missing {
+.tiptap .wikilink-missing,
+.tiptap .wikilink-pending {
   color: var(--color-muted);
   text-decoration: none;
   border-bottom: 1.5px dashed var(--color-muted);
 }
 .tiptap .wikilink-journal { font-family: var(--font-mono); font-size: 0.86em; }
 .tiptap .wikilink-stale { font-size: 0; }
+.tiptap .wikilink:has(.wikilink-editing) { text-decoration: none; cursor: text; background: none; }
+
+.link-suggest {
+  position: absolute;
+  z-index: 50;
+  min-width: 14rem;
+  max-width: 24rem;
+  padding: 4px 0;
+  background-color: var(--color-paper);
+  border: 1px solid var(--color-border);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.12);
+  font-size: 0.9rem;
+}
+.link-suggest-item { padding: 4px 12px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.link-suggest-item[aria-selected="true"] { background-color: var(--color-chartreuse); color: #1a1a1a; }
+.link-suggest-create { color: var(--color-muted); font-style: italic; }
+.link-suggest-item[aria-selected="true"].link-suggest-create { color: #1a1a1a; }

@@ -7,15 +7,19 @@ import Paragraph from "@tiptap/extension-paragraph";
 import Text from "@tiptap/extension-text";
 import Collaboration from "@tiptap/extension-collaboration";
 import { CriticAddition, CriticDeletion, CriticComment, CriticHighlight } from "~/lib/critic-marks";
-import { Wikilink, linkRanges, clipboardText, OPEN_LINK_EVENT, type TitleSource } from "~/lib/wikilink-editing";
-import type { LinkTarget } from "~/lib/page-titles";
+import { Wikilink, linkSpans, clipboardText, OPEN_LINK_EVENT, type TitleSource } from "~/lib/wikilink-editing";
+import type { LinkPage, LinkTarget } from "~/lib/page-titles";
 import { linesFromYjs } from "~/lib/note-lines";
 import { parseNote } from "~/lib/note-parser";
 
 const BOOKS = "abcd1234";
+const NOVELS = "efgh5678";
 
 const editors: Editor[] = [];
-afterEach(() => editors.splice(0).forEach((e) => e.destroy()));
+afterEach(() => {
+  editors.splice(0).forEach((e) => e.destroy());
+  vi.useRealTimers();
+});
 
 /** A title store the test controls. */
 function fakeTitles(initial: Record<string, Partial<LinkTarget>> = {}) {
@@ -31,6 +35,7 @@ function fakeTitles(initial: Record<string, Partial<LinkTarget>> = {}) {
       listeners.add(l);
       return () => listeners.delete(l);
     },
+    prime: (id, t) => set(id, t),
     update: (id, t) => {
       set(id, t);
       listeners.forEach((l) => l());
@@ -41,7 +46,7 @@ function fakeTitles(initial: Record<string, Partial<LinkTarget>> = {}) {
 
 type Run = string | [string, string] | [string, string, "added"];
 
-/** A Yjs document whose lines are runs of text; [text, pageId] is a link. */
+/** A Yjs document whose lines are runs of text; [text, pageId] is marked as a link. */
 function yDoc(lines: Run[][]): Y.Doc {
   const doc = new Y.Doc();
   const frag = doc.getXmlFragment("default");
@@ -50,7 +55,7 @@ function yDoc(lines: Run[][]): Y.Doc {
     let at = 0;
     for (const run of runs) {
       const [text, pageId, added] = typeof run === "string" ? [run, null, undefined] : run;
-      t.insert(at, text, { wikilink: pageId ? { pageId } : null, ...(added ? { criticAddition: {} } : { criticAddition: null }) });
+      t.insert(at, text, { wikilink: pageId ? { pageId } : null, criticAddition: added ? {} : null });
       at += text.length;
     }
     const p = new Y.XmlElement("paragraph");
@@ -60,45 +65,77 @@ function yDoc(lines: Run[][]): Y.Doc {
   return doc;
 }
 
-function setup(lines: Run[][], opts: { titles?: ReturnType<typeof fakeTitles>; mode?: "edit" | "suggest"; extensions?: Extensions } = {}) {
+interface SetupOptions {
+  titles?: ReturnType<typeof fakeTitles>;
+  mode?: "edit" | "suggest";
+  pages?: LinkPage[];
+  linkPage?: (title: string) => Promise<LinkPage | null>;
+  extensions?: Extensions;
+}
+
+function setup(lines: Run[][], opts: SetupOptions = {}) {
   const doc = yDoc(lines);
   const titles = opts.titles ?? fakeTitles();
   const onOpen = vi.fn();
+  const search = vi.fn(async (_q: string) => opts.pages ?? []);
+  const linkPage = vi.fn(opts.linkPage ?? (async (title: string): Promise<LinkPage | null> => ({ pageId: "newpage1", title, kind: "page", slug: null, empty: true })));
   const docState = { get: (k: string) => (k === "mode" ? (opts.mode ?? "edit") : undefined) };
   const element = document.createElement("div");
   document.body.append(element);
   const editor = new Editor({
     element,
-    extensions: opts.extensions ?? [Document, Paragraph, Text, CriticAddition, CriticDeletion, CriticComment, CriticHighlight, Collaboration.configure({ document: doc }), Wikilink.configure({ titles, docState, onOpen })],
+    extensions: opts.extensions ?? [
+      Document,
+      Paragraph,
+      Text,
+      CriticAddition,
+      CriticDeletion,
+      CriticComment,
+      CriticHighlight,
+      Collaboration.configure({ document: doc }),
+      Wikilink.configure({ titles, docState, onOpen, search, linkPage }),
+    ],
   });
   editors.push(editor);
-  return { doc, editor, titles, onOpen };
+  // The editor is in use: links react to the cursor only while it is focused
+  editor.view.dom.dispatchEvent(new FocusEvent("focus"));
+  return { doc, editor, titles, onOpen, search, linkPage };
 }
 
 const text = (doc: Y.Doc) => linesFromYjs(doc.getXmlFragment("default")).map((l) => l.text);
-const caret = (editor: Editor, pos: number, anchor = pos) => editor.commands.setTextSelection({ from: anchor, to: pos });
-const press = (editor: Editor, key: string, mods: { shiftKey?: boolean; altKey?: boolean } = {}) =>
+const links = (doc: Y.Doc) => parseNote(linesFromYjs(doc.getXmlFragment("default"))).links.map((l) => l.pageId);
+const caret = (editor: Editor, pos: number) => editor.commands.setTextSelection(pos);
+const press = (editor: Editor, key: string, mods: KeyboardEventInit = {}) =>
   editor.view.someProp("handleKeyDown", (f) => f(editor.view, new KeyboardEvent("keydown", { key, cancelable: true, ...mods })));
-const shown = (editor: Editor) => editor.view.dom.querySelector(".wikilink-shown");
-/** What a reader sees: the line's text without the hidden copy. */
+/** Type as the browser does: through handleTextInput first, else as plain insertion. */
+function type(editor: Editor, chars: string) {
+  for (const ch of chars) {
+    const { from, to } = editor.state.selection;
+    const handled = editor.view.someProp("handleTextInput", (f) => f(editor.view, from, to, ch, () => editor.state.tr.insertText(ch, from, to)));
+    if (!handled) editor.view.dispatch(editor.state.tr.insertText(ch, from, to));
+  }
+}
+const settle = () => new Promise((r) => setTimeout(r, 0));
+/** What a reader sees: the text without the hidden copy. */
 function visible(editor: Editor): string {
   const copy = editor.view.dom.cloneNode(true) as HTMLElement;
   copy.querySelectorAll("[aria-hidden=true]").forEach((n) => n.remove());
   return copy.textContent ?? "";
 }
 
-// "see " is positions 1-4, so a link right after it starts at 5
-const SEE_LINK = [["see ", ["Reading list", BOOKS], " here"]] as Run[][];
-const START = 5;
-const END = START + "Reading list".length;
+// "see " is positions 1-4; "[[" is 5-6; the title starts at 7
+const SEE_LINK: Run[][] = [["see [[", ["Reading list", BOOKS], "]] here"]];
+const FROM = 5;
+const INNER = 7;
+const INNER_END = INNER + "Reading list".length;
+const TO = INNER_END + 2;
 
 describe("the wikilink mark", () => {
   it("is stored in Yjs as the formatting the shared parser reads", () => {
-    const { doc, editor } = setup([["see Books here"]]);
-    editor.chain().setTextSelection({ from: 5, to: 10 }).setMark("wikilink", { pageId: BOOKS }).run();
+    const { doc } = setup(SEE_LINK);
     const ytext = doc.getXmlFragment("default").get(0).get(0) as Y.XmlText;
-    expect(ytext.toDelta()).toEqual([{ insert: "see " }, { insert: "Books", attributes: { wikilink: { pageId: BOOKS } } }, { insert: " here" }]);
-    expect(parseNote(linesFromYjs(doc.getXmlFragment("default"))).links).toEqual([{ pageId: BOOKS, line: 0 }]);
+    expect(ytext.toDelta()).toEqual([{ insert: "see [[" }, { insert: "Reading list", attributes: { wikilink: { pageId: BOOKS } } }, { insert: "]] here" }]);
+    expect(links(doc)).toEqual([BOOKS]);
   });
 
   it("is why older tabs are refused: an editor without it deletes the line", () => {
@@ -109,172 +146,337 @@ describe("the wikilink mark", () => {
     editors.push(old);
     expect(text(doc)).toEqual([""]);
   });
-
-  it("does not grow when you type at its end", () => {
-    const { doc, editor } = setup(SEE_LINK);
-    caret(editor, END);
-    editor.view.dispatch(editor.state.tr.insertText("!"));
-    expect(text(doc)).toEqual(["see Reading list! here"]);
-    expect(linkRanges(editor.state.doc)[0]).toMatchObject({ from: START, to: END });
-  });
 });
 
-describe("linkRanges", () => {
-  it("treats a link split by another mark as one link", () => {
-    const { editor } = setup([["a ", ["Read", BOOKS], ["ing", BOOKS, "added"], [" list", BOOKS], " b"]]);
-    expect(linkRanges(editor.state.doc)).toEqual([{ from: 3, to: 15, pageId: BOOKS, text: "Reading list" }]);
+describe("linkSpans", () => {
+  it("finds [[...]] and the page whose mark covers the whole title", () => {
+    const { editor } = setup(SEE_LINK);
+    expect(linkSpans(editor.state.doc)).toEqual([{ from: FROM, to: TO, innerFrom: INNER, innerTo: INNER_END, inner: "Reading list", pageId: BOOKS }]);
   });
 
-  it("keeps two links next to each other apart", () => {
-    const { editor } = setup([[["One", BOOKS], ["Two", "efgh5678"]]]);
-    expect(linkRanges(editor.state.doc).map((r) => r.text)).toEqual(["One", "Two"]);
+  it("treats a title split by another mark as one link", () => {
+    const { editor } = setup([["[[", ["Read", BOOKS], ["ing", BOOKS, "added"], "]]"]]);
+    expect(linkSpans(editor.state.doc)[0]).toMatchObject({ inner: "Reading", pageId: BOOKS });
+  });
+
+  it("has no page when the title is only partly marked, or not at all", () => {
+    const { editor } = setup([["[[", ["Read", BOOKS], "ing]] and [[plain]]"]]);
+    expect(linkSpans(editor.state.doc).map((s) => s.pageId)).toEqual([null, null]);
   });
 });
 
 describe("showing links", () => {
-  it("shows the stored copy until titles load, and asks for them", () => {
+  it("shows [[Title]] with faint brackets, and asks for current titles", () => {
     const { editor, titles } = setup(SEE_LINK);
-    expect(visible(editor)).toBe("see Reading list here");
-    expect(shown(editor)).toBeNull();
+    caret(editor, 1);
+    expect(visible(editor)).toBe("see [[Reading list]] here");
+    expect(editor.view.dom.querySelectorAll(".wikilink-bracket")).toHaveLength(2);
     expect(titles.requested).toContain(BOOKS);
   });
 
-  it("shows the current title over a stale copy, hiding the copy from screen readers too", () => {
+  it("shows the current title over a stale copy, hidden from screen readers too", () => {
     const { editor } = setup(SEE_LINK, { titles: fakeTitles({ [BOOKS]: { title: "Books" } }) });
-    expect(visible(editor)).toBe("see Books here");
-    expect(shown(editor)?.getAttribute("data-page-id")).toBe(BOOKS);
-    const hidden = editor.view.dom.querySelector(".wikilink-stale");
-    expect(hidden?.textContent).toBe("Reading list");
-    expect(hidden?.getAttribute("aria-hidden")).toBe("true");
-  });
-
-  it("shows the copy itself when it matches the title", () => {
-    const { editor } = setup(SEE_LINK, { titles: fakeTitles({ [BOOKS]: { title: "Reading list" } }) });
-    expect(shown(editor)).toBeNull();
-    expect(editor.view.dom.querySelector(".wikilink-stale")).toBeNull();
-    expect(visible(editor)).toBe("see Reading list here");
+    caret(editor, 1);
+    expect(visible(editor)).toBe("see [[Books]] here");
+    expect(editor.view.dom.querySelector(".wikilink-stale")?.getAttribute("aria-hidden")).toBe("true");
   });
 
   it("redraws when titles arrive or change", () => {
     const { editor, titles } = setup(SEE_LINK);
+    caret(editor, 1);
     titles.update(BOOKS, { title: "Books" });
-    expect(visible(editor)).toBe("see Books here");
+    expect(visible(editor)).toBe("see [[Books]] here");
     titles.update(BOOKS, { title: "Novels" });
-    expect(visible(editor)).toBe("see Novels here");
+    expect(visible(editor)).toBe("see [[Novels]] here");
   });
 
   it.each([
-    ["a missing page, dashed, showing the copy", { missing: true }, "wikilink-missing", "see Reading list here"],
-    ["an empty page", { title: "Reading list", empty: true }, "wikilink-empty", "see Reading list here"],
-    ["a journal", { title: "Oct 28th, 2026", kind: "journal" as const }, "wikilink-journal", "see Oct 28th, 2026 here"],
-  ])("styles %s", (_name, target, cls, seen) => {
+    ["a missing page, dashed", { missing: true }, "wikilink-missing"],
+    ["an empty page", { title: "Reading list", empty: true }, "wikilink-empty"],
+    ["a journal", { title: "Reading list", kind: "journal" as const }, "wikilink-journal"],
+  ])("styles %s", (_name, target, cls) => {
     const { editor } = setup(SEE_LINK, { titles: fakeTitles({ [BOOKS]: target }) });
+    caret(editor, 1);
     expect(editor.view.dom.querySelector(`.${cls}`)).not.toBeNull();
-    expect(visible(editor)).toBe(seen);
   });
 
-  it("does not draw a widget, or hide anything, for a missing page", () => {
-    const { editor } = setup(SEE_LINK, { titles: fakeTitles({ [BOOKS]: { missing: true } }) });
-    expect(shown(editor)).toBeNull();
-    expect(editor.view.dom.querySelector(".wikilink-stale")).toBeNull();
+  it("shows [[text]] that is not linked yet as dashed", () => {
+    const { editor } = setup([["x [[Holiday]]"]]);
+    caret(editor, 1);
+    expect(editor.view.dom.querySelector(".wikilink-pending")?.textContent).toBe("Holiday");
   });
 });
 
-describe("a link is one unit", () => {
-  it("moves a cursor placed inside a link to the nearer edge", () => {
+describe("with the cursor in a link", () => {
+  it("is plain text to edit", () => {
     const { editor } = setup(SEE_LINK);
-    caret(editor, START + 2);
-    expect(editor.state.selection.head).toBe(START);
-    caret(editor, END - 2);
-    expect(editor.state.selection.head).toBe(END);
+    caret(editor, INNER + 3);
+    expect(editor.view.dom.querySelector(".wikilink-editing")).not.toBeNull();
+    expect(editor.view.dom.querySelector(".wikilink-bracket")).toBeNull();
   });
 
-  it("jumps over a link with the arrow keys", () => {
+  it("counts from just inside [[ to just inside ]], not the edges outside", () => {
     const { editor } = setup(SEE_LINK);
-    caret(editor, END);
-    expect(press(editor, "ArrowLeft")).toBe(true);
-    expect(editor.state.selection.head).toBe(START);
-    expect(press(editor, "ArrowRight")).toBe(true);
-    expect(editor.state.selection.head).toBe(END);
+    const seen = [FROM, FROM + 1, TO - 1, TO].map((pos) => {
+      caret(editor, pos);
+      return !!editor.view.dom.querySelector(".wikilink-editing");
+    });
+    expect(seen).toEqual([false, true, true, false]);
   });
 
-  it("steps one character on leaving a link's edge", () => {
+  it("is only plain text while the editor is focused", () => {
     const { editor } = setup(SEE_LINK);
-    caret(editor, END);
-    expect(press(editor, "ArrowRight")).toBe(true);
-    expect(editor.state.selection.head).toBe(END + 1);
-    caret(editor, START);
-    expect(press(editor, "ArrowLeft")).toBe(true);
-    expect(editor.state.selection.head).toBe(START - 1);
+    caret(editor, INNER + 3);
+    editor.view.dom.dispatchEvent(new FocusEvent("blur"));
+    expect(editor.view.dom.querySelector(".wikilink-editing")).toBeNull();
   });
 
-  it("keeps an emoji after a link whole", () => {
-    const { editor } = setup([[["Books", BOOKS], "😀!"]]);
-    caret(editor, 6);
-    press(editor, "ArrowRight");
-    expect(editor.state.selection.head).toBe(8);
+  it("updates a renamed link's stored title when the cursor enters it, outside undo history", () => {
+    const { doc, editor } = setup(SEE_LINK, { titles: fakeTitles({ [BOOKS]: { title: "Books" } }) });
+    caret(editor, INNER + 3);
+    expect(text(doc)).toEqual(["see [[Books]] here"]);
+    expect(links(doc)).toEqual([BOOKS]);
+    expect(editor.state.selection.head).toBe(INNER + 3);
+    editor.commands.undo();
+    expect(text(doc)).toEqual(["see [[Books]] here"]);
   });
 
-  it("leaves arrow keys alone away from links", () => {
-    const { editor } = setup(SEE_LINK);
+  it("never rewrites a link just because the page is open", () => {
+    const { doc, editor } = setup(SEE_LINK, { titles: fakeTitles({ [BOOKS]: { title: "Books" } }) });
+    caret(editor, 1);
+    caret(editor, TO + 2);
+    expect(text(doc)).toEqual(["see [[Reading list]] here"]);
+  });
+
+  it("does not rewrite or relink in suggest mode", async () => {
+    const { doc, editor, linkPage } = setup(SEE_LINK, { mode: "suggest", titles: fakeTitles({ [BOOKS]: { title: "Books" } }) });
+    caret(editor, INNER + 3);
+    expect(text(doc)).toEqual(["see [[Reading list]] here"]);
+    editor.view.dispatch(editor.state.tr.insertText("x", INNER + 3));
+    caret(editor, 1);
+    await settle();
+    expect(linkPage).not.toHaveBeenCalled();
+  });
+});
+
+describe("when the cursor leaves a link", () => {
+  it("keeps the link when the title was not changed", async () => {
+    const { doc, editor, linkPage } = setup(SEE_LINK);
+    caret(editor, INNER + 3);
+    caret(editor, 1);
+    await settle();
+    expect(links(doc)).toEqual([BOOKS]);
+    expect(linkPage).not.toHaveBeenCalled();
+  });
+
+  it("keeps the page when only the case of its title changed", async () => {
+    const { doc, editor, linkPage } = setup([["[[", ["Books", BOOKS], "]]"]], { titles: fakeTitles({ [BOOKS]: { title: "Books" } }) });
+    caret(editor, 4);
+    editor.view.dispatch(editor.state.tr.insertText("b", 3, 4));
+    caret(editor, 1);
+    await settle();
+    expect(text(doc)).toEqual(["[[books]]"]);
+    expect(links(doc)).toEqual([BOOKS]);
+    expect(linkPage).not.toHaveBeenCalled();
+  });
+
+  it("links to whatever page the edited title names, creating it if need be", async () => {
+    const { doc, editor, linkPage } = setup(SEE_LINK, { titles: fakeTitles({ [BOOKS]: { title: "Reading list" } }) });
+    caret(editor, INNER_END);
+    type(editor, " 2");
+    caret(editor, 1);
+    await settle();
+    expect(linkPage).toHaveBeenCalledWith("Reading list 2");
+    expect(links(doc)).toEqual(["newpage1"]);
+  });
+
+  it("links typed [[text]] once you type ] to step out", async () => {
+    const { doc, editor, linkPage } = setup([["x"]], { linkPage: async (title) => ({ pageId: NOVELS, title, kind: "page", slug: "novels", empty: false }) });
     caret(editor, 2);
-    expect(press(editor, "ArrowRight")).toBeFalsy();
+    type(editor, " [[Novels");
+    expect(text(doc)).toEqual(["x [[Novels]]"]);
+    type(editor, "]");
+    expect(text(doc)).toEqual(["x [[Novels]]"]);
+    expect(editor.state.selection.head).toBe(editor.state.doc.content.size - 1);
+    await settle();
+    expect(linkPage).toHaveBeenCalledWith("Novels");
+    expect(links(doc)).toEqual([NOVELS]);
   });
 
-  it("selects a whole link with Shift and an arrow", () => {
-    const { editor } = setup(SEE_LINK);
-    caret(editor, END);
-    press(editor, "ArrowLeft", { shiftKey: true });
-    expect([editor.state.selection.from, editor.state.selection.to]).toEqual([START, END]);
+  it("asks once for the same title in two links, and links both", async () => {
+    let answer: (page: LinkPage) => void = () => {};
+    const { doc, editor, linkPage } = setup([["[[Holiday]] and [[holiday]] x"]], { linkPage: () => new Promise((r) => (answer = r)) });
+    caret(editor, 4);
+    caret(editor, 20);
+    caret(editor, 30);
+    answer({ pageId: "newpage1", title: "Holiday", kind: "page", slug: null, empty: true });
+    await settle();
+    expect(linkPage).toHaveBeenCalledTimes(1);
+    // (the parser reports a page once per line, so check the links themselves)
+    expect(linkSpans(editor.state.doc).map((sp) => sp.pageId)).toEqual(["newpage1", "newpage1"]);
+    expect(links(doc)).toEqual(["newpage1"]);
   });
 
-  it("deletes a whole link with Backspace after it or Delete before it", () => {
+  it("links journal dates without asking the server", async () => {
+    const { doc, editor, linkPage } = setup([["[[oct 28th, 2026]] x"]]);
+    caret(editor, 4);
+    caret(editor, 21);
+    await settle();
+    expect(linkPage).not.toHaveBeenCalled();
+    expect(links(doc)).toEqual(["journal-2026-10-28"]);
+  });
+
+  it("stays unlinked and dashed if the page can't be had (offline)", async () => {
+    const { doc, editor } = setup([["[[Holiday]] x"]], { linkPage: async () => null });
+    caret(editor, 4);
+    caret(editor, 14);
+    await settle();
+    expect(links(doc)).toEqual([]);
+    expect(editor.view.dom.querySelector(".wikilink-pending")).not.toBeNull();
+  });
+
+  it("is no longer a link once a bracket is deleted, keeping the text", async () => {
     const { doc, editor } = setup(SEE_LINK);
-    caret(editor, END);
-    expect(press(editor, "Backspace")).toBe(true);
-    expect(text(doc)).toEqual(["see  here"]);
-    const again = setup(SEE_LINK);
-    caret(again.editor, START);
-    expect(press(again.editor, "Delete")).toBe(true);
-    expect(text(again.doc)).toEqual(["see  here"]);
+    caret(editor, TO - 1);
+    editor.view.dispatch(editor.state.tr.delete(TO - 1, TO));
+    caret(editor, 1);
+    await settle();
+    expect(text(doc)).toEqual(["see [[Reading list] here"]);
+    expect(links(doc)).toEqual([]);
   });
 
-  it("leaves Backspace and Delete to suggest mode, which marks deletions instead", () => {
-    // Removing a whole link is not a suggestion yet (as with bullets, F34)
-    const { doc, editor } = setup(SEE_LINK, { mode: "suggest" });
-    caret(editor, END);
-    press(editor, "Backspace");
-    expect(text(doc)).not.toEqual(["see  here"]);
-    caret(editor, START);
-    press(editor, "Delete");
-    expect(text(doc)[0]).toContain("eading lis");
+  it("unlinks a link whose title is left as only spaces", async () => {
+    const { doc, editor } = setup([["see [[", ["  ", BOOKS], "]] here"]]);
+    caret(editor, INNER + 1);
+    caret(editor, 1);
+    await settle();
+    expect(text(doc)).toEqual(["see [[  ]] here"]);
+    expect(links(doc)).toEqual([]);
+  });
+
+  it("unlinks an emptied link", async () => {
+    const { doc, editor } = setup(SEE_LINK);
+    caret(editor, INNER);
+    editor.view.dispatch(editor.state.tr.delete(INNER, INNER_END));
+    caret(editor, 1);
+    await settle();
+    expect(text(doc)).toEqual(["see [[]] here"]);
+    expect(links(doc)).toEqual([]);
+  });
+
+  it("settles when the editor loses focus", async () => {
+    const { doc, editor, linkPage } = setup([["[[Holiday]]"]]);
+    caret(editor, 4);
+    editor.view.dom.dispatchEvent(new FocusEvent("blur"));
+    await settle();
+    expect(linkPage).toHaveBeenCalledWith("Holiday");
+    expect(links(doc)).toEqual(["newpage1"]);
+  });
+
+  it("does not link the [[text]] you are still editing when an answer arrives", async () => {
+    let answer: (page: LinkPage) => void = () => {};
+    const { editor } = setup([["[[Holiday]] [[Holiday]]"]], { linkPage: () => new Promise((r) => (answer = r)) });
+    caret(editor, 4);
+    caret(editor, 16);
+    answer({ pageId: "newpage1", title: "Holiday", kind: "page", slug: null, empty: true });
+    await settle();
+    expect(linkSpans(editor.state.doc).map((s) => s.pageId)).toEqual(["newpage1", null]);
+  });
+});
+
+describe("typing [[", () => {
+  it("adds the closing ]] with the cursor between", () => {
+    const { doc, editor } = setup([["go "]]);
+    caret(editor, 4);
+    type(editor, "[[");
+    expect(text(doc)).toEqual(["go [[]]"]);
+    expect(editor.state.selection.head).toBe(6);
+  });
+
+  it("does not add a second ]] where one follows", () => {
+    const { doc, editor } = setup([["[]]"]]);
+    caret(editor, 2);
+    type(editor, "[");
+    expect(text(doc)).toEqual(["[[]]"]);
+  });
+
+  it("Backspace in an empty [[]] removes all four brackets", () => {
+    const { doc, editor } = setup([["go [[]]"]]);
+    caret(editor, 6);
+    expect(press(editor, "Backspace")).toBe(true);
+    expect(text(doc)).toEqual(["go "]);
+  });
+
+  it("suggests titles as you type, and Enter links the chosen page", async () => {
+    vi.useFakeTimers();
+    const pages: LinkPage[] = [{ pageId: NOVELS, title: "Novels", kind: "page", slug: "novels", empty: false }];
+    const { doc, editor, search } = setup([[""]], { pages });
+    caret(editor, 1);
+    type(editor, "[[nov");
+    await vi.advanceTimersByTimeAsync(200);
+    expect(search).toHaveBeenLastCalledWith("nov");
+    const options = [...document.querySelectorAll(".link-suggest [role=option]")].map((o) => o.textContent);
+    expect(options).toEqual(["Novels", "New page: nov"]);
+    expect(press(editor, "Enter")).toBe(true);
+    expect(text(doc)).toEqual(["[[Novels]]"]);
+    expect(links(doc)).toEqual([NOVELS]);
+    expect(editor.state.selection.head).toBe(editor.state.doc.content.size - 1);
+  });
+
+  it("moves through suggestions with the arrow keys and closes them with Escape", async () => {
+    vi.useFakeTimers();
+    const pages: LinkPage[] = [
+      { pageId: BOOKS, title: "Books", kind: "page", slug: null, empty: false },
+      { pageId: NOVELS, title: "Novels", kind: "page", slug: null, empty: false },
+    ];
+    const { doc, editor } = setup([[""]], { pages });
+    caret(editor, 1);
+    type(editor, "[[o");
+    await vi.advanceTimersByTimeAsync(200);
+    press(editor, "ArrowDown");
+    expect(document.querySelector(".link-suggest [aria-selected=true]")?.textContent).toBe("Novels");
+    expect(press(editor, "Escape")).toBe(true);
+    expect((document.querySelector(".link-suggest") as HTMLElement).hidden).toBe(true);
+    expect(text(doc)).toEqual(["[[o]]"]);
   });
 });
 
 describe("opening links", () => {
-  it("opens the page on click, using its readable address", () => {
-    const { editor, onOpen } = setup(SEE_LINK, { titles: fakeTitles({ [BOOKS]: { title: "Books", slug: "books" } }) });
-    shown(editor)!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-    expect(onOpen).toHaveBeenCalledWith("/page/books", BOOKS, editor.view);
+  it("opens the page on click, using its readable address, without moving the cursor", () => {
+    const { editor, onOpen } = setup(SEE_LINK, { titles: fakeTitles({ [BOOKS]: { title: "Reading list", slug: "reading-list" } }) });
+    caret(editor, 1);
+    const el = editor.view.dom.querySelector(".wikilink")!;
+    const down = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+    el.dispatchEvent(down);
+    expect(down.defaultPrevented).toBe(true);
+    el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    expect(onOpen).toHaveBeenCalledWith("/page/reading-list", BOOKS, editor.view);
   });
 
-  it("opens the link before the cursor with Alt+Enter", () => {
-    const { editor, onOpen } = setup([[["Oct 28th, 2026", "journal-2026-10-28"], " notes"]]);
-    caret(editor, 15);
+  it("lets a click inside a link you are editing place the cursor", () => {
+    const { editor, onOpen } = setup(SEE_LINK);
+    caret(editor, INNER + 2);
+    // A real click lands on the innermost element holding the title's text
+    const walker = document.createTreeWalker(editor.view.dom, NodeFilter.SHOW_TEXT);
+    let titleText: Node | null = null;
+    while (walker.nextNode()) if (walker.currentNode.textContent === "Reading list") titleText = walker.currentNode;
+    const target = titleText!.parentElement!;
+    expect(target.closest("[data-page-id]")).not.toBeNull();
+    const down = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+    target.dispatchEvent(down);
+    target.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    expect(down.defaultPrevented).toBe(false);
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it("opens the link the cursor is in or just after with Alt+Enter", () => {
+    const { editor, onOpen } = setup([["[[", ["Oct 28th, 2026", "journal-2026-10-28"], "]] notes"]]);
+    caret(editor, 19);
     expect(press(editor, "Enter", { altKey: true })).toBe(true);
     expect(onOpen).toHaveBeenCalledWith("/journal/2026-10-28", "journal-2026-10-28", editor.view);
   });
 
-  it("does nothing on Alt+Enter away from links", () => {
-    const { editor, onOpen } = setup(SEE_LINK);
-    caret(editor, 2);
-    expect(press(editor, "Enter", { altKey: true })).toBeFalsy();
-    expect(onOpen).not.toHaveBeenCalled();
-  });
-});
-
-describe("opening links by default", () => {
-  it("asks the page around the editor to open it, which can take over", () => {
+  it("by default asks the page around the editor to open it", () => {
     const doc = yDoc(SEE_LINK);
     const element = document.createElement("div");
     document.body.append(element);
@@ -291,17 +493,17 @@ describe("opening links by default", () => {
 });
 
 describe("copying as plain text", () => {
-  it("writes links as [[Current Title]], within a line or across lines", () => {
+  it("writes each link's current title between its brackets", () => {
     const titles = fakeTitles({ [BOOKS]: { title: "Books" } });
     const { editor } = setup([...SEE_LINK, ["next"]], { titles });
     const { doc } = editor.state;
-    expect(clipboardText(doc.slice(1, 1 + "see Reading list here".length), titles)).toBe("see [[Books]] here");
+    expect(clipboardText(doc.slice(1, 1 + "see [[Reading list]] here".length), titles)).toBe("see [[Books]] here");
     expect(clipboardText(doc.slice(0, doc.content.size), titles)).toBe("see [[Books]] here\n\nnext");
   });
 
-  it("writes a split link once, and falls back to the copy for missing pages", () => {
-    const titles = fakeTitles({ "efgh5678": { missing: true } });
-    const { editor } = setup([[["Read", BOOKS], ["ing", BOOKS, "added"], " ", ["Old", "efgh5678"]]], { titles });
+  it("writes a split link once, and the stored copy for missing pages", () => {
+    const titles = fakeTitles({ [NOVELS]: { missing: true } });
+    const { editor } = setup([["[[", ["Read", BOOKS], ["ing", BOOKS, "added"], "]] [[", ["Old", NOVELS], "]]"]], { titles });
     const { doc } = editor.state;
     expect(clipboardText(doc.slice(0, doc.content.size), titles)).toBe("[[Reading]] [[Old]]");
   });

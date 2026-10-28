@@ -53,10 +53,17 @@ vi.mock("agents", () => ({
       },
     };
 
+    /** Like real Durable Object SQLite, doc_state does not exist until created. */
+    tablesCreated = false;
+
     sql(strings: TemplateStringsArray, ...values: unknown[]) {
       const query = strings.join("$").toLowerCase().trim();
 
-      if (query.includes("create table")) return [];
+      if (query.includes("create table")) {
+        this.tablesCreated = true;
+        return [];
+      }
+      if (query.includes("doc_state") && !this.tablesCreated) throw new Error("no such table: doc_state");
 
       if (query.includes("delete from doc_state")) {
         mockSqlStore.clear();
@@ -996,6 +1003,47 @@ describe("DocumentAgent", () => {
       expect(mockSqlStore.has("state")).toBe(true);
       cleanup(a, b);
       vi.restoreAllMocks();
+    });
+
+    /* ---- Pages created for links (createWithTitle) ---- */
+
+    it("creates a page for a link: claims the title first, then saves it with that title", async () => {
+      const result = await agent.createWithTitle("  Holiday   plans ");
+      expect(result).toEqual({ ok: true, pageId: PAGE_ID, title: "Holiday plans", slug: "holiday-plans" });
+      expect(calls[0]).toBe("claim Holiday plans");
+      expect((agent as unknown as { doc: Y.Doc }).doc.getMap("meta").get("title")).toBe("Holiday plans");
+      expect(mockSqlStore.has("exists")).toBe(true);
+      expect(mockSqlStore.has("state")).toBe(true);
+      expect(index.registeredPages()).toEqual([PAGE_ID]);
+      expect(index.findByTitle("holiday plans")?.pageId).toBe(PAGE_ID);
+    });
+
+    it("creates nothing and returns the other page when the title was taken a moment ago", async () => {
+      index.claimTitle("other123", "Holiday", 1);
+      const result = await agent.createWithTitle("holiday");
+      expect(result).toEqual({ ok: false, code: "taken", holder: { pageId: "other123", title: "Holiday" } });
+      expect(mockSqlStore.has("exists")).toBe(false);
+      expect(mockSqlStore.has("state")).toBe(false);
+      expect(index.registeredPages()).toEqual(["other123"]);
+    });
+
+    it("lets only one of two tabs creating the same title at once succeed", async () => {
+      const other = new DocumentAgent({} as never, {} as never);
+      (other as unknown as { name: string }).name = "other123";
+      const [a, b] = await Promise.all([agent.createWithTitle("Holiday"), other.createWithTitle("Holiday")]);
+      expect([a.ok, b.ok].filter(Boolean)).toHaveLength(1);
+      const loser = a.ok ? b : a;
+      expect(loser).toMatchObject({ ok: false, code: "taken" });
+    });
+
+    it("refuses an invalid title, a journal, or a page that already exists, creating nothing", async () => {
+      expect(await agent.createWithTitle("   ")).toMatchObject({ ok: false, code: "invalid" });
+      expect(await agent.createWithTitle("Oct 28th, 2026")).toMatchObject({ ok: false, code: "invalid" });
+      expect(mockSqlStore.has("exists")).toBe(false);
+      await create("already here");
+      expect(await agent.createWithTitle("Late")).toEqual({ ok: false, code: "exists" });
+      (agent as unknown as { name: string }).name = "journal-2026-10-28";
+      expect(await agent.createWithTitle("Late")).toEqual({ ok: false, code: "journal" });
     });
 
     /* ---- Renames: only the server writes meta.title ---- */

@@ -52,23 +52,30 @@ Agents are exported from the worker entry file and configured as Durable Object 
 
 A link is a `wikilink` mark on text in the page's Yjs document, with a `pageId` attribute. The mark's name and attributes are defined once in the shared parser module (M1, chunk 1.3), so the server and the editor agree on them before any link UI exists. The displayed title always comes from the index, so renaming a page never edits linking pages. See `PRD.md` section 6.1.
 
-**Showing links (2.5a).** The marked text is a copy of the title from when the link was made. The editor shows the current title instead and never rewrites the copy:
+**Links in the editor (2.5a and 2.5b), Logseq style.** A link is text: `[[`, the title, `]]`. The brackets are real characters and the title carries the `wikilink` mark. Logic lives in `app/lib/wikilink-editing.ts`; the suggestions list is `app/lib/link-suggestions.ts`.
 
-- Rewriting it when a page opens would edit pages just by viewing them. Two tabs doing it at once would merge into duplicated text (`BooksBooks`). In suggest mode it would appear as a suggestion. It would also land in undo history, move comments, wake the page's Durable Object, and break the promise that a rename edits no other page.
-- `app/lib/wikilink-editing.ts` (the `Wikilink` TipTap mark, built on `wikilinkMarkSpec`) draws each link from the title store:
-  - if the copy matches the current title, it is just styled
-  - if it is stale, the copy is hidden (`font-size: 0`, `aria-hidden`) and a widget shows the title; the widget uses `side: 1`, so a cursor at the link's start is drawn before it
-  - until titles load, the copy shows
-- A link is one unit:
-  - a cursor that lands inside it moves to the nearer edge
-  - arrow keys jump over it, and step one character when leaving its edge, because the browser's own move can land in the hidden copy
-  - Backspace or Delete next to it removes it whole (except in suggest mode)
-- Click, or Alt+Enter after a link, fires a `wikilink-open` event on the editor. `Editor` turns it into React Router navigation.
-- Plain-text copy writes `[[Current Title]]`.
-- `app/lib/page-titles.ts` is one title store for every editor on screen. It batches IDs into `GET /api/pages/titles` (up to 200), caches the answers, and refreshes when the tab is shown again.
-  - The route reads `WorkspaceIndex.pagesByIds`, which queries 100 IDs at a time: Durable Object SQLite allows 100 bound parameters per query.
-  - A journal not yet written is an empty page titled with its date, not a missing one.
-- Known limit: full-text search indexes the copy, so it still finds a link by its old title until the search chunk.
+- **Spans:** `linkSpans` finds every `[[...]]`. A span is linked when one page's mark covers its whole title.
+- **Cursor away:** faint brackets and the current title underlined.
+  - A stale stored copy is hidden (`font-size: 0`, `aria-hidden`) and a widget shows the title (`side: 1`).
+  - Until titles load, the copy shows. Unlinked `[[text]]` is dashed.
+- **Cursor between the brackets, editor focused:** the span is plain text (`.wikilink-editing`), with suggestions once you type.
+- **Entering a link to a renamed page** rewrites its stored copy to the current title, outside undo history (`addToHistory: false`). That is the only text the extension ever writes on its own. Opening a page never rewrites links: two tabs rewriting at once would duplicate text, so it happens only for the one link a person is editing.
+- **Leaving a link** (cursor out, or blur) settles it in `appendTransaction`, setting or removing marks only, never text:
+  - unchanged, or only the case changed: kept
+  - a journal date: linked locally
+  - otherwise: the mark is removed and `POST /api/pages` finds or creates the page; when it answers, every unlinked `[[text]]` with that title is marked, except the one being edited
+  - marks outside brackets (a bracket was deleted), and empty titles, are unlinked
+  - each title is asked for once at a time
+- **Typing:** `[[` adds `]]`, `]` before `]]` steps out, and Backspace in `[[|]]` removes all four brackets. Suggestions come from `GET /api/pages/search` (untitled pages left out), with "New page: …" when nothing matches.
+- **Clicking** a link you are not editing opens the page. Mousedown is cancelled, so the cursor does not move in. Alt+Enter opens the link at the cursor. Opening fires a `wikilink-open` event that `Editor` turns into navigation.
+- **Plain-text copy** writes each link's current title.
+- **Suggest mode:** none of the editing applies.
+- **`POST /api/pages`** answers in this order:
+  - a journal date: that day's journal
+  - an existing title (ignoring case): that page
+  - otherwise: `DocumentAgent.createWithTitle` on a fresh ID, which claims the title in the index under the page's index lock *before* creating anything; if another tab won, it returns that page and creates nothing
+- **Titles:** `app/lib/page-titles.ts` is one title store per browser. It batches IDs into `GET /api/pages/titles` (up to 200), caches the answers, refreshes on returning to the tab, and is primed with pages learned from suggestions or creation. `WorkspaceIndex.pagesByIds` queries 100 IDs at a time (the Durable Object SQLite bound-parameter limit).
+- **Known limit:** full-text search indexes the stored copy, so a link is found by its old title until the search chunk.
 
 **Older tabs are refused (`DOC_FORMAT_VERSION` 4).** An editor whose schema lacks a mark deletes text carrying it: y-tiptap drops what it cannot convert, and the deletion syncs to everyone.
 

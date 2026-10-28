@@ -9,7 +9,7 @@ import { MSG_SYNC, MSG_AWARENESS, DOC_FORMAT_VERSION, CLOSE_OUTDATED_CLIENT, cli
 import { linesFromYjs } from "../app/lib/note-lines";
 import { PARSER_VERSION } from "../app/lib/note-parser";
 import { isJournalId, isPageId } from "../app/lib/note-ids";
-import { normalizeTitle, type DocumentRenameResult } from "../app/lib/page-title";
+import { normalizeTitle, type DocumentRenameResult, type CreateWithTitleResult } from "../app/lib/page-title";
 import { WORKSPACE_NAME } from "./workspace";
 
 /**
@@ -547,6 +547,48 @@ class DocumentAgent extends Agent {
         doc.transact(() => meta.set("title", result.title), SERVER_ORIGIN);
       }
       return { ok: true, title: result.title, slug: claim.slug };
+    });
+  }
+
+  /**
+   * Create this page with a title, for a link to a page that does not exist
+   * yet (PRD 6.1). Called by POST /api/pages on a fresh ID. The index claims
+   * the title first, so if another tab created the same title a moment ago
+   * this returns that page and creates nothing.
+   */
+  async createWithTitle(rawTitle: string): Promise<CreateWithTitleResult> {
+    if (isJournalId(this.name)) return { ok: false, code: "journal" };
+    const result = normalizeTitle(rawTitle);
+    if (!result.ok) return { ok: false, code: "invalid", reason: result.reason };
+
+    // Sets up this object's tables, which a fresh page does not have yet
+    const { doc } = this.ensureInitialised();
+    return this.withIndexLock(async (): Promise<CreateWithTitleResult> => {
+      if (this.exists()) return { ok: false, code: "exists" };
+      const now = Date.now();
+      const index = await getAgentByName(this.env.WorkspaceAgent, WORKSPACE_NAME);
+      const claim = await index.claimTitle(this.name, result.title, now);
+      if (!claim.ok) {
+        return claim.reason === "taken"
+          ? { ok: false, code: "taken", holder: claim.holder }
+          : { ok: false, code: "invalid", reason: claim.reason };
+      }
+      this.sql`
+        INSERT INTO doc_state (key, value) VALUES ('exists', ${sqlBlob(new Uint8Array([1]))})
+        ON CONFLICT(key) DO NOTHING
+      `;
+      this.sql`
+        INSERT INTO doc_state (key, value) VALUES ('createdAt', ${sqlBlob(new Uint8Array(new Float64Array([now]).buffer))})
+        ON CONFLICT(key) DO NOTHING
+      `;
+      this.existsCache = true;
+      const meta = doc.getMap<unknown>("meta");
+      doc.transact(() => {
+        if (!meta.has("version")) meta.set("version", DOC_FORMAT_VERSION);
+        meta.set("title", result.title);
+      }, SERVER_ORIGIN);
+      await this.registerWithIndex(now);
+      return { ok: true, pageId: this.name, title: result.title, slug: claim.slug };
     });
   }
 

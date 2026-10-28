@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { PageTitleStore, linkHref, MAX_TITLE_IDS, type LinkTarget } from "~/lib/page-titles";
+import { PageTitleStore, linkHref, searchPages, linkPageForTitle, targetOf, MAX_TITLE_IDS, type LinkTarget } from "~/lib/page-titles";
 
 const target = (title: string, over: Partial<LinkTarget> = {}): LinkTarget => ({ title, kind: "page", slug: null, empty: false, missing: false, ...over });
 const settle = () => new Promise((r) => setTimeout(r, 0));
@@ -85,5 +85,45 @@ describe("linkHref", () => {
     expect(linkHref("abcd1234", target("Books", { slug: "books" }))).toBe("/page/books");
     expect(linkHref("journal-2026-10-28", undefined)).toBe("/journal/2026-10-28");
     expect(linkHref("abcd1234", undefined)).toBe("/docs/abcd1234");
+  });
+});
+
+describe("PageTitleStore.prime", () => {
+  it("records a title learned elsewhere, without fetching it", async () => {
+    const fetcher = fakeFetcher({});
+    const store = new PageTitleStore(fetcher);
+    const listener = vi.fn();
+    store.subscribe(listener);
+    store.prime("a", target("A"));
+    store.prime("a", target("A"));
+    store.request(["a"]);
+    await settle();
+    expect(store.get("a")?.title).toBe("A");
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+});
+
+describe("talking to the server", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("searches titles", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ pages: [{ pageId: "a", title: "A", kind: "page", slug: null, empty: false }] }));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await searchPages("a b")).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledWith("/api/pages/search?q=a%20b");
+  });
+
+  it("finds or creates the page for a title, or says it can't", async () => {
+    const page = { pageId: "a", title: "A", kind: "page", slug: "a", empty: true };
+    const fetchMock = vi.fn().mockResolvedValueOnce(Response.json({ ok: true, ...page })).mockResolvedValueOnce(Response.json({ ok: false, reason: "no" }, { status: 400 }));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await linkPageForTitle("A")).toEqual(page);
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: "POST", body: JSON.stringify({ title: "A" }) });
+    expect(await linkPageForTitle("bad")).toBeNull();
+  });
+
+  it("turns a found page into what links show", () => {
+    expect(targetOf({ pageId: "a", title: "A", kind: "journal", slug: null, empty: true })).toEqual({ title: "A", kind: "journal", slug: null, empty: true, missing: false });
   });
 });

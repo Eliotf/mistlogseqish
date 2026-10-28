@@ -34,6 +34,38 @@ export async function fetchLinkTargets(ids: string[]): Promise<Record<string, Li
   return ((await res.json()) as { pages: Record<string, LinkTarget> }).pages;
 }
 
+/** A page a link can point at, as suggested while typing `[[` or found by title. */
+export interface LinkPage {
+  pageId: string;
+  title: string;
+  kind: "page" | "journal";
+  slug: string | null;
+  empty: boolean;
+}
+
+/** Titles matching a `[[` query (GET /api/pages/search). */
+export async function searchPages(query: string): Promise<LinkPage[]> {
+  const res = await fetch(`/api/pages/search?q=${encodeURIComponent(query)}`);
+  if (!res.ok) throw new Error(`search: ${res.status}`);
+  return ((await res.json()) as { pages: LinkPage[] }).pages;
+}
+
+/** The page a link to this title points at, created if need be (POST /api/pages); null if it can't be had. */
+export async function linkPageForTitle(title: string): Promise<LinkPage | null> {
+  const res = await fetch("/api/pages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+  const answer = (await res.json()) as { ok: true } & LinkPage | { ok: false; reason: string };
+  return answer.ok ? { pageId: answer.pageId, title: answer.title, kind: answer.kind, slug: answer.slug, empty: answer.empty } : null;
+}
+
+/** What the title store should hold for a page we have just been told about. */
+export function targetOf(page: LinkPage): LinkTarget {
+  return { title: page.title, kind: page.kind, slug: page.slug, empty: page.empty, missing: false };
+}
+
 export class PageTitleStore {
   private targets = new Map<string, LinkTarget>();
   private wanted = new Set<string>();
@@ -55,6 +87,14 @@ export class PageTitleStore {
       this.queued.add(id);
     }
     this.scheduleFlush();
+  }
+
+  /** Record a page's title learned elsewhere (a suggestion chosen, a page just created). */
+  prime(pageId: string, target: LinkTarget): void {
+    this.wanted.add(pageId);
+    if (sameTarget(this.targets.get(pageId), target)) return;
+    this.targets.set(pageId, target);
+    this.listeners.forEach((l) => l());
   }
 
   /** Fetch every title asked for so far again, e.g. when the tab is shown. */

@@ -55,12 +55,17 @@ const JOURNAL_TITLE_RE = /^([a-z]{3}) (\d{1,2})(st|nd|rd|th), (\d{4})$/i;
  * Pages may not take these titles.
  */
 export function isJournalTitle(title: string): boolean {
+  return journalDateFromTitle(title) !== null;
+}
+
+/** The YYYY-MM-DD date a journal title names ("Oct 26th, 2026", any case or ordinal), or null. */
+export function journalDateFromTitle(title: string): string | null {
   const m = JOURNAL_TITLE_RE.exec(title.trim());
-  if (!m) return false;
+  if (!m) return null;
   const month = MONTHS.findIndex((name) => name.toLowerCase() === m[1].toLowerCase());
-  if (month < 0) return false;
+  if (month < 0) return null;
   const date = `${m[4]}-${String(month + 1).padStart(2, "0")}-${m[2].padStart(2, "0")}`;
-  return parseJournalDate(JOURNAL_PREFIX + date) !== null;
+  return parseJournalDate(JOURNAL_PREFIX + date);
 }
 
 /** A Date as YYYY-MM-DD in the local time zone of wherever this runs (use in the browser for "today"). */
