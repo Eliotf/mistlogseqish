@@ -103,6 +103,15 @@ Tests in `tests/unit/lib/note-*.test.ts` include a round trip through Yjs using 
 - `app/lib/bullet-editing.ts` (`BulletEditing`, registered in `Editor.tsx`) applies the plans as ProseMirror transactions, so they sync over Yjs and undo normally. Inserted indentation is plain text and never takes a mark; Enter splits with `tr.split` so moved text keeps its marks. Keys are ignored during IME composition. In suggest mode, Tab and Shift+Tab are swallowed (focus stays in the editor) and Enter and Backspace are left to Mist (F34 will design indentation suggestions).
 - `bulletDecorations` draws each leading tab as a fixed-width indent with a guide (`.md-indent`) and a bullet's `-` as a dot (`.md-bullet`), skipping code fences. The caret still moves one character at a time across `- `.
 
+## Durable Object Usage
+
+Durable Objects are billed for every second they are awake; they hibernate after about 10 idle seconds (WebSocket hibernation, on by default in the Agents SDK). The free plan allows about 28 hours of awake time a day.
+
+- **No repeating timers on a Durable Object.** A pending `setInterval` or `setTimeout` stops hibernation. y-protocols' `Awareness` runs a 3-second interval, so `DocumentAgent` uses `createRelayAwareness`, which stops it; browsers expire stale presence after 30 seconds, and `onClose` removes a departing browser's state. Short one-off timers (the 0.3-second index timer) are fine. A test fails if starting a `DocumentAgent` leaves any timer pending.
+- **Presence only from the editor in use.** y-protocols re-sends a browser's presence every 15 seconds while it is set, waking that page's object. `usePresenceWhileFocused` (`app/lib/connection-budget.ts`) clears presence unless the editor is focused in a visible tab. Collaborators' cursors disappear when they click away, and reappear when they return.
+- **Hidden tabs disconnect.** `useDisconnectWhenHidden` closes a tab's connections after 5 minutes hidden and reconnects when it is shown; the server's sync messages bring it up to date.
+- **Result:** an idle open page or feed costs almost nothing; awake time is spent while someone types (about 10 seconds after each burst, for the page and the index). Measured locally with headless Chrome: a 17-day feed sent 0 messages to documents in 40 idle seconds.
+
 ## Readable URLs
 
 - `/page/<slug>` is a page's readable address; `/docs/<id>` is its permanent one and redirects (302) to the slug when the page has one. Untitled pages, and titles with no letters or digits, stay at `/docs/<id>`.

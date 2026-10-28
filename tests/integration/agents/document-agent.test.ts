@@ -261,6 +261,30 @@ describe("DocumentAgent", () => {
   }
 
   /* ================================================================ */
+  /*  Durable Object usage: nothing may keep the object awake          */
+  /* ================================================================ */
+
+  describe("hibernation", () => {
+    // A Durable Object with a pending timer cannot hibernate, and is billed
+    // for every second it is open. Mist's server awareness ran one every 3 s.
+    it("leaves no timer running after starting up and serving a request", async () => {
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout"] });
+      const fresh = new DocumentAgent({} as never, {} as never);
+      await fresh.onRequest(new Request("https://do/"));
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("createRelayAwareness stops y-protocols' 3-second interval", async () => {
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+      const { createRelayAwareness } = await import("../../../agents/document");
+      const awareness = createRelayAwareness(new Y.Doc());
+      expect(vi.getTimerCount()).toBe(0);
+      // It still relays: applying and encoding states works
+      expect(awareness.getStates()).toBeInstanceOf(Map);
+    });
+  });
+
+  /* ================================================================ */
   /*  HTTP GET                                                         */
   /* ================================================================ */
 

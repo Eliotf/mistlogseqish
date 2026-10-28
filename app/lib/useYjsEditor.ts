@@ -5,6 +5,7 @@ import { Awareness } from "y-protocols/awareness";
 import { YjsProvider } from "./yjs-provider";
 import { USER_COLOURS } from "~/shared/constants";
 import type { UserInfo, DocMode } from "~/shared/types";
+import { useDisconnectWhenHidden } from "./connection-budget";
 
 function randomUserInfo(): UserInfo {
   const idx = Math.floor(Math.random() * USER_COLOURS.length);
@@ -69,6 +70,9 @@ export function useYjsEditor(docId: string) {
       setSynced(false);
     };
   }, [socket, doc, awareness]);
+
+  // A long-hidden tab lets its Durable Object sleep; it reconnects on return
+  useDisconnectWhenHidden(socket);
 
   return { doc, awareness, socket, synced, user, mode, setMode, docState, isOnboarding };
 }

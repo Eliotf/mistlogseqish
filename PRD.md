@@ -184,7 +184,7 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced with the Ag
 - **Test coverage drifts down or never recovers:** the floors were frozen at 54% lines to get CI green. Mitigation: raise the floors whenever coverage rises and review at each milestone (section 7, Quality gates).
 - **Editor complexity:** Logseq-style behaviours (Tab, `[[` autocomplete) are fiddly in TipTap. Mitigation: build and test them as small, separate extensions.
 - **Access only at the edge:** Cloudflare Access is the only thing keeping strangers out. The Worker does not check who is signing in, and a new hostname (custom domain) would be open until it gets its own Access application. Mitigation: verify the Access token in the Worker (M4), and add Access before pointing any new domain at the Worker.
-- **Cloudflare plan limits:** check Durable Object limits on the free plan before relying on them.
+- **Cloudflare plan limits:** the free plan allows about 28 hours of Durable Object time a day (13,000 GB-s). On 2026-10-27 the live site hit it: Mist's server-side Yjs awareness ran a 3-second timer that stopped every open document hibernating, and the journal feed opened many documents at once. Mitigation (2026-10-28): documents hibernate when idle, browsers only send presence from the editor in use, and hidden tabs disconnect after 5 minutes. Rule: nothing on a Durable Object may run a repeating timer (AGENTS.md). Watch the Durable Objects usage chart after changes that add connections.
 
 ## 11. Decision log
 
@@ -259,6 +259,7 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced with the Ag
 | 2026-10-27 | Bullets display as dots with indentation guides; the text keeps `- ` and tabs | The prototype's look, without changing the Logseq-compatible text |
 | 2026-10-27 | In suggest mode the bullet keys do nothing special (Tab stays in the editor); designing indentation suggestions is F34, for later | Indentation changes do not fit CriticMarkup suggestions yet |
 | 2026-10-27 | Backspace right after a bullet outdents, then removes the bullet, whether or not the line has text | One consistent rule |
+| 2026-10-28 | Keep Durable Objects asleep when idle: no repeating timers on them (Mist's awareness interval stopped), presence only from the focused editor in a visible tab, and tabs hidden for 5 minutes disconnect until shown | The free plan's daily Durable Object time was exhausted by documents that could never hibernate. Disconnecting far-off feed days and the paid plan were considered and not chosen |
 | 2026-10-22 | Gate deploys by running the checks in the Workers Builds command | Workers Builds ignores GitHub CI; this is the smallest change that stops failing code going live |
 
 ## 12. Changelog
@@ -284,3 +285,4 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced with the Ag
 - 2026-10-27: Faster indexing: 0.3 seconds after a pause in typing (2-second maximum wait), replacing the 2-second throttle; measured locally at about 0.3 seconds from text to searchable.
 - 2026-10-27: Journal feed done (M2 chunk 2.2): `/` shows today's journal then earlier days, every day a live editor, older days loading as you scroll. Verified in headless Chrome locally: 17 live days, no long tasks while scrolling, no console errors.
 - 2026-10-27: Bullets and indenting done (M2 chunk 2.3): Tab and Shift+Tab with children, Enter continuing bullets, Backspace outdenting, dots and guides. Added F34 (suggesting indentation, for later). Owner checked the feed.
+- 2026-10-28: Durable Object usage fix after hitting the free plan's daily limit: documents now hibernate when idle (measured locally: an open 17-day feed sends 0 messages in 40 idle seconds, and documents hibernate).

@@ -12,6 +12,7 @@ import { CriticAddition, CriticDeletion, CriticComment, CriticHighlight, CriticD
 import { markdownDecorations, cleanViewKey } from "~/lib/markdown-decorations";
 import { suggestModePlugin } from "~/lib/suggest-mode";
 import { BulletEditing } from "~/lib/bullet-editing";
+import { usePresenceWhileFocused } from "~/lib/connection-budget";
 import BubbleToolbar from "~/components/BubbleToolbar";
 import type { useYjsEditor } from "~/lib/useYjsEditor";
 
@@ -248,6 +249,9 @@ export default function Editor({
     },
     [doc, awareness],
   );
+
+  // Only announce presence from the editor in use, so idle pages stay asleep
+  usePresenceWhileFocused(editor, awareness, user as unknown as Record<string, unknown>);
 
   // Update the comment highlight decoration when the prop changes
   useEffect(() => {

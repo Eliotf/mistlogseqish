@@ -102,6 +102,7 @@ PRD.md        Product spec and roadmap
 - Journals are created inside `DocumentAgent`'s update handler on their first real text, and their state is not persisted before that. Anything run on connect or on update must never throw or delay sending the document to the browser.
 - The journal feed renders one live editor (Yjs connection, TipTap, Mist document context) per day. Keep per-day UI light, and keep days lazily connected (`JournalDay`).
 - Locally, the first time a page uses a dependency Vite has not bundled yet (for example Radix's switch on a document page), Vite re-optimises and reloads, and a page loaded in that moment can throw React "Invalid hook call" errors. It is dev-only: load the page again.
+- **No repeating timers on a Durable Object** (`setInterval`, or a `setTimeout` that re-arms itself): they stop hibernation, and an object that never sleeps is billed all day. The free plan was exhausted this way once (2026-10-27). Use `this.schedule()` for timed work. Browser code must not send periodic messages to an agent either; see `app/lib/connection-budget.ts`.
 - Never decide "today" on the server (it runs on UTC). Use `localDate(new Date())` in the browser.
 - `docs.$id.tsx` keys its screen by page ID. Keep that: without it, moving between pages reuses the previous page's Yjs doc and editor.
 - Workspace index schema changes are migrations: append to `MIGRATIONS` in `agents/workspace-index.ts` and bump `SCHEMA_VERSION`. Never edit `SCHEMA_V1` or a shipped migration, and test the upgrade from the previous version.

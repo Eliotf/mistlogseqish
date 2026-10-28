@@ -21,6 +21,21 @@ function sqlBlob(data: Uint8Array): string {
   return data as unknown as string;
 }
 
+/**
+ * Awareness (who is here, where their cursor is) for relaying between
+ * browsers. y-protocols' Awareness runs a 3-second setInterval to expire
+ * stale states, and a Durable Object with a pending timer can never
+ * hibernate, so every open page would be billed for its whole time open.
+ * Stop that timer: browsers expire stale states themselves after 30 s, and
+ * onClose removes a departing browser's state. Never add repeating timers
+ * to a Durable Object (AGENTS.md).
+ */
+export function createRelayAwareness(doc: Y.Doc): awarenessProtocol.Awareness {
+  const awareness = new awarenessProtocol.Awareness(doc);
+  clearInterval((awareness as unknown as { _checkInterval: ReturnType<typeof setInterval> })._checkInterval);
+  return awareness;
+}
+
 /** Yjs transaction origin for updates received from browsers. */
 const CLIENT_ORIGIN = Symbol("client");
 /** Yjs transaction origin for changes the server makes itself, which it broadcasts. */
@@ -77,7 +92,7 @@ class DocumentAgent extends Agent {
     }
 
     this.doc = new Y.Doc();
-    this.awareness = new awarenessProtocol.Awareness(this.doc);
+    this.awareness = createRelayAwareness(this.doc);
 
     // Create table if needed
     this.sql`
