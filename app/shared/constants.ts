@@ -37,8 +37,26 @@ export const USER_COLOURS = [
  * v1: plain text with CriticMarkup delimiters, threads in Y.Map("threads")
  * v2: CriticMarkup stored as ProseMirror marks, threads in Y.Map("threads")
  * v3: optional page title in Y.Map("meta").title
+ * v4: `wikilink` marks (links by page ID)
+ *
+ * Browsers send the version their code understands when they connect, and
+ * DocumentAgent refuses older ones: an editor that meets a mark it does not
+ * know deletes that text, and the deletion syncs everywhere.
  */
-export const DOC_FORMAT_VERSION = 3;
+export const DOC_FORMAT_VERSION = 4;
+
+/** WebSocket query parameter carrying the browser's DOC_FORMAT_VERSION. */
+export const FORMAT_PARAM = "format";
+
+/** Close code DocumentAgent uses to refuse a browser running older code. */
+export const CLOSE_OUTDATED_CLIENT = 4001;
+
+/** True if a connection URL comes from code that understands this document format. */
+export function clientUnderstandsFormat(url: string): boolean {
+  const raw = new URL(url).searchParams.get(FORMAT_PARAM);
+  const version = raw !== null && /^\d+$/.test(raw) ? Number(raw) : 0;
+  return version >= DOC_FORMAT_VERSION;
+}
 
 /** Name of the single WorkspaceAgent instance while Mistlog is single-user. */
 export const WORKSPACE_NAME = "default";

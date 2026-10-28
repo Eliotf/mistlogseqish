@@ -432,3 +432,20 @@ body {
     --color-canary: color(display-p3 1 0.9 0.04);
   }
 }
+
+/* Links (PRD 6.1). The editor shows the target's current title; a stale
+   stored copy is hidden and the title shown by a widget in its place. */
+.tiptap .wikilink {
+  cursor: pointer;
+  text-decoration: underline 2px var(--color-chartreuse);
+  text-underline-offset: 3px;
+}
+.tiptap .wikilink:hover { background-color: var(--color-border); }
+.tiptap .wikilink-empty { text-decoration-color: var(--color-border); }
+.tiptap .wikilink-missing {
+  color: var(--color-muted);
+  text-decoration: none;
+  border-bottom: 1.5px dashed var(--color-muted);
+}
+.tiptap .wikilink-journal { font-family: var(--font-mono); font-size: 0.86em; }
+.tiptap .wikilink-stale { font-size: 0; }

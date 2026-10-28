@@ -5,7 +5,7 @@ import * as syncProtocol from "y-protocols/sync";
 import * as awarenessProtocol from "y-protocols/awareness";
 import * as encoding from "lib0/encoding";
 import * as decoding from "lib0/decoding";
-import { MSG_SYNC, MSG_AWARENESS, DOC_FORMAT_VERSION } from "../app/shared/constants";
+import { MSG_SYNC, MSG_AWARENESS, DOC_FORMAT_VERSION, CLOSE_OUTDATED_CLIENT, clientUnderstandsFormat } from "../app/shared/constants";
 import { linesFromYjs } from "../app/lib/note-lines";
 import { PARSER_VERSION } from "../app/lib/note-parser";
 import { isJournalId, isPageId } from "../app/lib/note-ids";
@@ -67,6 +67,24 @@ interface IndexState {
 }
 
 const NEW_INDEX_STATE: IndexState = { dirty: false, lastSent: 0, ack: null, retries: 0 };
+
+const OUTDATED_REASON = "Mistlog was updated. Reload to keep editing.";
+const DOCUMENT_SOCKET_PATH = /^\/agents\/document-agent\/[^/]+$/;
+
+/** A WebSocket to a document from code older than DOC_FORMAT_VERSION. */
+export function isOutdatedEditorRequest(request: Request): boolean {
+  if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") return false;
+  if (!DOCUMENT_SOCKET_PATH.test(new URL(request.url).pathname)) return false;
+  return !clientUnderstandsFormat(request.url);
+}
+
+/** Accept the WebSocket and close it at once with CLOSE_OUTDATED_CLIENT, so the browser learns why. */
+export function refuseOutdatedEditor(): Response {
+  const { 0: client, 1: server } = new WebSocketPair();
+  server.accept();
+  server.close(CLOSE_OUTDATED_CLIENT, OUTDATED_REASON);
+  return new Response(null, { status: 101, webSocket: client });
+}
 
 class DocumentAgent extends Agent {
   private doc: Y.Doc | null = null;
@@ -151,7 +169,14 @@ class DocumentAgent extends Agent {
     return { doc: this.doc, awareness: this.awareness };
   }
 
-  async onConnect(connection: Connection, _ctx: ConnectionContext) {
+  async onConnect(connection: Connection, ctx: ConnectionContext) {
+    // Second line of defence (the Worker refuses these first): an editor from
+    // before the current document format would delete text it does not
+    // understand, so it gets nothing.
+    if (!clientUnderstandsFormat(ctx.request.url)) {
+      connection.close(CLOSE_OUTDATED_CLIENT, OUTDATED_REASON);
+      return;
+    }
     const { doc, awareness } = this.ensureInitialised();
 
     // Send SyncStep1 to the new client

@@ -51,6 +51,13 @@ describe("ConnectionStatus", () => {
     const { getByText } = renderWithDocument(createElement(ConnectionStatus));
     expect(getByText("Connecting")).toBeTruthy();
   });
+
+  it("asks for a reload when the server refused this tab's older code", () => {
+    const base = renderWithDocument(createElement("div")).contextValue.yjs;
+    const { getByRole } = renderWithDocument(createElement(ConnectionStatus), { context: { yjs: { ...base, outdated: true } } });
+    const button = getByRole("button", { name: /reload/i });
+    expect(button.getAttribute("title")).toContain("Reload to keep editing");
+  });
 });
 
 describe("Preview", () => {

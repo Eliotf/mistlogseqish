@@ -12,6 +12,8 @@ import { CriticAddition, CriticDeletion, CriticComment, CriticHighlight, CriticD
 import { markdownDecorations, cleanViewKey } from "~/lib/markdown-decorations";
 import { suggestModePlugin } from "~/lib/suggest-mode";
 import { BulletEditing } from "~/lib/bullet-editing";
+import { Wikilink, OPEN_LINK_EVENT } from "~/lib/wikilink-editing";
+import { pageTitles } from "~/lib/page-titles";
 import { usePresenceWhileFocused } from "~/lib/connection-budget";
 import BubbleToolbar from "~/components/BubbleToolbar";
 import type { useYjsEditor } from "~/lib/useYjsEditor";
@@ -199,6 +201,7 @@ export default function Editor({
   onNewComment,
   onResolveAtCursor,
   onDeleteAtCursor,
+  onOpenLink,
 }: {
   yjs: YjsEditorState;
   hidden?: boolean;
@@ -210,6 +213,8 @@ export default function Editor({
   onNewComment?: () => void;
   onResolveAtCursor?: () => void;
   onDeleteAtCursor?: () => void;
+  /** Open a linked page (client-side navigation); defaults to a full page load. */
+  onOpenLink?: (href: string) => void;
 }) {
   const { doc, awareness, user, docState } = yjs;
   const prevHighlightRef = useRef<{ from: number; to: number } | null>(null);
@@ -237,6 +242,7 @@ export default function Editor({
         MarkdownDecorations,
         SuggestMode.configure({ docState }),
         BulletEditing.configure({ docState }),
+        Wikilink.configure({ titles: pageTitles(), docState }),
         CommentClickHandler.configure({ onCommentClick }),
         CommentHighlight,
         ActiveCommentHighlight,
@@ -249,6 +255,23 @@ export default function Editor({
     },
     [doc, awareness],
   );
+
+  // Links ask to be opened; navigate in the app instead of reloading the page
+  useEffect(() => {
+    if (!editor || !onOpenLink) return;
+    const dom = editor.view.dom;
+    const open = (event: Event) => {
+      event.preventDefault();
+      onOpenLink((event as CustomEvent<{ href: string }>).detail.href);
+    };
+    dom.addEventListener(OPEN_LINK_EVENT, open);
+    return () => dom.removeEventListener(OPEN_LINK_EVENT, open);
+  }, [editor, onOpenLink]);
+
+  // Refused as outdated: edits could no longer sync, so stop taking them
+  useEffect(() => {
+    if (editor && yjs.outdated) editor.setEditable(false);
+  }, [editor, yjs.outdated]);
 
   // Only announce presence from the editor in use, so idle pages stay asleep
   usePresenceWhileFocused(editor, awareness, user as unknown as Record<string, unknown>);

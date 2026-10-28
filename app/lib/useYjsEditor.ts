@@ -3,7 +3,7 @@ import { useAgent } from "agents/react";
 import * as Y from "yjs";
 import { Awareness } from "y-protocols/awareness";
 import { YjsProvider } from "./yjs-provider";
-import { USER_COLOURS } from "~/shared/constants";
+import { USER_COLOURS, DOC_FORMAT_VERSION, FORMAT_PARAM, CLOSE_OUTDATED_CLIENT } from "~/shared/constants";
 import type { UserInfo, DocMode } from "~/shared/types";
 import { useDisconnectWhenHidden } from "./connection-budget";
 
@@ -17,6 +17,8 @@ function randomUserInfo(): UserInfo {
   };
 }
 
+const FORMAT_QUERY = { [FORMAT_PARAM]: String(DOC_FORMAT_VERSION) };
+
 export function useYjsEditor(docId: string) {
   const doc = useMemo(() => new Y.Doc(), []);
   const awareness = useMemo(() => new Awareness(doc), [doc]);
@@ -26,11 +28,26 @@ export function useYjsEditor(docId: string) {
   const [synced, setSynced] = useState(false);
   const [mode, setModeState] = useState<DocMode>("edit");
   const [isOnboarding, setIsOnboarding] = useState(false);
+  const [outdated, setOutdated] = useState(false);
 
   const socket = useAgent({
     agent: "document-agent",
     name: docId,
+    // Lets the server refuse this tab once a newer document format ships
+    query: FORMAT_QUERY,
   });
+
+  // Refused as outdated: stop reconnecting; the page asks for a reload
+  useEffect(() => {
+    if (!socket) return;
+    const onClose = (event: CloseEvent) => {
+      if (event.code !== CLOSE_OUTDATED_CLIENT) return;
+      setOutdated(true);
+      socket.close();
+    };
+    socket.addEventListener("close", onClose);
+    return () => socket.removeEventListener("close", onClose);
+  }, [socket]);
 
   // Observe docState Y.Map for mode and onboarding changes from other clients
   useEffect(() => {
@@ -74,5 +91,5 @@ export function useYjsEditor(docId: string) {
   // A long-hidden tab lets its Durable Object sleep; it reconnects on return
   useDisconnectWhenHidden(socket);
 
-  return { doc, awareness, socket, synced, user, mode, setMode, docState, isOnboarding };
+  return { doc, awareness, socket, synced, outdated, user, mode, setMode, docState, isOnboarding };
 }

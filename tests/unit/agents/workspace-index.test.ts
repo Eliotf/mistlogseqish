@@ -279,6 +279,37 @@ describe("WorkspaceIndex", () => {
     });
   });
 
+  describe("pagesByIds", () => {
+    it("returns each known page with its current slug, and leaves out unknown IDs", () => {
+      index.updatePage(page(MIST, "Mistlog", [line("hello")]));
+      index.claimTitle(MIST, "Mistlog renamed", 2000);
+      index.updatePage(page(READING, "", []));
+      index.updatePage(page(TODAY, "", [line("today")]));
+      const found = new Map(index.pagesByIds([MIST, READING, TODAY, "nopage01"]).map((p) => [p.pageId, p]));
+      expect([...found.keys()].sort()).toEqual([MIST, READING, TODAY].sort());
+      expect(found.get(MIST)).toMatchObject({ title: "Mistlog renamed", slug: "mistlog-renamed", hasContent: true });
+      expect(found.get(READING)).toMatchObject({ slug: null, hasContent: false });
+      expect(found.get(TODAY)).toMatchObject({ kind: "journal", slug: null });
+    });
+
+    it("returns nothing for no IDs", () => {
+      expect(index.pagesByIds([])).toEqual([]);
+    });
+
+    it("never binds more than 100 parameters in one query (the Durable Object limit)", () => {
+      const ids = Array.from({ length: 250 }, (_, i) => `p${String(i).padStart(7, "0")}`);
+      for (const id of ids.slice(0, 120)) index.updatePage(page(id, "", [line("x")]));
+      let most = 0;
+      const exec = db.exec.bind(db);
+      db.exec = (query: string, ...bindings: Parameters<typeof db.exec>[1][]) => {
+        most = Math.max(most, bindings.length);
+        return exec(query, ...bindings);
+      };
+      expect(index.pagesByIds(ids)).toHaveLength(120);
+      expect(most).toBeLessThanOrEqual(100);
+    });
+  });
+
   describe("claimTitle", () => {
     it("records the title and returns the new slug", () => {
       index.updatePage(page(MIST, "Old", [line("x")], 10));

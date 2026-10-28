@@ -41,6 +41,21 @@ export default function ConnectionStatus() {
     };
   }, [socket]);
 
+  if (yjs.outdated) {
+    // The server refused this tab's older code (see DOC_FORMAT_VERSION)
+    return (
+      <button
+        type="button"
+        onClick={() => window.location.reload()}
+        className="inline-flex items-baseline gap-1.5"
+        title="Mistlog was updated. Reload to keep editing."
+      >
+        <span className="h-2 w-2 rounded-full bg-red-500 relative top-[-0.5px]" />
+        <span className="text-sm uppercase tracking-wider text-muted underline">Updated: reload</span>
+      </button>
+    );
+  }
+
   return (
     <span className="inline-flex items-baseline gap-1.5">
       <span

@@ -13,7 +13,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as Y from "yjs";
 import * as awarenessProtocol from "y-protocols/awareness";
-import { DOC_FORMAT_VERSION } from "~/shared/constants";
+import { DOC_FORMAT_VERSION, CLOSE_OUTDATED_CLIENT } from "~/shared/constants";
 import { YjsProvider } from "~/lib/yjs-provider";
 import { PARSER_VERSION } from "~/lib/note-parser";
 import { WorkspaceIndex, type PageUpdate, type PageUpdateAck, type ClaimResult } from "../../../agents/workspace-index";
@@ -102,6 +102,9 @@ vi.mock("agents", () => ({
 /* ------------------------------------------------------------------ */
 /*  Mock Connection (server-side WebSocket handle)                     */
 /* ------------------------------------------------------------------ */
+
+/** What onConnect receives from a browser running the current code. */
+const CURRENT_CLIENT = { request: new Request(`https://mistlog.test/agents/document-agent/test-doc?format=${DOC_FORMAT_VERSION}`) } as never;
 
 class MockConnection {
   id: string;
@@ -248,7 +251,7 @@ describe("DocumentAgent", () => {
     mockConnectionMap.set(connId, connection);
 
     // Trigger sync handshake
-    targetAgent.onConnect(connection as never, {} as never);
+    targetAgent.onConnect(connection as never, CURRENT_CLIENT);
 
     return { doc, awareness, socket, connection, provider, connId };
   }
@@ -592,10 +595,70 @@ describe("DocumentAgent", () => {
   /*  onMessage edge cases                                             */
   /* ================================================================ */
 
+  describe("tabs running older code", () => {
+    const socketRequest = (query: string, headers: Record<string, string> = { Upgrade: "websocket" }) =>
+      new Request(`https://mistlog.test/agents/document-agent/abcd1234${query}`, { headers });
+
+    it.each([
+      ["no format", ""],
+      ["an older format", `?format=${DOC_FORMAT_VERSION - 1}`],
+      ["a malformed format", "?format=4x"],
+    ])("refuses a connection with %s, sending nothing", async (_name, query) => {
+      const conn = createConnection();
+      const sent: Uint8Array[] = [];
+      conn.onSend = (d) => sent.push(d);
+      await agent.onConnect(conn as never, { request: socketRequest(query) } as never);
+      expect(conn.closeCode).toBe(CLOSE_OUTDATED_CLIENT);
+      expect(conn.closeReason).toContain("Reload");
+      expect(sent).toHaveLength(0);
+    });
+
+    it("accepts the current format and newer ones", async () => {
+      for (const v of [DOC_FORMAT_VERSION, DOC_FORMAT_VERSION + 1]) {
+        const conn = createConnection();
+        const sent: Uint8Array[] = [];
+        conn.onSend = (d) => sent.push(d);
+        await agent.onConnect(conn as never, { request: socketRequest(`?format=${v}`) } as never);
+        expect(conn.closed).toBe(false);
+        expect(sent.length).toBeGreaterThan(0);
+      }
+    });
+
+    it("the Worker spots outdated document sockets, and only those", async () => {
+      const { isOutdatedEditorRequest } = await import("../../../agents/document");
+      expect(isOutdatedEditorRequest(socketRequest(""))).toBe(true);
+      expect(isOutdatedEditorRequest(socketRequest("?format=3"))).toBe(true);
+      expect(isOutdatedEditorRequest(socketRequest(`?format=${DOC_FORMAT_VERSION}`))).toBe(false);
+      // Not a WebSocket, or not a document: left alone
+      expect(isOutdatedEditorRequest(socketRequest("", {}))).toBe(false);
+      expect(isOutdatedEditorRequest(new Request("https://mistlog.test/agents/workspace-agent/default", { headers: { Upgrade: "websocket" } }))).toBe(false);
+      expect(isOutdatedEditorRequest(new Request("https://mistlog.test/docs/abcd1234", { headers: { Upgrade: "websocket" } }))).toBe(false);
+    });
+
+    it("the Worker accepts the socket and closes it with the reload code", async () => {
+      const server = { accept: vi.fn(), close: vi.fn() };
+      vi.stubGlobal("WebSocketPair", function () { return { 0: { client: true }, 1: server }; });
+      // Node's Response refuses status 101, which Workers allow for WebSockets
+      const RealResponse = Response;
+      vi.stubGlobal("Response", function (body: unknown, init: { status: number; webSocket: unknown }) { return { body, ...init }; });
+      try {
+        const { refuseOutdatedEditor } = await import("../../../agents/document");
+        const res = refuseOutdatedEditor() as unknown as { status: number; webSocket: unknown };
+        expect(res.status).toBe(101);
+        expect(res.webSocket).toEqual({ client: true });
+        expect(server.accept).toHaveBeenCalled();
+        expect(server.close).toHaveBeenCalledWith(CLOSE_OUTDATED_CLIENT, expect.stringContaining("Reload"));
+      } finally {
+        vi.unstubAllGlobals();
+        expect(Response).toBe(RealResponse);
+      }
+    });
+  });
+
   describe("onMessage", () => {
     it("ignores string messages gracefully", async () => {
       const conn = createConnection();
-      await agent.onConnect(conn as never, {} as never);
+      await agent.onConnect(conn as never, CURRENT_CLIENT);
       // Should not throw
       await agent.onMessage(conn as never, "some string message");
     });
@@ -614,7 +677,7 @@ describe("DocumentAgent", () => {
 
     it("does not throw after agent is initialised", async () => {
       const conn = createConnection();
-      await agent.onConnect(conn as never, {} as never);
+      await agent.onConnect(conn as never, CURRENT_CLIENT);
       await agent.onClose(conn as never, 1000, "normal", true);
     });
   });
@@ -826,7 +889,7 @@ describe("DocumentAgent", () => {
       const later = new DocumentAgent({} as never, {} as never);
       (later as unknown as { name: string }).name = PAGE_ID;
       mockSchedules = [];
-      await later.onConnect(createConnection() as never, {} as never);
+      await later.onConnect(createConnection() as never, CURRENT_CLIENT);
       expect(reindexes()).toHaveLength(1);
       await later.reindex();
       expect(index.search("old").map((h) => h.pageId)).toEqual([PAGE_ID]);
@@ -835,7 +898,7 @@ describe("DocumentAgent", () => {
     it("schedules only once when opened while a reindex is already pending", async () => {
       await create("pending");
       mockSchedules = [];
-      await agent.onConnect(createConnection() as never, {} as never);
+      await agent.onConnect(createConnection() as never, CURRENT_CLIENT);
       expect(reindexes()).toEqual([]);
     });
 
@@ -845,7 +908,7 @@ describe("DocumentAgent", () => {
       const fresh = new DocumentAgent({} as never, {} as never);
       (fresh as unknown as { name: string }).name = PAGE_ID;
       mockSchedules = [];
-      await fresh.onConnect(createConnection() as never, {} as never);
+      await fresh.onConnect(createConnection() as never, CURRENT_CLIENT);
       expect(reindexes()).toEqual([]);
     });
 
@@ -858,7 +921,7 @@ describe("DocumentAgent", () => {
       const fresh = new DocumentAgent({} as never, {} as never);
       (fresh as unknown as { name: string }).name = PAGE_ID;
       mockSchedules = [];
-      await fresh.onConnect(createConnection() as never, {} as never);
+      await fresh.onConnect(createConnection() as never, CURRENT_CLIENT);
       expect(reindexes()).toHaveLength(1);
     });
 
@@ -886,7 +949,7 @@ describe("DocumentAgent", () => {
       const later = new DocumentAgent({} as never, {} as never);
       (later as unknown as { name: string }).name = PAGE_ID;
       mockSchedules = [];
-      await later.onConnect(createConnection() as never, {} as never);
+      await later.onConnect(createConnection() as never, CURRENT_CLIENT);
       expect(reindexes()).toHaveLength(1);
     });
 

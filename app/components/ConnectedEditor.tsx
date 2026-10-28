@@ -1,3 +1,4 @@
+import { useNavigate } from "react-router";
 import Editor from "~/components/Editor";
 import Preview from "~/components/Preview";
 import { useDocument } from "~/lib/DocumentContext";
@@ -16,6 +17,7 @@ export default function ConnectedEditor() {
     handleResolveAtCursor,
     handleDeleteAtCursor,
   } = useDocument();
+  const navigate = useNavigate();
 
   return (
     <>
@@ -30,6 +32,7 @@ export default function ConnectedEditor() {
         onNewComment={openCommentInput}
         onResolveAtCursor={handleResolveAtCursor}
         onDeleteAtCursor={handleDeleteAtCursor}
+        onOpenLink={navigate}
       />
       {showPreview && <Preview />}
     </>

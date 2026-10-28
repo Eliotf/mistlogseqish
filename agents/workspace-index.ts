@@ -27,6 +27,9 @@ export interface SqlDb {
 
 export const SCHEMA_VERSION = 2;
 
+/** Durable Object SQLite's limit on bound parameters in one query. */
+const MAX_BOUND_PARAMS = 100;
+
 // Version 1, as shipped in chunk 1.4. Never edit: later versions migrate
 // from it (MIGRATIONS). One statement per entry, because Node's SQLite
 // prepares a single statement at a time.
@@ -308,6 +311,22 @@ export class WorkspaceIndex {
   /** A page's current slug, or null if it has none. */
   currentSlug(pageId: string): string | null {
     return (this.db.exec(`SELECT slug FROM slugs WHERE page_id = ? AND current = 1`, pageId)[0]?.slug as string) ?? null;
+  }
+
+  /** Pages by ID, each with its current slug, for showing links (PRD 6.1). Unknown IDs are left out. */
+  pagesByIds(pageIds: string[]): Array<IndexedPage & { slug: string | null }> {
+    const found: Array<IndexedPage & { slug: string | null }> = [];
+    // Durable Object SQLite allows at most 100 bound parameters per query
+    for (let i = 0; i < pageIds.length; i += MAX_BOUND_PARAMS) {
+      const ids = pageIds.slice(i, i + MAX_BOUND_PARAMS);
+      const rows = this.db.exec(
+        `SELECT p.*, s.slug FROM pages p LEFT JOIN slugs s ON s.page_id = p.page_id AND s.current = 1
+         WHERE p.page_id IN (${ids.map(() => "?").join(", ")})`,
+        ...ids,
+      );
+      for (const row of rows) found.push({ ...toPage(row), slug: (row.slug as string | null) ?? null });
+    }
+    return found;
   }
 
   /** Which page a slug belongs to, and whether it is that page's current slug. */

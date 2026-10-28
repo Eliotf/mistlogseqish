@@ -2,6 +2,7 @@ import { createRequestHandler, RouterContextProvider } from "react-router";
 import { routeAgentRequest } from "agents";
 import { cloudflareContext } from "../app/lib/cloudflare.server";
 import { isPrivateAgentPath } from "../agents/workspace";
+import { isOutdatedEditorRequest, refuseOutdatedEditor } from "../agents/document";
 
 export { default as DocumentAgent } from "../agents/document";
 export { default as WorkspaceAgent } from "../agents/workspace";
@@ -17,6 +18,10 @@ export default {
     if (isPrivateAgentPath(new URL(request.url).pathname)) {
       return new Response("Not found", { status: 404 });
     }
+
+    // A tab running older code would delete text it does not understand; it
+    // is told to reload without waking the page's Durable Object
+    if (isOutdatedEditorRequest(request)) return refuseOutdatedEditor();
 
     // routeAgentRequest will route to available agents using the
     // /agents/:agent/:name pattern, otherwise hand off to react-router
