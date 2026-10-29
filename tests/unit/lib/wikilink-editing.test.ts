@@ -462,10 +462,14 @@ describe("opening links", () => {
     while (walker.nextNode()) if (walker.currentNode.textContent === "Reading list") titleText = walker.currentNode;
     const target = titleText!.parentElement!;
     expect(target.closest("[data-page-id]")).not.toBeNull();
+    // Ask our handler directly: letting mousedown through to ProseMirror would
+    // need layout (elementFromPoint), which jsdom does not have
     const down = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
-    target.dispatchEvent(down);
-    target.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    Object.defineProperty(down, "target", { value: target });
+    const handled = editor.view.someProp("handleDOMEvents", (handlers) => handlers.mousedown?.(editor.view, down));
+    expect(handled).toBeFalsy();
     expect(down.defaultPrevented).toBe(false);
+    target.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     expect(onOpen).not.toHaveBeenCalled();
   });
 
