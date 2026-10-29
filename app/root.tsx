@@ -10,6 +10,8 @@ import {
 
 import type { Route } from "./+types/root";
 import Fathom from "~/components/Fathom";
+import SidePanel from "~/components/SidePanel";
+import { SidePanelProvider, useSidePanel, useToggleShortcut } from "~/lib/side-panel";
 import "./app.css";
 
 export const links: Route.LinksFunction = () => [
@@ -48,7 +50,25 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  return <Outlet />;
+  return (
+    <SidePanelProvider>
+      <Shell />
+    </SidePanelProvider>
+  );
+}
+
+/** Every screen, with the side panel (PRD F18) beside it. */
+function Shell() {
+  const panel = useSidePanel();
+  useToggleShortcut(panel.toggle);
+  return (
+    <div className="flex">
+      <div className="min-w-0 flex-1">
+        <Outlet />
+      </div>
+      <SidePanel />
+    </div>
+  );
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {

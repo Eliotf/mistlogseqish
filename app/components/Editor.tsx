@@ -213,8 +213,8 @@ export default function Editor({
   onNewComment?: () => void;
   onResolveAtCursor?: () => void;
   onDeleteAtCursor?: () => void;
-  /** Open a linked page (client-side navigation); defaults to a full page load. */
-  onOpenLink?: (href: string) => void;
+  /** Open a linked page: navigate, or (side) open it in the side panel. Defaults to a full page load. */
+  onOpenLink?: (href: string, link: { pageId: string; side: boolean }) => void;
 }) {
   const { doc, awareness, user, docState } = yjs;
   const prevHighlightRef = useRef<{ from: number; to: number } | null>(null);
@@ -262,7 +262,8 @@ export default function Editor({
     const dom = editor.view.dom;
     const open = (event: Event) => {
       event.preventDefault();
-      onOpenLink((event as CustomEvent<{ href: string }>).detail.href);
+      const { href, pageId, side } = (event as CustomEvent<{ href: string; pageId: string; side: boolean }>).detail;
+      onOpenLink(href, { pageId, side });
     };
     dom.addEventListener(OPEN_LINK_EVENT, open);
     return () => dom.removeEventListener(OPEN_LINK_EVENT, open);

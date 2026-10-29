@@ -106,6 +106,7 @@ PRD.md        Product spec and roadmap
 - A tab running older code deletes any text carrying a mark or node its editor does not know (y-tiptap drops it, and the deletion syncs everywhere). Adding a mark or node to the editor schema means bumping `DOC_FORMAT_VERSION`, which makes the Worker refuse older tabs (`refuseOutdatedEditor`). Durable Object SQLite also allows only 100 bound parameters per query; chunk `IN (...)` lists.
 - A Durable Object's `doc_state` table does not exist until `ensureInitialised()` runs; call it before any `this.sql` on a fresh page. The agent tests' SQL mock throws in that case, as real SQLite does.
 - Judge `npm run test` by its exit code, not the "passed" count: Vitest fails the run on an unhandled error even when every test passes, and that blocks the deploy. In jsdom, letting a mousedown reach ProseMirror throws one (no `elementFromPoint`); call the plugin's handler directly instead.
+- The React lint rules apply to tests too: a test component may not assign to outer variables during render. Record what it sees in a `useEffect`.
 - Never decide "today" on the server (it runs on UTC). Use `localDate(new Date())` in the browser.
 - `docs.$id.tsx` keys its screen by page ID. Keep that: without it, moving between pages reuses the previous page's Yjs doc and editor.
 - Workspace index schema changes are migrations: append to `MIGRATIONS` in `agents/workspace-index.ts` and bump `SCHEMA_VERSION`. Never edit `SCHEMA_V1` or a shipped migration, and test the upgrade from the previous version.

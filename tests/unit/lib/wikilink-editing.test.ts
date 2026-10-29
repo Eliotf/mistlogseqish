@@ -521,7 +521,14 @@ describe("opening links", () => {
     el.dispatchEvent(down);
     expect(down.defaultPrevented).toBe(true);
     el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-    expect(onOpen).toHaveBeenCalledWith("/page/reading-list", BOOKS, editor.view);
+    expect(onOpen).toHaveBeenCalledWith("/page/reading-list", BOOKS, editor.view, false);
+  });
+
+  it.each([["Cmd", { metaKey: true }], ["Ctrl", { ctrlKey: true }]])("asks for the side panel on %s+click", (_name, mods) => {
+    const { editor, onOpen } = setup(SEE_LINK);
+    caret(editor, 1);
+    editor.view.dom.querySelector(".wikilink")!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, ...mods }));
+    expect(onOpen).toHaveBeenCalledWith(`/docs/${BOOKS}`, BOOKS, editor.view, true);
   });
 
   it("lets a click inside a link you are editing place the cursor", () => {
@@ -548,7 +555,9 @@ describe("opening links", () => {
     const { editor, onOpen } = setup([["[[", ["Oct 28th, 2026", "journal-2026-10-28"], "]] notes"]]);
     caret(editor, 19);
     expect(press(editor, "Enter", { altKey: true })).toBe(true);
-    expect(onOpen).toHaveBeenCalledWith("/journal/2026-10-28", "journal-2026-10-28", editor.view);
+    expect(onOpen).toHaveBeenCalledWith("/journal/2026-10-28", "journal-2026-10-28", editor.view, false);
+    expect(press(editor, "Enter", { altKey: true, shiftKey: true })).toBe(true);
+    expect(onOpen).toHaveBeenLastCalledWith("/journal/2026-10-28", "journal-2026-10-28", editor.view, true);
   });
 
   it("by default asks the page around the editor to open it", () => {
@@ -557,13 +566,13 @@ describe("opening links", () => {
     document.body.append(element);
     const editor = new Editor({ element, extensions: [Document, Paragraph, Text, Collaboration.configure({ document: doc }), Wikilink.configure({ titles: fakeTitles() })] });
     editors.push(editor);
-    const opened: string[] = [];
+    const opened: unknown[] = [];
     element.addEventListener(OPEN_LINK_EVENT, (e) => {
       e.preventDefault();
-      opened.push((e as CustomEvent<{ href: string }>).detail.href);
+      opened.push((e as CustomEvent).detail);
     });
-    editor.view.dom.querySelector("[data-page-id]")!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-    expect(opened).toEqual([`/docs/${BOOKS}`]);
+    editor.view.dom.querySelector("[data-page-id]")!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, metaKey: true }));
+    expect(opened).toEqual([{ href: `/docs/${BOOKS}`, pageId: BOOKS, side: true }]);
   });
 });
 

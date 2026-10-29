@@ -7,6 +7,7 @@ import { useYjsEditor } from "~/lib/useYjsEditor";
 import { DocumentProvider, useDocument } from "~/lib/DocumentContext";
 import PreviewToggle from "~/components/PreviewToggle";
 import ConnectionStatus from "~/components/ConnectionStatus";
+import { useSidePanel } from "~/lib/side-panel";
 import ShareButton from "~/components/ShareButton";
 import ModeToggle from "~/components/ModeToggle";
 import CleanViewToggle from "~/components/CleanViewToggle";
@@ -74,6 +75,9 @@ function DocumentLayout({ id, exists, path, focusTitle }: Omit<ScreenProps, "cre
     if (newPath !== path) navigate(newPath, { replace: true });
   };
   const { yjs, mode } = useDocument();
+  // The side panel takes the comments column while it shows pages
+  const panel = useSidePanel();
+  const panelOpen = panel.shown && panel.pages.length > 0;
 
   return (
     <div className="flex h-screen flex-col">
@@ -91,7 +95,7 @@ function DocumentLayout({ id, exists, path, focusTitle }: Omit<ScreenProps, "cre
         </div>
       </AppHeader>
       <div className="flex flex-1 overflow-hidden">
-        <main className="flex-1 overflow-y-auto pb-[33vh] lg:border-r lg:border-border lg:pb-0">
+        <main className={`flex-1 overflow-y-auto pb-[33vh] lg:pb-0 ${panelOpen ? "" : "lg:border-r lg:border-border"}`}>
           {isJournalId(id) ? (
             <JournalHeading doc={yjs.doc} pageId={id} exists={exists} />
           ) : (
@@ -99,7 +103,7 @@ function DocumentLayout({ id, exists, path, focusTitle }: Omit<ScreenProps, "cre
           )}
           <ConnectedEditor />
         </main>
-        <aside className="hidden w-96 flex-col overflow-hidden lg:flex">
+        <aside className={`hidden w-96 flex-col overflow-hidden ${panelOpen ? "" : "lg:flex"}`}>
           <div className="flex-1 overflow-y-auto">
             <OnboardingBanner />
             <ModeToggle />

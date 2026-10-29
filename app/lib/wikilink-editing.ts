@@ -41,23 +41,23 @@ interface ModeSource {
 export interface WikilinkOptions {
   titles: TitleSource | null;
   docState: ModeSource | null;
-  /** Open a link's page. Cmd/Ctrl+click will open the side panel (2.5d). */
-  onOpen: (href: string, pageId: string, view: EditorView) => void;
+  /** Open a link's page; `side` (Cmd/Ctrl+click, Alt+Shift+Enter) asks for the side panel. */
+  onOpen: (href: string, pageId: string, view: EditorView, side: boolean) => void;
   /** Titles for the suggestions list. */
   search: (query: string) => Promise<LinkPage[]>;
   /** The page a title links to, created if need be; null if it can't be had (offline). */
   linkPage: (title: string) => Promise<LinkPage | null>;
 }
 
-/** Fired (bubbling, cancelable) on the editor's element to open a link; detail is { href, pageId }. */
+/** Fired (bubbling, cancelable) on the editor's element to open a link; detail is { href, pageId, side }. */
 export const OPEN_LINK_EVENT = "wikilink-open";
 
 /**
  * By default a link asks the page around the editor to open it (so React
  * Router can navigate), and falls back to a full page load if nobody does.
  */
-function openLink(href: string, pageId: string, view: EditorView): void {
-  const event = new CustomEvent(OPEN_LINK_EVENT, { detail: { href, pageId }, bubbles: true, cancelable: true });
+function openLink(href: string, pageId: string, view: EditorView, side: boolean): void {
+  const event = new CustomEvent(OPEN_LINK_EVENT, { detail: { href, pageId, side }, bubbles: true, cancelable: true });
   if (view.dom.dispatchEvent(event)) window.location.assign(href);
 }
 
@@ -266,17 +266,19 @@ export const Wikilink = Mark.create<WikilinkOptions>({
   },
 
   addKeyboardShortcuts() {
+    // Open the link the cursor is in or just after; with Shift, in the side panel
+    const openAtCursor = (side: boolean) => {
+      const { state, view } = this.editor;
+      const spans = linkSpans(state.doc);
+      const head = state.selection.head;
+      const span = spanAt(spans, head) ?? spans.find((s) => s.to === head);
+      if (!span?.pageId) return false;
+      this.options.onOpen(linkHref(span.pageId, this.options.titles?.get(span.pageId)), span.pageId, view, side);
+      return true;
+    };
     return {
-      // Open the link the cursor is in or just after
-      "Alt-Enter": () => {
-        const { state, view } = this.editor;
-        const spans = linkSpans(state.doc);
-        const head = state.selection.head;
-        const span = spanAt(spans, head) ?? spans.find((s) => s.to === head);
-        if (!span?.pageId) return false;
-        this.options.onOpen(linkHref(span.pageId, this.options.titles?.get(span.pageId)), span.pageId, view);
-        return true;
-      },
+      "Alt-Enter": () => openAtCursor(false),
+      "Alt-Shift-Enter": () => openAtCursor(true),
     };
   },
 
@@ -575,7 +577,7 @@ export const Wikilink = Mark.create<WikilinkOptions>({
               const pageId = linkElement(view, event)?.dataset.pageId;
               if (!pageId) return false;
               event.preventDefault();
-              onOpen(linkHref(pageId, titles?.get(pageId)), pageId, view);
+              onOpen(linkHref(pageId, titles?.get(pageId)), pageId, view, (event as MouseEvent).metaKey || (event as MouseEvent).ctrlKey);
               return true;
             },
           },

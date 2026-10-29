@@ -78,6 +78,15 @@ A link is a `wikilink` mark on text in the page's Yjs document, with a `pageId` 
 - **Titles:** `app/lib/page-titles.ts` is one title store per browser. It batches IDs into `GET /api/pages/titles` (up to 200), caches the answers, refreshes on returning to the tab, and is primed with pages learned from suggestions or creation. `WorkspaceIndex.pagesByIds` queries 100 IDs at a time (the Durable Object SQLite bound-parameter limit).
 - **Known limit:** full-text search indexes the stored copy, so a link is found by its old title until the search chunk.
 
+**Side panel (2.5d, F18).**
+
+- **State:** `app/lib/side-panel.tsx` holds it, for every screen through `SidePanelProvider` in `app/root.tsx`, which also wires `t r`.
+  - The open pages are newest first, capped at 10.
+  - Whether it's shown, plus the list, is kept in `localStorage` through a small store read with `useSyncExternalStore`. The server renders it empty, so there's no hydration mismatch.
+- **Opening a link there:** Cmd/Ctrl+click, or Alt+Shift+Enter, sets `side` on the `wikilink-open` event. `ConnectedEditor` opens the page in the panel, or navigates for missing pages or when no provider is present.
+- **What it shows:** `app/components/SidePanel.tsx` renders each page as a live editor (`useYjsEditor` plus `DocumentProvider`) with its title from the title store.
+- **Layout:** it's a full-height right-hand column on wide screens and a fixed full-screen sheet on phones. `DocumentLayout` hides the comments column while the panel shows pages.
+
 **Older tabs are refused (`DOC_FORMAT_VERSION` 4).** An editor whose schema lacks a mark deletes text carrying it: y-tiptap drops what it cannot convert, and the deletion syncs to everyone.
 
 - Browsers send `?format=<DOC_FORMAT_VERSION>` on the document WebSocket.
