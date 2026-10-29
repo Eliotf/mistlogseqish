@@ -68,6 +68,7 @@ A link is a `wikilink` mark on text in the page's Yjs document, with a `pageId` 
   - each title is asked for once at a time
 - **Typing:** `[[` adds `]]`, `]` before `]]` steps out, and Backspace in `[[|]]` removes all four brackets. Suggestions come from `GET /api/pages/search` (untitled pages left out), with "New page: …" when nothing matches.
 - **Clicking** a link you are not editing opens the page. Mousedown is cancelled, so the cursor does not move in. Alt+Enter opens the link at the cursor. Opening fires a `wikilink-open` event that `Editor` turns into navigation.
+- **Pasting or dropping (2.5c):** `pastedRanges` finds where the content landed (`uiEvent` paste or drop), and every unlinked `[[...]]` there is linked by the same rules as leaving a link. HTML copied from Mistlog keeps its marks (`span[data-page-id]`), so those links are not looked up.
 - **Plain-text copy** writes each link's current title.
 - **Suggest mode:** none of the editing applies.
 - **`POST /api/pages`** answers in this order:

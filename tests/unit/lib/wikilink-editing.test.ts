@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as Y from "yjs";
 import { Editor, type Extensions } from "@tiptap/core";
 import Document from "@tiptap/extension-document";
@@ -7,7 +7,7 @@ import Paragraph from "@tiptap/extension-paragraph";
 import Text from "@tiptap/extension-text";
 import Collaboration from "@tiptap/extension-collaboration";
 import { CriticAddition, CriticDeletion, CriticComment, CriticHighlight } from "~/lib/critic-marks";
-import { Wikilink, linkSpans, clipboardText, OPEN_LINK_EVENT, type TitleSource } from "~/lib/wikilink-editing";
+import { Wikilink, linkSpans, clipboardText, pastedRanges, OPEN_LINK_EVENT, type TitleSource } from "~/lib/wikilink-editing";
 import type { LinkPage, LinkTarget } from "~/lib/page-titles";
 import { linesFromYjs } from "~/lib/note-lines";
 import { parseNote } from "~/lib/note-parser";
@@ -438,6 +438,77 @@ describe("typing [[", () => {
     expect(press(editor, "Escape")).toBe(true);
     expect((document.querySelector(".link-suggest") as HTMLElement).hidden).toBe(true);
     expect(text(doc)).toEqual(["[[o]]"]);
+  });
+});
+
+describe("pasting", () => {
+  // jsdom has no ClipboardEvent, which ProseMirror's paste helpers create
+  beforeEach(() => vi.stubGlobal("ClipboardEvent", class extends Event {}));
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("links pasted [[Title]] text at once: journals locally, other titles through the server", async () => {
+    const { doc, editor, linkPage } = setup([["x"]]);
+    caret(editor, 2);
+    editor.view.pasteText(" see [[Holiday]] on [[oct 28th, 2026]]");
+    await settle();
+    expect(linkPage).toHaveBeenCalledTimes(1);
+    expect(linkPage).toHaveBeenCalledWith("Holiday");
+    expect(linkSpans(editor.state.doc).map((sp) => sp.pageId)).toEqual(["newpage1", "journal-2026-10-28"]);
+    expect(text(doc)).toEqual(["x see [[Holiday]] on [[oct 28th, 2026]]"]);
+  });
+
+  it("asks once for a title pasted many times", async () => {
+    const { editor, linkPage } = setup([[""]]);
+    caret(editor, 1);
+    editor.view.pasteText("[[Holiday]] [[holiday]] [[Holiday]]");
+    await settle();
+    expect(linkPage).toHaveBeenCalledTimes(1);
+    expect(linkSpans(editor.state.doc).map((sp) => sp.pageId)).toEqual(["newpage1", "newpage1", "newpage1"]);
+  });
+
+  it("keeps the page of a link copied from Mistlog, looking nothing up", async () => {
+    const { editor, linkPage } = setup([[""]]);
+    caret(editor, 1);
+    editor.view.pasteHTML(`<p>see [[<span class="wikilink" data-page-id="${BOOKS}">Books</span>]]</p>`);
+    await settle();
+    expect(linkPage).not.toHaveBeenCalled();
+    expect(linkSpans(editor.state.doc).map((sp) => [sp.inner, sp.pageId])).toEqual([["Books", BOOKS]]);
+  });
+
+  it("leaves unlinked [[text]] outside what was pasted alone", async () => {
+    const { editor, linkPage } = setup([["[[Old]] "]]);
+    caret(editor, 9);
+    editor.view.pasteText("[[New]]");
+    await settle();
+    expect(linkPage.mock.calls.map((c) => c[0])).toEqual(["New"]);
+  });
+
+  it("treats dropped text like pasted text, and typing as neither", async () => {
+    const { editor, linkPage } = setup([["x"]]);
+    const typed = editor.state.tr.insertText("[[Typed]]", 2);
+    expect(pastedRanges([typed])).toEqual([]);
+    const dropped = editor.state.tr.insertText(" [[Dropped]]", 2).setMeta("uiEvent", "drop");
+    expect(pastedRanges([dropped])).toEqual([[2, 14]]);
+    editor.view.dispatch(dropped);
+    await settle();
+    expect(linkPage).toHaveBeenCalledWith("Dropped");
+  });
+
+  it("does nothing in suggest mode", async () => {
+    const { editor, linkPage } = setup([[""]], { mode: "suggest" });
+    caret(editor, 1);
+    editor.view.pasteText("[[Holiday]]");
+    await settle();
+    expect(linkPage).not.toHaveBeenCalled();
+  });
+
+  it("stays unlinked and dashed if the page can't be had", async () => {
+    const { editor } = setup([["x"]], { linkPage: async () => null });
+    caret(editor, 2);
+    editor.view.pasteText(" [[Holiday]]");
+    await settle();
+    expect(linkSpans(editor.state.doc)[0].pageId).toBeNull();
+    expect(editor.view.dom.querySelector(".wikilink-pending")).not.toBeNull();
   });
 });
 

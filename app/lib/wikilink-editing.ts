@@ -10,7 +10,7 @@ import { titleKey } from "./page-title";
 import { SuggestionList, type Suggestion } from "./link-suggestions";
 
 /**
- * Links in the editor (PRD 6.1, chunks 2.5a and 2.5b), Logseq style.
+ * Links in the editor (PRD 6.1, chunks 2.5a to 2.5c), Logseq style.
  *
  * A link is text: `[[`, the title, `]]`. The title carries a `wikilink` mark
  * with the target's page ID. With the cursor elsewhere it reads as a link
@@ -208,6 +208,27 @@ function inlineText(content: Fragment, titles: TitleSource | null): string {
   return runs.map(({ pageId, text }) => (pageId ? shownTitle(text, titles?.get(pageId)) : text)).join("");
 }
 
+/** Where pasted or dropped content landed, in the final document of these transactions. */
+export function pastedRanges(trs: readonly Transaction[]): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  trs.forEach((tr, i) => {
+    const event = tr.getMeta("uiEvent");
+    if (event !== "paste" && event !== "drop") return;
+    tr.mapping.maps.forEach((map, j) => {
+      map.forEach((_oldFrom, _oldTo, from, to) => {
+        let a = tr.mapping.slice(j + 1).map(from, -1);
+        let b = tr.mapping.slice(j + 1).map(to, 1);
+        for (const later of trs.slice(i + 1)) {
+          a = later.mapping.map(a, -1);
+          b = later.mapping.map(b, 1);
+        }
+        ranges.push([a, b]);
+      });
+    });
+  });
+  return ranges;
+}
+
 function isRemote(tr: Transaction): boolean {
   return !!(tr.getMeta(ySyncPluginKey) as { isChangeOrigin?: boolean } | undefined)?.isChangeOrigin;
 }
@@ -321,6 +342,25 @@ export const Wikilink = Mark.create<WikilinkOptions>({
         return;
       }
       lookUp(title);
+    };
+
+    /**
+     * Pasted or dropped text (2.5c): link every unlinked `[[...]]` in it at
+     * once, by the same rules as typing. Links copied from Mistlog keep
+     * their page ID, so only plain [[Title]] text is looked up.
+     */
+    const linkPasted = (tr: Transaction, state: EditorState, ranges: Array<[number, number]>, activeFrom: number | null) => {
+      for (const span of linkSpans(state.doc)) {
+        if (span.pageId || span.from === activeFrom || !span.inner.trim()) continue;
+        if (!ranges.some(([a, b]) => span.from < b && span.to > a)) continue;
+        const date = journalDateFromTitle(span.inner);
+        if (date) {
+          tr.addMark(span.innerFrom, span.innerTo, markType(state).create({ pageId: journalId(date) }));
+          titles?.request([journalId(date)]);
+        } else {
+          lookUp(span.inner.trim());
+        }
+      }
     };
 
     /** The cursor entered a link to a renamed page: make the stored copy the current title. */
@@ -439,6 +479,8 @@ export const Wikilink = Mark.create<WikilinkOptions>({
           const after = linkKey.getState(newState)?.entry ?? null;
           const mapped = before ? trs.reduce((pos, tr) => tr.mapping.map(pos), before.from) : null;
           const tr = newState.tr;
+          const pasted = pastedRanges(trs);
+          if (pasted.length) linkPasted(tr, newState, pasted, after?.from ?? null);
           if (before && mapped !== null && (!after || after.from !== mapped)) settle(tr, newState, before, mapped);
           if (after && (!before || mapped !== after.from)) {
             const span = linkSpans(tr.doc).find((s) => s.from === after.from);
