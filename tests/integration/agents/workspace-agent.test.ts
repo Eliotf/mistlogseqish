@@ -63,14 +63,28 @@ describe("WorkspaceAgent", () => {
         title: "",
         updatedAt: 10,
         lines: [
-          { text: "TODO read Mistlog #reading", marks: [{ type: WIKILINK_MARK, from: 10, to: 17, attrs: { pageId: "abcd1234" } }] },
+          {
+            text: "TODO read Mistlog #reading",
+            marks: [
+              { type: WIKILINK_MARK, from: 10, to: 17, attrs: { pageId: "abcd1234" } },
+              { type: "criticComment", from: 0, to: 4, attrs: { note: "other formatting" } },
+            ],
+          },
         ],
       });
       expect(ack.pageId).toBe("journal-2026-10-22");
       expect((await agent.getPage("journal-2026-10-22"))?.title).toBe("Oct 22nd, 2026");
       expect((await agent.findByTitle("OCT 22ND, 2026"))?.pageId).toBe("journal-2026-10-22");
       expect(await agent.findByTitle("Oct 22nd, 2026", "journal-2026-10-22")).toBeNull();
-      expect((await agent.backlinks("abcd1234")).map((b) => b.sourceId)).toEqual(["journal-2026-10-22"]);
+      // Lines come back as text and link positions only (RPC results must be serialisable)
+      expect(await agent.backlinks("abcd1234")).toEqual([
+        {
+          sourceId: "journal-2026-10-22",
+          sourceTitle: "Oct 22nd, 2026",
+          sourceKind: "journal",
+          lines: [{ line: 0, text: "TODO read Mistlog #reading", links: [{ from: 10, to: 17, pageId: "abcd1234" }] }],
+        },
+      ]);
       expect((await agent.searchTitles("oct")).map((p) => p.pageId)).toEqual(["journal-2026-10-22"]);
       expect((await agent.search("read")).map((h) => h.pageId)).toEqual(["journal-2026-10-22"]);
       expect((await agent.tasks()).map((t) => t.text)).toEqual(["read Mistlog #reading"]);

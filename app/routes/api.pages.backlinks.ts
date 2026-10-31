@@ -1,7 +1,6 @@
 import type { Route } from "./+types/api.pages.backlinks";
 import { isPageId, journalTitle, parseJournalDate } from "~/lib/note-ids";
 import { UNTITLED } from "~/lib/page-title";
-import { WIKILINK_MARK, isWikilinkAttrs } from "~/lib/wikilink";
 import type { BacklinkGroup } from "~/lib/backlink-lines";
 import { workspaceIndex } from "~/lib/document-loader.server";
 
@@ -27,13 +26,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
         title: date ? journalTitle(date) : b.sourceTitle || UNTITLED,
         kind: b.sourceKind,
         slug: slugs.get(b.sourceId) ?? null,
-        lines: b.lines.map(({ line, content }) => ({
-          line,
-          text: content.text,
-          links: content.marks
-            .filter((m) => m.type === WIKILINK_MARK && isWikilinkAttrs(m.attrs))
-            .map((m) => ({ from: m.from, to: m.to, pageId: (m.attrs as { pageId: string }).pageId })),
-        })),
+        lines: b.lines,
       };
     });
     return Response.json({ groups });

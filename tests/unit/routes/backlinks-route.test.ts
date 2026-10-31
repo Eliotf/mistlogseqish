@@ -16,8 +16,8 @@ describe("GET /api/pages/backlinks", () => {
 
   it("returns linking pages with their titles, addresses and link positions", async () => {
     index.backlinks.mockImplementation(async () => [
-      { sourceId: "aaaa1111", sourceTitle: "Plans", sourceKind: "page", lines: [{ line: 2, content: { text: "see [[Books]]", marks: [{ type: "wikilink", from: 6, to: 11, attrs: { pageId: "abcd1234" } }, { type: "criticComment", from: 0, to: 3 }] } }] },
-      { sourceId: "journal-2026-10-30", sourceTitle: "", sourceKind: "journal", lines: [{ line: 0, content: { text: "[[Books]]", marks: [{ type: "wikilink", from: 2, to: 7, attrs: { pageId: "abcd1234" } }] } }] },
+      { sourceId: "aaaa1111", sourceTitle: "Plans", sourceKind: "page", lines: [{ line: 2, text: "see [[Books]]", links: [{ from: 6, to: 11, pageId: "abcd1234" }] }] },
+      { sourceId: "journal-2026-10-30", sourceTitle: "", sourceKind: "journal", lines: [{ line: 0, text: "[[Books]]", links: [{ from: 2, to: 7, pageId: "abcd1234" }] }] },
       { sourceId: "bbbb2222", sourceTitle: "", sourceKind: "page", lines: [] },
     ]);
     const res = await get("?id=abcd1234");

@@ -1,3 +1,5 @@
+import { WIKILINK_MARK, isWikilinkAttrs } from "../app/lib/wikilink";
+import type { BacklinkSource } from "../app/lib/backlink-lines";
 import { Agent } from "agents";
 import type { Connection, ConnectionContext } from "agents";
 import type { TaskState } from "../app/lib/note-parser";
@@ -75,8 +77,24 @@ class WorkspaceAgent extends Agent {
     return this.index.findByTitle(title, exceptId);
   }
 
-  async backlinks(targetId: string) {
-    return this.index.backlinks(targetId);
+  /**
+   * Linked references, with each line reduced to its text and link
+   * positions: RPC results must be serialisable, and the stored marks'
+   * other attributes are not needed.
+   */
+  async backlinks(targetId: string): Promise<BacklinkSource[]> {
+    return this.index.backlinks(targetId).map((b) => ({
+      sourceId: b.sourceId,
+      sourceTitle: b.sourceTitle,
+      sourceKind: b.sourceKind,
+      lines: b.lines.map(({ line, content }) => ({
+        line,
+        text: content.text,
+        links: content.marks.flatMap((m) =>
+          m.type === WIKILINK_MARK && isWikilinkAttrs(m.attrs) ? [{ from: m.from, to: m.to, pageId: m.attrs.pageId }] : [],
+        ),
+      })),
+    }));
   }
 
   async searchTitles(query: string, limit?: number) {

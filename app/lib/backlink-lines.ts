@@ -12,6 +12,14 @@ export interface BacklinkLine {
   links: Array<{ from: number; to: number; pageId: string }>;
 }
 
+/** One page linking here, as WorkspaceAgent.backlinks returns it. */
+export interface BacklinkSource {
+  sourceId: string;
+  sourceTitle: string;
+  sourceKind: "page" | "journal";
+  lines: BacklinkLine[];
+}
+
 export interface BacklinkGroup {
   pageId: string;
   title: string;
