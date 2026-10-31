@@ -1,23 +1,12 @@
-import { useEffect, useSyncExternalStore } from "react";
 import { Link, useLocation } from "react-router";
 import { useYjsEditor } from "~/lib/useYjsEditor";
 import { DocumentProvider } from "~/lib/DocumentContext";
 import { useSidePanel } from "~/lib/side-panel";
-import { pageTitles, linkHref, type LinkTarget } from "~/lib/page-titles";
+import { linkHref, type LinkTarget } from "~/lib/page-titles";
+import { useLinkTarget } from "~/lib/useLinkTarget";
 import { journalTitle, parseJournalDate } from "~/lib/note-ids";
 import { UNTITLED } from "~/lib/page-title";
 import ConnectedEditor from "~/components/ConnectedEditor";
-
-/** A link target's current title and address, kept up to date from the title store. */
-function useLinkTarget(pageId: string): LinkTarget | undefined {
-  const store = pageTitles();
-  useEffect(() => store.request([pageId]), [store, pageId]);
-  return useSyncExternalStore(
-    (listener) => store.subscribe(listener),
-    () => store.get(pageId),
-    () => undefined,
-  );
-}
 
 function titleFor(pageId: string, target: LinkTarget | undefined): string {
   const date = parseJournalDate(pageId);

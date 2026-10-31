@@ -78,6 +78,15 @@ A link is a `wikilink` mark on text in the page's Yjs document, with a `pageId` 
 - **Titles:** `app/lib/page-titles.ts` is one title store per browser. It batches IDs into `GET /api/pages/titles` (up to 200), caches the answers, refreshes on returning to the tab, and is primed with pages learned from suggestions or creation. `WorkspaceIndex.pagesByIds` queries 100 IDs at a time (the Durable Object SQLite bound-parameter limit).
 - **Known limit:** full-text search indexes the stored copy, so a link is found by its old title until the search chunk.
 
+**Linked references (2.6, F4).**
+
+- **Data:** `GET /api/pages/backlinks?id=` reads `WorkspaceIndex.backlinks`. That returns each linking line as the index stored it (text and marks), grouped by source page, most recently updated first, never the page itself. The route adds journal titles and slugs and keeps only link marks (`app/lib/backlink-lines.ts`).
+- **Display:** `app/components/Backlinks.tsx` shows the section below every page and journal day (`DocumentLayout`).
+  - `lineSegments` drops the indent and bullet and splits out links with faint brackets.
+  - Links show current titles from the title store.
+- **Refreshing:** it fetches on open and when the tab is shown again, never polling, and keeps its list if a refresh fails.
+- **Opening:** clicks go through `useOpenLink` (side panel on Cmd/Ctrl+click), shared with the editor.
+
 **Side panel (2.5d, F18).**
 
 - **State:** `app/lib/side-panel.tsx` holds it, for every screen through `SidePanelProvider` in `app/root.tsx`, which also wires `t r`.

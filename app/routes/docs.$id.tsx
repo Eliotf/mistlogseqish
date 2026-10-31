@@ -8,6 +8,7 @@ import { DocumentProvider, useDocument } from "~/lib/DocumentContext";
 import PreviewToggle from "~/components/PreviewToggle";
 import ConnectionStatus from "~/components/ConnectionStatus";
 import { useSidePanel } from "~/lib/side-panel";
+import Backlinks from "~/components/Backlinks";
 import ShareButton from "~/components/ShareButton";
 import ModeToggle from "~/components/ModeToggle";
 import CleanViewToggle from "~/components/CleanViewToggle";
@@ -102,6 +103,7 @@ function DocumentLayout({ id, exists, path, focusTitle }: Omit<ScreenProps, "cre
             <PageTitle doc={yjs.doc} pageId={id} autoFocus={focusTitle} onRenamed={onRenamed} />
           )}
           <ConnectedEditor />
+          <Backlinks pageId={id} />
         </main>
         <aside className={`hidden w-96 flex-col overflow-hidden ${panelOpen ? "" : "lg:flex"}`}>
           <div className="flex-1 overflow-y-auto">

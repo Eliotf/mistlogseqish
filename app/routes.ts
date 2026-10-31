@@ -11,4 +11,5 @@ export default [
   route("api/pages", "routes/api.pages.ts"),
   route("api/pages/titles", "routes/api.pages.titles.ts"),
   route("api/pages/search", "routes/api.pages.search.ts"),
+  route("api/pages/backlinks", "routes/api.pages.backlinks.ts"),
 ] satisfies RouteConfig;

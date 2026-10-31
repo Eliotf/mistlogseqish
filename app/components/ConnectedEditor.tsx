@@ -1,7 +1,4 @@
-import { useCallback } from "react";
-import { useNavigate } from "react-router";
-import { useHasSidePanel, useSidePanel } from "~/lib/side-panel";
-import { pageTitles } from "~/lib/page-titles";
+import { useOpenLink } from "~/lib/side-panel";
 import Editor from "~/components/Editor";
 import Preview from "~/components/Preview";
 import { useDocument } from "~/lib/DocumentContext";
@@ -20,17 +17,8 @@ export default function ConnectedEditor() {
     handleResolveAtCursor,
     handleDeleteAtCursor,
   } = useDocument();
-  const navigate = useNavigate();
-  const panel = useSidePanel();
-  const hasPanel = useHasSidePanel();
-  // Cmd/Ctrl+click opens the page in the side panel; a missing page has nothing to show there
-  const openLink = useCallback(
-    (href: string, link: { pageId: string; side: boolean }) => {
-      if (link.side && hasPanel && !pageTitles().get(link.pageId)?.missing) panel.open(link.pageId);
-      else navigate(href);
-    },
-    [navigate, panel, hasPanel],
-  );
+  // Cmd/Ctrl+click opens the page in the side panel, otherwise it is navigated to
+  const openLink = useOpenLink();
 
   return (
     <>

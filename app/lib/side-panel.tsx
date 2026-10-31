@@ -1,4 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useNavigate } from "react-router";
+import { pageTitles } from "./page-titles";
 
 /**
  * The side panel (PRD F18, chunk 2.5d): pages opened beside the main view
@@ -102,6 +104,24 @@ export function SidePanelProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(() => ({ pages, shown, open, close, closeAll, setShown, toggle }), [pages, shown, open, close, closeAll, setShown, toggle]);
   return <SidePanelContext.Provider value={value}>{children}</SidePanelContext.Provider>;
+}
+
+/**
+ * Open a linked page: in the side panel when asked (Cmd/Ctrl+click,
+ * Alt+Shift+Enter) and there is one, otherwise in the main view. A missing
+ * page has nothing to show in the panel, so it is navigated to instead.
+ */
+export function useOpenLink(): (href: string, link: { pageId: string; side: boolean }) => void {
+  const navigate = useNavigate();
+  const panel = useSidePanel();
+  const hasPanel = useHasSidePanel();
+  return useCallback(
+    (href, link) => {
+      if (link.side && hasPanel && !pageTitles().get(link.pageId)?.missing) panel.open(link.pageId);
+      else navigate(href);
+    },
+    [navigate, panel, hasPanel],
+  );
 }
 
 /** True if the key event is typing into a field or editor, where shortcuts must not fire. */
