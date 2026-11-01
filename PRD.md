@@ -25,9 +25,10 @@ It starts from [Mist](https://github.com/inanimate-tech/mist) (Cloudflare Worker
 - Sync across devices that is fast and never loses text.
 - Share a single page by link (view or edit) without exposing anything else.
 - No lock-in: every page can be exported as a Logseq-compatible markdown file.
+- Logseq's interface: the outliner, navigation, commands and block references, built in larger iterations (section 8, M2b; decision 2026-11-01).
 
 **Non-goals (for now)**
-- Block-level references and a true outliner (pages are documents with indented bullets).
+- Whiteboards, PDF annotation, flashcards and plugins (decision 2026-11-01).
 - Native mobile apps (responsive web first).
 - Plugins, themes marketplace, graph database features.
 - Storing pages as markdown files on the server (see Decision log, 2026-10-21).
@@ -53,26 +54,41 @@ It starts from [Mist](https://github.com/inanimate-tech/mist) (Cloudflare Worker
 | F5 | Editable page titles; rename updates every link instantly | 🟢 titles | M2 | One title change in the index; no linking page is rewritten (see 6.1). Journal titles are dates, not editable |
 | F6 | Tasks: `TODO` / `DOING` / `DONE` and a Tasks view | ✅ | M2 | Cmd/Ctrl+Enter cycles. Shown as styled text in the editor (no checkbox). Built after links and backlinks, so the Tasks view can reuse the references design (decision 2026-10-28). Cycling and styling are parked on the local branch `wip/tasks`; ticking from the Tasks view is to be redesigned |
 | F7 | Bullets and indent | 🟢 | M2 | Tab / Shift+Tab indent with a tab character, children move with their parent. Enter continues a bullet at the same level; Backspace on an empty bullet outdents, then removes it. Logseq-compatible text |
-| F8 | Collapsible left and right sidebars (`t l`, `t r`) | ✅ | M2 | Left: Journals, Tasks, Search, recent pages, index status line. Right: pages opened side by side (F18) |
+| F8 | Collapsible left and right sidebars (`t l`, `t r`) | 🟡 right | M2b.2 | Left: Journals, Tasks, Search, recent pages, index status line. Right: pages opened side by side (F18) |
 | F9 | Live markdown formatting, always-editable | 🟢 | — | Mist's TipTap editor (each line a paragraph, markdown styled in place) |
 | F10 | Sync across devices with automatic merge | 🟢 | — | Yjs in a Durable Object per page. Offline editing is F14 |
 | F11 | Sharing: private / link view / link edit | ✅ UI | M4 | Today any document URL is readable and editable by anyone |
 | F12 | Accounts and login | 🟡 | M4 | Until then, Cloudflare Access gates the whole site (done in M0, sign-in with a Cloudflare account) |
-| F13 | Search across pages | 🟡 | M2 | Title and full text, from the workspace index. To fix in the search chunk: link text is indexed as the stored copy, so a link is still found by its old title after a rename |
+| F13 | Search across pages | 🟡 | M2b.2 | Title and full text, from the workspace index. To fix in the search chunk: link text is indexed as the stored copy, so a link is still found by its old title after a rename |
 | F14 | Offline editing | ⬜ | M3 | Yjs IndexedDB persistence (new dependency, needs approval) |
 | F15 | Export to Logseq markdown | 🟡 | M3 | `pages/<slug>.md` and `journals/YYYY_MM_DD.md`, links written as `[[Current Title]]` |
 | F16 | Comments and suggest mode (CriticMarkup) | 🟢 | — | Inherited from Mist and kept, along with live collaboration (F30). How they fit the workspace index, export and sharing is to be designed later (see open questions) |
-| F17 | Responsive layout for phones | 🟡 | M2 | Left panel opens from a hamburger button. While typing, a keyboard toolbar offers indent, outdent, task, link and date. Dragging a bullet sideways could be added later as a shortcut |
+| F17 | Responsive layout for phones | 🟡 | M2b.2 | Left panel opens from a hamburger button. While typing, a keyboard toolbar offers indent, outdent, task, link and date. Dragging a bullet sideways could be added later as a shortcut |
 | F18 | Cmd/Ctrl+click a link opens the page in the right panel | 🟢 | M2 | Like Roam's side-by-side pages (done 2026-10-29, chunk 2.5d). Cmd/Ctrl+click or Alt+Shift+Enter opens a page there; pages stack newest first (at most 10), each a live editor with a close button; `t r` shows or hides the panel; remembered per browser. On a page it takes the comments column's place (its Comments button hides it). A full-screen sheet on phones |
-| F20 | Fuzzy dates | ⬜ | M5 | See 6.2 |
-| F21 | All pages list | ⬜ | M5 | See 6.3 |
+| F20 | Fuzzy dates | ⬜ | M2b.3 | See 6.2 |
+| F21 | All pages list | ⬜ | M2b.2 | See 6.3. With delete |
 | F22 | Pomodoro timer (`{{POMO}}`) | ⬜ | M5 | See 6.4 |
 | F30 | Live multiplayer on shared pages | 🟢 | — | Already how Mist works; needs permissions (M4) before it is safe to use with others |
-| F31 | Graph view, templates, Logseq import, attachments (R2) | ⬜ | M6 | Unprioritised ideas |
+| F31 | Graph view, Logseq import, attachments (R2) | ⬜ | M2b.5 | Graph view global and per page; import uses the paste rules; attachments need an R2 binding (ask first) |
 | F32 | Merge pages | ⬜ | M6 | Offered when renaming a page to a title that already exists, as Logseq does. Links to both pages point to the merged page |
 | F34 | Suggesting indentation changes in suggest mode | ⬜ | Later | Design the UI first: how an indent or outdent is shown as a suggestion, and accepted or rejected. Until then, bullet keys do nothing special in suggest mode (2.3) |
-| F35 | Unlinked references | ⬜ | Later | Pages that mention a page's title without linking it, with a way to link them, as Logseq shows below linked references |
-| F36 | Richer references | ⬜ | Later | Editable references (a live editor per reference) and context (parent bullets and nested lines); 2.6 shows the linking line only, read-only |
+| F35 | Unlinked references | ⬜ | M2b.4 | Pages that mention a page's title without linking it, with a way to link them, as Logseq shows below linked references |
+| F36 | Richer references | ⬜ | M2b.4 | Editable references (a live editor per reference) and context (parent bullets and nested lines); 2.6 shows the linking line only, read-only |
+| F37 | Fold and unfold a block's children | ⬜ | M2b.1 | Arrow by the bullet, or Cmd/Ctrl+↑/↓. Folded state is a block property (Logseq's `collapsed:: true`) |
+| F38 | Move blocks | ⬜ | M2b.1 | Alt+Shift+↑/↓ moves a block with its children; drag a bullet to move it |
+| F39 | Select whole blocks | ⬜ | M2b.1 | Esc then Shift+↑/↓; then indent, outdent, delete, copy, cut or cycle tasks on all of them |
+| F40 | Zoom into a block | ⬜ | M2b.1 | Click a bullet to show just that block and its children, with a breadcrumb back. Needs block IDs (F41) |
+| F41 | Permanent block IDs | ⬜ | M2b.1 | A block gets an ID only when something needs one (zoom, references, embeds), stored with the line as Logseq's hidden `id::` property does. Document format version 5; older tabs refused once |
+| F42 | More task states and priorities | ⬜ | M2b.1 | `LATER` and `NOW` alongside `TODO`/`DOING`/`DONE`; priorities `[#A]`–`[#C]`. Part of the F6 rework |
+| F43 | Keyboard shortcut sheet and go-to shortcuts | ⬜ | M2b.2 | `?` shows every shortcut; `g j` journals, `g a` all pages |
+| F44 | Slash command menu | ⬜ | M2b.3 | `/` offers task, date, heading, link, embed, template |
+| F45 | Tags as pages | ⬜ | M2b.3 | `#tag` and `#[[multi word]]` link to pages (by ID, as `[[...]]` does) and show in references |
+| F46 | Properties | ⬜ | M2b.3 | `key:: value` on blocks and pages, styled; page properties include `alias::` and `tags::` |
+| F47 | Headings and namespaces | ⬜ | M2b.3 | Markdown headings in blocks; `parent/child` titles grouped in All pages |
+| F48 | Block references and embeds | ⬜ | M2b.4 | `((` searches blocks and inserts a reference showing the block's live text; `{{embed [[page]]}}` and `{{embed ((block))}}` |
+| F49 | Scheduled, deadlines and agenda | ⬜ | M2b.4 | `SCHEDULED: <date>` and `DEADLINE: <date>`; today's journal lists what is due |
+| F50 | Simple queries | ⬜ | M2b.4 | `{{query ...}}` answered by the index (tasks, tags, links) |
+| F51 | Templates | ⬜ | M2b.5 | A block marked `template:: name`, inserted with `/template` |
 | F33 | Live title updates across open tabs and devices | ⬜ | M6 | Until then, other tabs pick up a new title on next load or focus. Needs a live connection to the index |
 
 ## 6. Feature specs
@@ -168,9 +184,15 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced with the Ag
   - [ ] **Verify the deploy gate.** (1) Open the Workers Builds log for a recent build and confirm `typecheck`, `lint` and `test` run before `build`. (2) Push a throwaway branch `chore/test-deploy-gate` with a test that always fails (`expect(1).toBe(2)`); confirm its preview build fails at `test`, nothing is uploaded, and the live site is unchanged; then delete the branch. Needs builds for non-production branches turned on; do not test on `main`, because a broken gate would put the failing code live.
 - [ ] **M1 Persistence and index:** ~~remove the 99-hour expiry (including for existing documents)~~ (done 2026-10-22); ~~shared parser, including the `wikilink` mark definition~~ (done 2026-10-22); ~~`WorkspaceAgent` index with page registry and parser-versioned rebuild~~ (done 2026-10-23; the rebuild itself runs in the weekly check chunk); ~~documents report to the index and retry until confirmed~~ (done 2026-10-23); weekly index check (can land after M2). ~~Remove Mist's Fathom analytics~~ (kept, 2026-10-24).
 - [ ] **M2 Notes core:** page identity in three parts: ~~2.1a titles (includes rename, formerly 2.7)~~ (done 2026-10-24), ~~2.1b readable URLs~~ (done 2026-10-25), ~~2.1d instant renames~~ (done 2026-10-26), ~~2.1c journal pages~~ (done 2026-10-26); ~~2.2 journal feed~~ (done 2026-10-27; owner checked scrolling and typing: "fine for now", revisit if it slows as days build up); ~~2.3 bullets and indenting~~ (done 2026-10-27); then 2.5 wikilinks (~~2.5a showing links~~ and ~~2.5b typing and editing links~~ done 2026-10-28; ~~2.5c pasting~~ and ~~2.5d side panel~~ done 2026-10-29) and ~~2.6 backlinks~~ (done 2026-10-31), then 2.4 tasks (reordered 2026-10-28); journal feed (replaces Mist's landing page and `/new`); bullets and indent; tasks; ID-based wikilinks with autocomplete and placeholder pages; backlinks below the page; rename; sidebars with Cmd/Ctrl+click to open in the right panel; search; responsive layout. Build order and UI details are agreed through a clickable prototype first.
+- [ ] **M2b Logseq's interface** (planned 2026-11-01). Five larger iterations. Within an iteration each chunk is committed locally with its tests and review notes; the iteration is pushed once, after a browser walk-through. Each iteration starts with a prototype update to agree the interactions.
+  - [ ] **M2b.1 Outliner:** permanent block IDs (F41, format version 5), folding (F37), moving blocks (F38), selecting blocks (F39), zooming (F40), tasks reworked on top of linked references with `LATER`/`NOW` and priorities (F6, F42).
+  - [ ] **M2b.2 Getting around:** left sidebar with Journals, All pages, Tasks, Favourites, Recent (F8), search with Cmd/Ctrl+K (F13), All pages with delete (F21), shortcut sheet and go-to shortcuts (F43), phone keyboard toolbar (F17).
+  - [ ] **M2b.3 Commands and structure:** slash menu (F44), tags as pages (F45), fuzzy dates and date picker (F20), properties with aliases (F46), headings and namespaces (F47).
+  - [ ] **M2b.4 Blocks as things you link:** block references and embeds (F48), editable references with context (F36), unlinked references (F35), scheduled and deadlines with an agenda (F49), simple queries (F50).
+  - [ ] **M2b.5 The rest:** graph view, import and attachments (F31), templates (F51), export (F15, moved forward from M3 if wanted).
 - [ ] **M3 Portability and offline:** export to Logseq markdown, offline editing.
 - [ ] **M4 Sharing:** accounts, visibility model, share dialog, permission-aware backlinks and search.
-- [ ] **M5 Quality-of-life:** all pages list, fuzzy dates, pomodoro.
+- [ ] **M5 Quality-of-life:** pomodoro (all pages and fuzzy dates moved to M2b).
 - [ ] **M6 Later:** graph view, import from Logseq, attachments.
 
 ## 9. Open questions
@@ -275,6 +297,9 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced with the Ag
 | 2026-10-28 | Side panel (F18) is step 2.5d of links | Owner asked for it alongside links |
 | 2026-10-29 | On a page, the side panel takes the comments column while it shows pages; its Comments button hides it | Keeps the page readable at laptop widths (owner's choice over a third column or tabs) |
 | 2026-10-29 | The side panel holds at most 10 pages and is remembered per browser; Alt+Shift+Enter opens a link there | Each page is a live connection; keyboard path for Cmd/Ctrl+click |
+| 2026-11-01 | Build Logseq's interface in five larger iterations (outliner; getting around; commands and structure; blocks as things you link; the rest), pushing once per iteration, outliner first | Owner wants all of Logseq's interactive features; larger iterations mean fewer, bigger deploys |
+| 2026-11-01 | Blocks get permanent IDs only when something needs one, stored with the line (Logseq's `id::`), document format version 5 | Zoom, block references, embeds and editable references need a block to keep its identity when lines move |
+| 2026-11-01 | Whiteboards, PDF annotation, flashcards and plugins are out of scope | Each is a product in itself |
 | 2026-10-31 | Linked references are read-only snapshots of the linking line, below the page and journal day only (not the feed or side panel); unlinked and editable references later (F35, F36) | Editable references need a live connection per linking page; the index already stores each linking line |
 | 2026-10-29 | Pasting `[[New title]]` creates the page, as typing does | Same rule as typing and as Logseq; a large paste can create many pages |
 | 2026-10-28 | Build links (2.5) and backlinks (2.6) before tasks (2.4); park the tasks work | Ticking tasks from a separate Tasks view meant the server editing pages by matching lines, which failed in a browser run and felt over-complicated. With backlinks in place, the Tasks view can reuse the references design |
@@ -310,3 +335,4 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced with the Ag
 - 2026-10-29: Pasting links done (M2 chunk 2.5c): pasted or dropped `[[Title]]` text links at once; links copied from Mistlog keep their page. Line coverage reached the 80% target; floors raised.
 - 2026-10-29: Side panel done (M2 chunk 2.5d, F18): Cmd/Ctrl+click or Alt+Shift+Enter opens a page beside the current one; `t r` toggles it. Links (2.5) complete; next is 2.6 backlinks.
 - 2026-10-31: Backlinks done (M2 chunk 2.6, F4): Linked references below each page and journal day (`GET /api/pages/backlinks`). Added F35 unlinked references and F36 richer references for later. Next: 2.4 tasks. Coverage floors raised.
+- 2026-11-01: Planned Logseq's interface as milestone M2b in five iterations; added F37–F51; moved F13, F17, F20, F21, F31, F35, F36 into M2b; out of scope: whiteboards, PDFs, flashcards, plugins. Fixed the backlinks deploy (serialisable references).
