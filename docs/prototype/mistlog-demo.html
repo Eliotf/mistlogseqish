@@ -211,6 +211,8 @@ svg.i { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-widt
 .crumbs .sep { color: var(--muted); }
 .task-line { display: block; text-align: left; width: 100%; padding: 2px 0 2px 14px; border-left: 2px solid var(--border); font-size: 14px; }
 .task-line:hover { border-left-color: var(--chartreuse); }
+.task-line .task-page { margin-left: 10px; font-size: 12px; color: var(--soft); }
+.task-state { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--soft); margin: 0; }
 .link {
   color: var(--ink); cursor: pointer; text-decoration: underline; text-decoration-color: var(--chartreuse);
   text-decoration-thickness: 2px; text-underline-offset: 3px; border-radius: 0;
@@ -789,7 +791,7 @@ details.done-list summary { cursor: pointer; color: var(--soft); }
     var n = 0;
     Object.values(state.pages).forEach(function (p) {
       if (p.deleted) return;
-      p.lines.forEach(function (l) { var s = taskState(l.text); if (s === "TODO" || s === "DOING") n++; });
+      p.lines.forEach(function (l) { var s = taskState(l.text); if (s === "TODO" || s === "DOING" || s === "NOW") n++; });
     });
     return n;
   }
@@ -996,37 +998,35 @@ details.done-list summary { cursor: pointer; color: var(--soft); }
         (s === "DONE" ? done : open).push({ p: p, i: i, s: s });
       });
     });
-    function groupBy(list) {
-      var g = {};
-      list.forEach(function (t) { (g[t.p.id] = g[t.p.id] || []).push(t); });
-      return Object.keys(g).map(function (k) { return g[k]; }).sort(function (a, b) {
-        var pa = a[0].p, pb = b[0].p;
-        if (pa.kind !== pb.kind) return pa.kind === "journal" ? -1 : 1;
-        return pa.kind === "journal" ? (pa.date < pb.date ? 1 : -1) : (titleOf(pa) < titleOf(pb) ? -1 : 1);
-      });
+    // Newest journal first, then pages by title
+    function byPage(a, b) {
+      var pa = a.p, pb = b.p;
+      if (pa === pb) return a.i - b.i;
+      if (pa.kind !== pb.kind) return pa.kind === "journal" ? -1 : 1;
+      return pa.kind === "journal" ? (pa.date < pb.date ? 1 : -1) : (titleOf(pa) < titleOf(pb) ? -1 : 1);
     }
-    // Read-only, like linked references: click a task to open its page zoomed into it, then tick it there
+    // Read-only, like linked references: click a task to open its page zoomed into it, then change it there
     function row(t, isDone) {
       var txt = h("span", { class: "txt" });
       renderContent(txt, t.p.lines[t.i].text, false);
-      return h("button", { type: "button", class: "task-line" + (isDone ? " done" : ""), "data-open-block": blockId(t.p.lines[t.i]), "data-page": t.p.id, title: "Open " + titleOf(t.p) + " at this task" }, txt);
+      return h("button", { type: "button", class: "task-line" + (isDone ? " done" : ""), "data-open-block": blockId(t.p.lines[t.i]), "data-page": t.p.id, title: "Open " + titleOf(t.p) + " at this task" },
+        txt, h("span", { class: "task-page" }, titleOf(t.p)));
     }
-    var NOW_FIRST = { NOW: 0, DOING: 1, TODO: 2, LATER: 3 };
-    open.sort(function (a, b) { return NOW_FIRST[a.s] - NOW_FIRST[b.s]; });
+    // One list across all pages: NOW, DOING, TODO, LATER, then done (decision 2026-11-01)
     wrap.append(h("p", { class: "empty-note" }, "Open a task to change it on its page. " + MOD + "+Enter cycles it."));
     if (!open.length) wrap.append(h("div", { class: "empty-note" }, "No open tasks. Press " + MOD + "+Enter on any line to make one."));
-    groupBy(open).forEach(function (g) {
-      var sec = h("div", { class: "task-group" }, h("button", { type: "button", "data-open": g[0].p.id }, titleOf(g[0].p)));
-      g.forEach(function (t) { sec.append(row(t, false)); });
+    ["NOW", "DOING", "TODO", "LATER"].forEach(function (st) {
+      var list = open.filter(function (t) { return t.s === st; }).sort(byPage);
+      if (!list.length) return;
+      var sec = h("div", { class: "task-group" }, h("h2", { class: "task-state" }, st + " · " + list.length));
+      list.forEach(function (t) { sec.append(row(t, false)); });
       wrap.append(sec);
     });
     if (done.length) {
       var det = h("details", { class: "done-list" }, h("summary", null, "Done · " + done.length));
-      groupBy(done).forEach(function (g) {
-        var sec = h("div", { class: "task-group" }, h("button", { type: "button", "data-open": g[0].p.id }, titleOf(g[0].p)));
-        g.forEach(function (t) { sec.append(row(t, true)); });
-        det.append(sec);
-      });
+      var sec = h("div", { class: "task-group" });
+      done.sort(byPage).forEach(function (t) { sec.append(row(t, true)); });
+      det.append(sec);
       wrap.append(det);
     }
     return wrap;
@@ -1914,7 +1914,7 @@ details.done-list summary { cursor: pointer; color: var(--soft); }
     { id: "unique", f: "F2", t: "Rename a page to “Reading list” to see the unique-title rule." },
     { id: "side", f: "F18", t: MOD + "+click any link to open it in the side panel." },
     { id: "search", f: "F13", t: MOD + "+K to search titles and text, then create a page from the last row." },
-    { id: "tasks-view", f: "F6", t: "Open Tasks: read-only, like linked references, grouped by page with NOW and DOING first in each. Click a task to open its page zoomed into it." },
+    { id: "tasks-view", f: "F6", t: "Open Tasks: read-only, like linked references, one list across all pages: NOW, DOING, TODO, LATER, each task labelled with its page. Click a task to open its page zoomed into it." },
     { id: "delete", f: "6.1", t: "Delete “Weekly review” from its ⋯ menu. Links go dashed; click one to restore." },
     { id: "panels", f: "F8", t: "Press t l and t r (outside the editor) to hide and show the panels." },
     { id: "rebuild", f: "Index", t: "Run an index rebuild (below) and look at the sidebar, backlinks, Tasks and search." },
