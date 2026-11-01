@@ -195,6 +195,22 @@ svg.i { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-widt
 .kw-TODO { color: var(--coral); }
 .kw-DOING { color: var(--on-accent); background: var(--canary); padding: 0 3px; }
 .kw-DONE { color: var(--muted); }
+.kw-LATER { color: var(--coral); opacity: 0.75; }
+.kw-NOW { color: var(--on-accent); background: var(--canary); padding: 0 3px; }
+.prio { font-family: var(--font-mono); font-size: 0.75em; font-weight: 600; padding: 0 3px; border: 1px solid var(--border); color: var(--soft); }
+.prio-A { color: var(--coral); border-color: var(--coral); }
+/* Outliner (M2b.1): fold arrow, folded bullet, zoom breadcrumb, selected blocks */
+.fold { position: absolute; top: 3px; left: calc(var(--ind) * 24px - 16px); width: 16px; height: 20px; color: var(--muted); font-size: 10px; opacity: 0; transition: opacity .1s; }
+.block:hover .fold, .fold:focus-visible, .fold[aria-expanded="false"] { opacity: 1; }
+.bullet { cursor: pointer; }
+.bullet.folded::after { box-shadow: 0 0 0 4px var(--guide); background: var(--soft); }
+.block.selected { background: var(--select); }
+.block.drop-above { box-shadow: 0 -2px 0 var(--chartreuse); }
+.crumbs { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; font-size: 13px; color: var(--soft); margin: -6px 0 10px; }
+.crumbs button:hover { color: var(--ink); text-decoration: underline; }
+.crumbs .sep { color: var(--muted); }
+.task-line { display: block; text-align: left; width: 100%; padding: 2px 0 2px 14px; border-left: 2px solid var(--border); font-size: 14px; }
+.task-line:hover { border-left-color: var(--chartreuse); }
 .link {
   color: var(--ink); cursor: pointer; text-decoration: underline; text-decoration-color: var(--chartreuse);
   text-decoration-thickness: 2px; text-underline-offset: 3px; border-radius: 0;
@@ -519,7 +535,12 @@ details.done-list summary { cursor: pointer; color: var(--soft); }
       "Milestones",
       "\tM1 Persistence and index",
       "\tM2 Notes core",
-      "\t\tTODO Agree the interactions in this prototype",
+      "\t\tTODO [#A] Agree the interactions in this prototype",
+      "\t\tLATER Try folding, moving and zooming (M2b.1)",
+      "\tM2b Logseq's interface",
+      "\t\tOutliner",
+      "\t\t\tFold, move, select, zoom",
+      "\t\tGetting around",
       "Related: " + k("p-access") + " and " + k("p-migration")
     ]);
     P("p-access", "Cloudflare Access", [
@@ -551,6 +572,25 @@ details.done-list summary { cursor: pointer; color: var(--soft); }
       pages: pages, view: { type: "feed" }, recent: ["p-mistlog", "p-access", "p-reading", "p-weekly"],
       right: [], leftOpen: true, rightOpen: true
     };
+  }
+
+  // ---- Outliner helpers (M2b.1). Every line has a permanent id (F41).
+  var nextBlock = 1;
+  function blockId(l) { if (!l.id) l.id = "b" + nextBlock++; return l.id; }
+  function subtreeEnd(L, i) { var j = i + 1; while (j < L.length && L[j].ind > L[i].ind) j++; return j; }
+  function hasKids(L, i) { return i + 1 < L.length && L[i + 1].ind > L[i].ind; }
+  function indexOfBlock(p, id) { for (var k = 0; k < p.lines.length; k++) if (p.lines[k].id === id) return k; return -1; }
+  /** Lines shown: everything, or one block's subtree when zoomed; children of folded blocks hidden. */
+  function visibleLines(p, zoomId) {
+    var L = p.lines, from = 0, to = L.length;
+    if (zoomId && indexOfBlock(p, zoomId) >= 0) { from = indexOfBlock(p, zoomId); to = subtreeEnd(L, from); }
+    var out = [], hideAbove = Infinity;
+    for (var k = from; k < to; k++) {
+      if (L[k].ind > hideAbove) continue;
+      hideAbove = L[k].collapsed && hasKids(L, k) ? L[k].ind : Infinity;
+      out.push(k);
+    }
+    return out;
   }
 
   function ensureJournal(date) {
@@ -706,19 +746,20 @@ details.done-list summary { cursor: pointer; color: var(--soft); }
       }
       var t = tk.t;
       if (i === 0) {
-        var km = t.match(/^(TODO|DOING|DONE)(?= |$)/);
+        var km = t.match(/^(TODO|DOING|DONE|LATER|NOW)(?= |$)/);
         if (km) { el.append(h("span", { class: "kw kw-" + km[1] }, km[1])); t = t.slice(km[1].length); }
       }
-      var rawRe = /\[\[[^\]]*\]\]/g, pos = 0, rm;
+      var rawRe = /\[\[[^\]]*\]\]|\[#[ABC]\]/g, pos = 0, rm;
       while ((rm = rawRe.exec(t))) {
         if (rm.index > pos) el.append(document.createTextNode(t.slice(pos, rm.index)));
-        el.append(h("span", { class: "raw" }, rm[0]));
+        if (rm[0][1] === "#") el.append(h("span", { class: "prio prio-" + rm[0][2] }, rm[0]));
+        else el.append(h("span", { class: "raw" }, rm[0]));
         pos = rm.index + rm[0].length;
       }
       if (pos < t.length) el.append(document.createTextNode(t.slice(pos)));
     });
   }
-  function taskState(text) { var m = text.match(/^(TODO|DOING|DONE)(?= |$)/); return m ? m[1] : null; }
+  function taskState(text) { var m = text.match(/^(TODO|DOING|DONE|LATER|NOW)(?= |$)/); return m ? m[1] : null; }
   function setBlockState(block, text) {
     var s = taskState(text);
     block.classList.toggle("is-done", s === "DONE");
@@ -800,7 +841,7 @@ details.done-list summary { cursor: pointer; color: var(--soft); }
     mainEl.textContent = "";
     var v = state.view, addr = "/", label = "Journals";
     if (v.type === "tasks") { addr = "/tasks"; label = "Tasks"; }
-    if (v.type === "page") { var p = state.pages[v.id]; if (!p || p.deleted) { state.view = { type: "feed" }; return renderMain(); } addr = pathOf(p); label = titleOf(p); }
+    if (v.type === "page") { var p = state.pages[v.id]; if (!p || p.deleted) { state.view = { type: "feed" }; return renderMain(); } addr = pathOf(p) + (v.zoom ? "?block=" + v.zoom : ""); label = titleOf(p); }
     var top = h("div", { class: "topbar" },
       h("button", { class: "iconbtn first phone-only", type: "button", "data-act": "open-drawer", "aria-label": "Open navigation" }, icon("menu")),
       state.leftOpen ? null : h("button", { class: "iconbtn first desk-only", type: "button", "data-act": "open-left", "aria-label": "Show navigation (t l)", title: "Show navigation (t l)" }, icon("sidebar")),
@@ -865,7 +906,16 @@ details.done-list summary { cursor: pointer; color: var(--soft); }
     }
     if (meta.childNodes.length) a.append(meta);
 
-    var blocks = h("div", { class: "blocks", "data-page": p.id });
+    var zoomId = o.col === "main" && state.view.zoom && state.view.id === p.id ? state.view.zoom : null;
+    if (zoomId && indexOfBlock(p, zoomId) >= 0) {
+      var zi = indexOfBlock(p, zoomId), chain = [], want = p.lines[zi].ind;
+      for (var k = zi - 1; k >= 0 && want > 0; k--) if (p.lines[k].ind < want) { chain.unshift(k); want = p.lines[k].ind; }
+      var crumbs = h("nav", { class: "crumbs", "aria-label": "Zoomed into a block" }, h("button", { type: "button", "data-zoom-to": "", "data-page": p.id, title: "Zoom out to the whole page" }, titleOf(p)));
+      chain.forEach(function (k) { crumbs.append(h("span", { class: "sep" }, "›"), h("button", { type: "button", "data-zoom-to": blockId(p.lines[k]), "data-page": p.id }, plainLine(p.lines[k].text).slice(0, 40) || "…")); });
+      crumbs.append(h("span", { class: "sep" }, "›"), h("span", null, plainLine(p.lines[zi].text).slice(0, 40) || "…"));
+      a.append(crumbs);
+    }
+    var blocks = h("div", { class: "blocks", "data-page": p.id, "data-zoom": zoomId || null });
     renderBlocks(blocks, p);
     a.append(blocks);
     if (!o.feed) a.append(backlinksSection(p));
@@ -876,9 +926,16 @@ details.done-list summary { cursor: pointer; color: var(--soft); }
     container.textContent = "";
     if (!p.lines.length) p.lines.push({ ind: 0, text: "" });
     var single = p.lines.length === 1 && !p.lines[0].text;
-    p.lines.forEach(function (l, i) {
-      var block = h("div", { class: "block", "data-i": i, style: "--ind:" + l.ind });
-      var bullet = h("span", { class: "bullet", "data-bullet": "1", "aria-hidden": "true" });
+    var zoomId = container.getAttribute("data-zoom") || null;
+    var base = zoomId && indexOfBlock(p, zoomId) >= 0 ? p.lines[indexOfBlock(p, zoomId)].ind : 0;
+    visibleLines(p, zoomId).forEach(function (i) {
+      var l = p.lines[i];
+      blockId(l);
+      var kids = hasKids(p.lines, i), folded = kids && !!l.collapsed;
+      var sel = ui.sel && ui.sel.page === p.id && i >= ui.sel.from && i < ui.sel.to;
+      var block = h("div", { class: "block" + (sel ? " selected" : ""), "data-i": i, style: "--ind:" + (l.ind - base) });
+      var bullet = h("span", { class: "bullet" + (folded ? " folded" : ""), "data-bullet": "1", "data-page": p.id, "data-i": i, draggable: "true", title: "Click to zoom in, drag to move" });
+      if (kids) block.append(h("button", { class: "fold", type: "button", "data-fold": i, "data-page": p.id, "aria-expanded": String(!folded), "aria-label": folded ? "Expand" : "Collapse", title: (folded ? "Expand (" + MOD + "+↓)" : "Collapse (" + MOD + "+↑)") }, folded ? "▶" : "▼"));
       var c = h("div", {
         class: "content", contenteditable: "true", role: "textbox", "aria-multiline": "false", spellcheck: "true",
         "aria-label": "Line " + (i + 1) + " of " + titleOf(p), "data-page": p.id, "data-i": i,
@@ -948,14 +1005,15 @@ details.done-list summary { cursor: pointer; color: var(--soft); }
         return pa.kind === "journal" ? (pa.date < pb.date ? 1 : -1) : (titleOf(pa) < titleOf(pb) ? -1 : 1);
       });
     }
+    // Read-only, like linked references: click a task to open its page zoomed into it, then tick it there
     function row(t, isDone) {
-      var id = "task-" + t.p.id + "-" + t.i;
       var txt = h("span", { class: "txt" });
       renderContent(txt, t.p.lines[t.i].text, false);
-      return h("div", { class: "task-row" + (isDone ? " done" : "") },
-        h("input", { type: "checkbox", id: id, checked: isDone, "data-task": t.p.id, "data-i": t.i, "aria-label": (isDone ? "Reopen: " : "Mark done: ") + plainLine(t.p.lines[t.i].text).replace(/^(TODO|DOING|DONE) /, "") }),
-        h("label", { for: id }, txt));
+      return h("button", { type: "button", class: "task-line" + (isDone ? " done" : ""), "data-open-block": blockId(t.p.lines[t.i]), "data-page": t.p.id, title: "Open " + titleOf(t.p) + " at this task" }, txt);
     }
+    var NOW_FIRST = { NOW: 0, DOING: 1, TODO: 2, LATER: 3 };
+    open.sort(function (a, b) { return NOW_FIRST[a.s] - NOW_FIRST[b.s]; });
+    wrap.append(h("p", { class: "empty-note" }, "Open a task to change it on its page. " + MOD + "+Enter cycles it."));
     if (!open.length) wrap.append(h("div", { class: "empty-note" }, "No open tasks. Press " + MOD + "+Enter on any line to make one."));
     groupBy(open).forEach(function (g) {
       var sec = h("div", { class: "task-group" }, h("button", { type: "button", "data-open": g[0].p.id }, titleOf(g[0].p)));
@@ -1255,15 +1313,99 @@ details.done-list summary { cursor: pointer; color: var(--soft); }
     for (var k = i; k < j; k++) L[k].ind = Math.max(0, L[k].ind + dir);
     return true;
   }
+  // TODO -> DOING -> DONE -> plain; a LATER task goes LATER -> NOW -> DONE (Logseq's two workflows)
+  var NEXT_TASK = { TODO: "DOING", DOING: "DONE", LATER: "NOW", NOW: "DONE" };
   function cycleTask(page, i) {
-    var t = page.lines[i].text, s = taskState(t), nt, d;
-    if (!s) { nt = "TODO " + t; d = 5; }
-    else if (s === "TODO") { nt = "DOING" + t.slice(4); d = 1; }
-    else if (s === "DOING") { nt = "DONE" + t.slice(5); d = -1; }
-    else { nt = t.slice(4).replace(/^ /, ""); d = -5; }
+    var t = page.lines[i].text, s = taskState(t), nt;
+    if (!s) nt = "TODO " + t;
+    else if (s === "DONE") nt = t.slice(4).replace(/^ /, "");
+    else nt = NEXT_TASK[s] + t.slice(s.length);
     page.lines[i].text = nt;
-    return d;
+    return nt.length - t.length;
   }
+  // ---- Outliner actions (M2b.1) ----
+  function setFolded(cx, fold) {
+    var L = cx.page.lines;
+    if (!hasKids(L, cx.i)) { toast(fold ? "Nothing to fold: this block has no children" : "Nothing to expand"); return; }
+    L[cx.i].collapsed = fold;
+    var c = getCaret(cx.el);
+    rerenderPage(cx.page.id); markEdited(cx.page.id); tick("fold");
+    focusLine(cx.col, cx.page.id, cx.i, c);
+  }
+  /** Move a block and its children above the previous sibling (dir -1) or below the next (dir 1). */
+  function moveSubtree(page, i, dir) {
+    var L = page.lines, end = subtreeEnd(L, i), ind = L[i].ind, j;
+    if (dir < 0) {
+      for (j = i - 1; j >= 0 && L[j].ind > ind; j--);
+      if (j < 0 || L[j].ind < ind) return -1;
+      var chunk = L.splice(i, end - i);
+      L.splice.apply(L, [j, 0].concat(chunk));
+      return j;
+    }
+    if (end >= L.length || L[end].ind !== ind) return -1;
+    var nextEnd = subtreeEnd(L, end), moving = L.splice(i, end - i);
+    var at = nextEnd - moving.length;
+    L.splice.apply(L, [at, 0].concat(moving));
+    return at;
+  }
+  function moveBlock(cx, dir) {
+    var c = getCaret(cx.el), to = moveSubtree(cx.page, cx.i, dir);
+    if (to < 0) { toast(dir < 0 ? "Already the first block at this level" : "Already the last block at this level"); return; }
+    rerenderPage(cx.page.id); markEdited(cx.page.id); tick("move");
+    focusLine(cx.col, cx.page.id, to, c);
+  }
+  /** Block selection (Esc): whole blocks with their children. */
+  function selectBlocks(pageId, i, col) {
+    var p = state.pages[pageId];
+    ui.sel = { page: pageId, col: col, anchor: i, from: i, to: subtreeEnd(p.lines, i) };
+    if (document.activeElement) document.activeElement.blur();
+    rerenderPage(pageId); tick("select");
+  }
+  function extendSelection(dir) {
+    var s = ui.sel, p = state.pages[s.page], vis = visibleLines(p, null);
+    if (dir < 0) { var k = vis.indexOf(s.from); if (k > 0) s.from = vis[k - 1]; }
+    else { if (s.to < p.lines.length) s.to = subtreeEnd(p.lines, s.to); }
+    rerenderPage(s.page);
+  }
+  function clearSelection() { if (!ui.sel) return; var pg = ui.sel.page; ui.sel = null; rerenderPage(pg); }
+  function onSelectionKey(e) {
+    var s = ui.sel, p = state.pages[s.page], L = p.lines, mod = IS_MAC ? e.metaKey : e.ctrlKey;
+    if (e.key === "Escape") { e.preventDefault(); clearSelection(); return true; }
+    if (e.shiftKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) { e.preventDefault(); extendSelection(e.key === "ArrowUp" ? -1 : 1); return true; }
+    if (e.key === "Enter" && !mod) { e.preventDefault(); var f = s.from; clearSelection(); focusLine(s.col, s.page, f, 0); return true; }
+    if (e.key === "Tab") {
+      e.preventDefault();
+      var dir = e.shiftKey ? -1 : 1;
+      if (dir > 0 && (s.from === 0 || L[s.from - 1].ind < L[s.from].ind)) { toast("The first selected block has nothing to nest under"); return true; }
+      for (var k = s.from; k < s.to; k++) L[k].ind = Math.max(0, L[k].ind + dir);
+      rerenderPage(s.page); markEdited(s.page); return true;
+    }
+    if (e.key === "Backspace" || e.key === "Delete") {
+      e.preventDefault();
+      var n = s.to - s.from; L.splice(s.from, n); ui.sel = null;
+      rerenderPage(s.page); markEdited(s.page); toast("Deleted " + n + " block" + (n === 1 ? "" : "s")); return true;
+    }
+    if (mod && e.key === "Enter") {
+      e.preventDefault();
+      for (var t = s.from; t < s.to; t++) if (L[t].ind === L[s.from].ind) cycleTask(p, t);
+      rerenderPage(s.page); markEdited(s.page); return true;
+    }
+    if (mod && (e.key === "c" || e.key === "x")) {
+      e.preventDefault();
+      var cnt = s.to - s.from;
+      if (e.key === "x") { L.splice(s.from, cnt); ui.sel = null; rerenderPage(s.page); markEdited(s.page); }
+      toast((e.key === "x" ? "Cut " : "Copied ") + cnt + " block" + (cnt === 1 ? "" : "s") + (e.key === "x" ? "" : " with their children"));
+      return true;
+    }
+    return false;
+  }
+  function zoomTo(pageId, id) {
+    state.view = { type: "page", id: pageId, zoom: id || null };
+    ui.sel = null;
+    renderMain(); tick("zoom");
+    window.scrollTo(0, 0);
+  }
+
   function doIndent(cx, dir) {
     var c = getCaret(cx.el);
     if (indentLine(cx.page, cx.i, dir)) { rerenderPage(cx.page.id); markEdited(cx.page.id); tick("indent"); }
@@ -1320,6 +1462,10 @@ details.done-list summary { cursor: pointer; color: var(--soft); }
     if (e.key !== "Backspace" && pendingDel) clearPendingDel();
 
     if (mod && e.key === "Enter") { e.preventDefault(); doTask(cx); return; }
+    // Outliner keys (M2b.1)
+    if (mod && !e.shiftKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) { e.preventDefault(); setFolded(cx, e.key === "ArrowUp"); return; }
+    if (e.altKey && e.shiftKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) { e.preventDefault(); moveBlock(cx, e.key === "ArrowUp" ? -1 : 1); return; }
+    if (e.key === "Escape" && !lm && !dm) { e.preventDefault(); selectBlocks(page.id, i, cx.col); return; }
     if (e.altKey && e.key === "Enter") {
       e.preventDefault();
       var cc = getCaret(el), uu = toUnits(page.lines[i].text);
@@ -1545,6 +1691,7 @@ details.done-list summary { cursor: pointer; color: var(--soft); }
   function onGlobalKey(e) {
     var tag = (e.target.tagName || "").toLowerCase();
     if (tag === "input" || tag === "textarea" || e.target.isContentEditable) return;
+    if (ui.sel && onSelectionKey(e)) return;
     if (e.key === "Escape") {
       if (ui.palette) return closePalette();
       if (!document.getElementById("protoPanel").hidden) return toggleProto(false);
@@ -1574,8 +1721,26 @@ details.done-list summary { cursor: pointer; color: var(--soft); }
       return;
     }
     if (!t.closest(".menu-wrap") && ui.menuFor) { ui.menuFor = null; renderMain(); renderRight(); }
-    var b = t.closest("[data-go],[data-open],[data-act],[data-mode],[data-tool],[data-sheet],[data-bullet]");
+    var b = t.closest("[data-go],[data-open],[data-act],[data-mode],[data-tool],[data-sheet],[data-bullet],[data-fold],[data-zoom-to],[data-open-block]");
+    if (ui.sel && !t.closest(".block.selected")) clearSelection();
     if (!b) { if (pendingDel && !t.closest(".content")) clearPendingDel(); return; }
+    if (b.hasAttribute("data-fold")) {
+      var fp = state.pages[b.getAttribute("data-page")], fi = +b.getAttribute("data-fold");
+      fp.lines[fi].collapsed = !fp.lines[fi].collapsed;
+      rerenderPage(fp.id); markEdited(fp.id); tick("fold");
+      return;
+    }
+    if (b.hasAttribute("data-zoom-to")) { zoomTo(b.getAttribute("data-page"), b.getAttribute("data-zoom-to")); return; }
+    if (b.hasAttribute("data-open-block")) {
+      var tp = b.getAttribute("data-page");
+      if (mod) { openRight(tp); return; }
+      zoomTo(tp, b.getAttribute("data-open-block"));
+      return;
+    }
+    if (b.hasAttribute("data-bullet") && !(isPhone() && opts.phone === "menu")) {
+      zoomTo(b.getAttribute("data-page"), blockId(state.pages[b.getAttribute("data-page")].lines[+b.getAttribute("data-i")]));
+      return;
+    }
     if (b.hasAttribute("data-go")) { go({ type: b.getAttribute("data-go") }); if (b.getAttribute("data-go") === "tasks") tick("tasks-view"); return; }
     if (b.hasAttribute("data-open")) { if (mod) openRight(b.getAttribute("data-open")); else openPage(b.getAttribute("data-open")); return; }
     if (b.hasAttribute("data-mode")) {
@@ -1696,11 +1861,51 @@ details.done-list summary { cursor: pointer; color: var(--soft); }
     tick("tasks-view");
   }
 
+  // ---------- Dragging a bullet moves its block (M2b.1, desktop) ----------
+  var dragFrom = null;
+  document.addEventListener("dragstart", function (e) {
+    var b = e.target.closest && e.target.closest(".bullet[data-bullet]");
+    if (!b) return;
+    dragFrom = { page: b.getAttribute("data-page"), i: +b.getAttribute("data-i") };
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", "block");
+  });
+  document.addEventListener("dragover", function (e) {
+    if (!dragFrom) return;
+    var blk = e.target.closest && e.target.closest(".block");
+    document.querySelectorAll(".drop-above").forEach(function (n) { n.classList.remove("drop-above"); });
+    if (!blk || blk.parentElement.getAttribute("data-page") !== dragFrom.page) return;
+    e.preventDefault();
+    blk.classList.add("drop-above");
+  });
+  document.addEventListener("drop", function (e) {
+    if (!dragFrom) return;
+    var blk = e.target.closest && e.target.closest(".block");
+    document.querySelectorAll(".drop-above").forEach(function (n) { n.classList.remove("drop-above"); });
+    var from = dragFrom; dragFrom = null;
+    if (!blk || blk.parentElement.getAttribute("data-page") !== from.page) return;
+    e.preventDefault();
+    var p = state.pages[from.page], L = p.lines, target = +blk.getAttribute("data-i"), end = subtreeEnd(L, from.i);
+    if (target >= from.i && target < end) return;
+    var moving = L.splice(from.i, end - from.i);
+    // Dropped on a block: the moved block goes above it, at its level
+    var at = target > from.i ? target - moving.length : target;
+    var ind = L[at] ? L[at].ind : 0, delta = ind - moving[0].ind;
+    moving.forEach(function (l) { l.ind = Math.max(0, l.ind + delta); });
+    L.splice.apply(L, [at, 0].concat(moving));
+    rerenderPage(p.id); markEdited(p.id); tick("move");
+  });
+  document.addEventListener("dragend", function () { dragFrom = null; document.querySelectorAll(".drop-above").forEach(function (n) { n.classList.remove("drop-above"); }); });
+
   // ---------- Prototype controls ----------
   var TRY = [
     { id: "bullets", f: "F7", t: "In today's journal, type a line, press Enter for the next bullet, then Tab and Shift+Tab to nest. Backspace on an empty bullet outdents it." },
     { id: "indent", f: "F7", t: "Tab a line that has children (Mistlog page) and watch them move with it." },
-    { id: "task", f: "F6", t: MOD + "+Enter on a line cycles TODO → DOING → DONE → plain." },
+    { id: "task", f: "F6", t: MOD + "+Enter on a line cycles TODO → DOING → DONE → plain. A LATER task goes LATER → NOW → DONE. Priorities like [#A] are styled." },
+    { id: "fold", f: "F37", t: "On the Mistlog page, hover a block with children and click its arrow, or press " + MOD + "+↑ / " + MOD + "+↓ in it." },
+    { id: "move", f: "F38", t: "Alt+Shift+↑/↓ moves a block with its children. Or drag a bullet onto another block." },
+    { id: "select", f: "F39", t: "Press Esc in a block to select it, Shift+↑/↓ to select more, then Tab, Backspace, " + MOD + "+Enter or " + MOD + "+C. Esc again to leave." },
+    { id: "zoom", f: "F40", t: "Click a bullet to zoom into that block. The address shows ?block=…; click the breadcrumb to zoom out." },
     { id: "link", f: "F3", t: "Type [[ and pick a page, or type a new title and press ] to create an empty page." },
     { id: "linkedit", f: "6.1", t: "Put the cursor right after a link and press Backspace to reopen it. Pick another page, or press Esc to put the original back." },
     { id: "paste", f: "6.1", t: "Paste text containing [[Reading list]] and see it become a link." },
@@ -1709,7 +1914,7 @@ details.done-list summary { cursor: pointer; color: var(--soft); }
     { id: "unique", f: "F2", t: "Rename a page to “Reading list” to see the unique-title rule." },
     { id: "side", f: "F18", t: MOD + "+click any link to open it in the side panel." },
     { id: "search", f: "F13", t: MOD + "+K to search titles and text, then create a page from the last row." },
-    { id: "tasks-view", f: "F6", t: "Open Tasks and tick a task. The line on its page changes." },
+    { id: "tasks-view", f: "F6", t: "Open Tasks: read-only, like linked references, grouped by page with NOW and DOING first in each. Click a task to open its page zoomed into it." },
     { id: "delete", f: "6.1", t: "Delete “Weekly review” from its ⋯ menu. Links go dashed; click one to restore." },
     { id: "panels", f: "F8", t: "Press t l and t r (outside the editor) to hide and show the panels." },
     { id: "rebuild", f: "Index", t: "Run an index rebuild (below) and look at the sidebar, backlinks, Tasks and search." },
@@ -1778,7 +1983,8 @@ details.done-list summary { cursor: pointer; color: var(--soft); }
         h("button", { class: "btn", type: "button", "data-proto": "reset" }, "Reset sample notes"))));
     var keys = h("div", { class: "keys" });
     [["Enter", "New bullet at the same level"], ["Tab / Shift+Tab", "Indent / outdent with children"], ["Backspace", "On an empty bullet: outdent, then remove"],
-      [MOD + "+Enter", "Cycle TODO → DOING → DONE"], ["[[", "Link to a page"], ["@", "Link to a date"], ["Alt+Enter", "Open the link before the cursor"],
+      [MOD + "+Enter", "Cycle TODO → DOING → DONE"], [MOD + "+↑ / ↓", "Fold / unfold children"], ["Alt+Shift+↑ / ↓", "Move block"],
+      ["Esc, Shift+↑ / ↓", "Select blocks"], ["Click a bullet", "Zoom into block"], ["[[", "Link to a page"], ["@", "Link to a date"], ["Alt+Enter", "Open the link before the cursor"],
       [MOD + "+click", "Open in side panel"], [MOD + "+K", "Search"], ["t l / t r", "Toggle panels"], ["?", "These controls"]]
       .forEach(function (k) { keys.append(h("kbd", null, k[0]), h("span", null, k[1])); });
     body.append(h("div", { class: "proto-sec" }, h("h3", null, "Keys"), keys));
