@@ -118,6 +118,39 @@ body {
   opacity: 1;
 }
 
+/* Moving blocks (block-moving.ts): a drag handle over each bullet, and where a dragged block will land */
+.tiptap .bullet-handle {
+  position: relative;
+  user-select: none;
+}
+
+.tiptap .bullet-handle::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -0.1em;
+  width: 0.6em;
+  height: 1lh;
+  /* Above the bullet's own text, so the mouse picks up the handle */
+  z-index: 1;
+  cursor: grab;
+}
+
+.tiptap p.drop-above {
+  position: relative;
+}
+
+.tiptap p.drop-above::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: calc(var(--drop-indent, 0) * 1.5em);
+  right: 0;
+  height: 2px;
+  background: var(--color-chartreuse);
+  pointer-events: none;
+}
+
 .tiptap .collaboration-cursor__caret {
   position: relative;
   margin-left: -1px;

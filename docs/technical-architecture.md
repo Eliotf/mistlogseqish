@@ -169,6 +169,13 @@ Tests in `tests/unit/lib/note-*.test.ts` include a round trip through Yjs using 
 - `app/lib/folding-editing.ts` (`Folding`, priority 110 so its Enter runs before `BulletEditing`) draws hidden lines with `display: none` (`.fold-hidden`), a ring on folded bullets (`.is-folded`) and an arrow widget before the bullet on lines with children. Cmd/Ctrl+↑/↓ fold and unfold the caret's line, and only consume the key when something changes. Fold transactions carry `addToHistory: false`.
 - **The caret never stays in a hidden line** (`keepCaretVisible`, an `appendTransaction`): a selection move into a folded block carries on past it in the same direction; a local edit that leaves the caret inside one unfolds its folded ancestors; a fold (local or from another tab) that hides the caret moves it to the folded line without writing anything. Enter at the end of a folded line inserts a sibling after the hidden children.
 
+## Moving Blocks
+
+- `app/lib/moving.ts` plans a move as `{from, to, before, indentDelta}` over line indexes: `moveBlockPlan` (Alt+Shift+↑/↓) swaps a block with the previous or next block at its level and never leaves its parent; `dropPlan` puts a dropped block above the target at the target's level. A block always moves with its children.
+- `app/lib/block-moving.ts` (`BlockMoving`) applies a plan as one transaction: the block's nodes are deleted and inserted (re-indented if needed), so their attributes (block ID, fold) go with them and undo is one step. Not in suggest mode or read-only editors.
+- Dragging uses an invisible handle widget over each bullet (`.bullet-handle`, above the bullet text so the mouse finds it). The dragged block is remembered by block ID, so lines added by another tab during the drag cannot change which block moves. A drop line (`.drop-above`) starts at the target's indent. Drops on another editor (another feed day, the side panel) are refused.
+- Yjs has no move operation: a moved line is a new Yjs element, so a keystroke typed into that line on another device at the same instant can be lost. Accepted; see `docs/reviews/m2b.1c-moving-blocks-review.md`.
+
 ## Durable Object Usage
 
 Durable Objects are billed for every second they are awake; they hibernate after about 10 idle seconds (WebSocket hibernation, on by default in the Agents SDK). The free plan allows about 28 hours of awake time a day.
