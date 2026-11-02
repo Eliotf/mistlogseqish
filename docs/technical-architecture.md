@@ -176,6 +176,14 @@ Tests in `tests/unit/lib/note-*.test.ts` include a round trip through Yjs using 
 - Dragging uses an invisible handle widget over each bullet (`.bullet-handle`, above the bullet text so the mouse finds it). The dragged block is remembered by block ID, so lines added by another tab during the drag cannot change which block moves. A drop line (`.drop-above`) starts at the target's indent. Drops on another editor (another feed day, the side panel) are refused.
 - Yjs has no move operation: a moved line is a new Yjs element, so a keystroke typed into that line on another device at the same instant can be lost. Accepted; see `docs/reviews/m2b.1c-moving-blocks-review.md`.
 
+## Block Selection
+
+- `app/lib/block-range.ts` is the pure logic: a selection is lines `from..to` and never splits a line from its children (Shift+↑ onto a parent takes its whole block); hidden lines come only with the folded block that hides them.
+- `app/lib/block-selection.ts` has two extensions. `BlockSelectionStart` (priority 1) turns Esc into "select the caret's block", after every other key handler, so an open link suggestion list closes first. `BlockSelection` (priority 1000) owns the keyboard while blocks are selected: ↑/↓ move, Shift+↑/↓ grow, Tab/Shift+Tab indent (`indentPlan`), Backspace/Delete remove, Enter and Esc leave; other Cmd/Ctrl shortcuts leave the selection and pass on; every other key, text input, `beforeinput` and paste is swallowed so nothing can replace the blocks.
+- The plugin state is the selection as positions between top-level lines, mapped through edits (the start with assoc 1, the end with assoc −1, so lines another tab adds at either edge stay outside). Any local selection change (a click) ends it.
+- While blocks are selected, the editor's text selection spans them so the browser fires copy and cut, but it is not drawn (`.has-block-selection`); the lines get `.block-selected`. Copy and cut write Logseq text (one line each, through the editor's `clipboardTextSerializer`, so links show current titles) and HTML from `serializeForClipboard` (links keep their page IDs). `BubbleToolbar` shows nothing during a block selection.
+- Changing blocks needs an editable editor outside suggest mode; copying always works.
+
 ## Durable Object Usage
 
 Durable Objects are billed for every second they are awake; they hibernate after about 10 idle seconds (WebSocket hibernation, on by default in the Agents SDK). The free plan allows about 28 hours of awake time a day.

@@ -18,13 +18,13 @@ interface ModeSource {
   get: (key: string) => string | undefined;
 }
 
-interface Lines {
+export interface Lines {
   texts: string[];
   /** Position where each line's text starts. */
   starts: number[];
 }
 
-function readLines(doc: ProseMirrorNode): Lines {
+export function readLines(doc: ProseMirrorNode): Lines {
   const texts: string[] = [];
   const starts: number[] = [];
   doc.forEach((node, offset) => {
@@ -35,7 +35,7 @@ function readLines(doc: ProseMirrorNode): Lines {
 }
 
 /** Apply prefix edits, last line first so earlier positions stay valid. Inserted text never carries marks. */
-function applyEdits(tr: Transaction, lines: Lines, edits: PrefixEdit[]): void {
+export function applyEdits(tr: Transaction, lines: Lines, edits: PrefixEdit[]): void {
   for (const edit of [...edits].sort((a, b) => b.line - a.line)) {
     const from = lines.starts[edit.line] + edit.from;
     const to = lines.starts[edit.line] + edit.to;

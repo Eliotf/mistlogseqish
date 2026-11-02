@@ -151,6 +151,19 @@ body {
   pointer-events: none;
 }
 
+/* Block selection (block-selection.ts): the blocks are highlighted, the text selection under them is not drawn */
+.tiptap.has-block-selection {
+  caret-color: transparent;
+}
+
+.tiptap.has-block-selection ::selection {
+  background: transparent;
+}
+
+.tiptap p.block-selected {
+  background: color-mix(in srgb, var(--color-chartreuse) 22%, transparent);
+}
+
 .tiptap .collaboration-cursor__caret {
   position: relative;
   margin-left: -1px;

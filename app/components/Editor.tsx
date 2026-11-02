@@ -14,6 +14,7 @@ import { BulletEditing } from "~/lib/bullet-editing";
 import { BlockParagraph } from "~/lib/block-id-editing";
 import { Folding } from "~/lib/folding-editing";
 import { BlockMoving } from "~/lib/block-moving";
+import { BlockSelection, BlockSelectionStart } from "~/lib/block-selection";
 import { Wikilink, OPEN_LINK_EVENT } from "~/lib/wikilink-editing";
 import { pageTitles } from "~/lib/page-titles";
 import { usePresenceWhileFocused } from "~/lib/connection-budget";
@@ -246,6 +247,8 @@ export default function Editor({
         BulletEditing.configure({ docState }),
         Folding.configure({ docState }),
         BlockMoving.configure({ docState }),
+        BlockSelection.configure({ docState }),
+        BlockSelectionStart,
         Wikilink.configure({ titles: pageTitles(), docState }),
         CommentClickHandler.configure({ onCommentClick }),
         CommentHighlight,

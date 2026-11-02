@@ -3,6 +3,7 @@ import { getMarkRange, isMarkActive, type Editor as TiptapEditor } from "@tiptap
 import type { EditorState } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import { processRangeAtCursor } from "~/lib/suggestion-actions";
+import { blockSelectionKey } from "~/lib/block-selection";
 
 type BubbleContext =
   | { kind: "selection" }
@@ -26,7 +27,9 @@ function getContext(state: EditorState): BubbleContext {
   return ctx;
 }
 
-function detectContext(state: EditorState): BubbleContext {
+export function detectContext(state: EditorState): BubbleContext {
+  // Whole blocks are selected (Esc): no text toolbar over them
+  if (blockSelectionKey.getState(state)) return null;
   const { from, to, empty } = state.selection;
 
   if (empty) {
