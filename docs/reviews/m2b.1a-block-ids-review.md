@@ -82,4 +82,4 @@ What I ran:
   - The IDs were the same after a reload.
   - No console errors.
 
-**Found while testing, and not caused by this change:** in the journal feed, the first keystroke typed into a day that isn't created yet is lost. It reproduces in 4 of 4 runs without this change and 2 of 3 runs with it. It does not happen on the day's own page. Reported separately.
+**A false alarm while testing:** a script that called `editor.commands.focus()` and typed straight away lost its first character in the feed. TipTap focuses the editor on the next animation frame, so the key arrived before the editor had focus. It made no difference whether this change was applied. With a 150 ms pause, or a real mouse click followed by immediate typing, 14 of 14 runs kept every character. Browser scripts should wait a frame after `focus()`.
