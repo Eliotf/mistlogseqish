@@ -110,6 +110,7 @@ PRD.md        Product spec and roadmap
 - `tsc -b` keeps `*.tsbuildinfo` caches that can hide type errors CI then reports. Delete them (`rm -f *.tsbuildinfo`) before the final typecheck of a change. Agent RPC results must be serialisable: a field typed `unknown` turns the whole result type into `never` for callers.
 - Never decide "today" on the server (it runs on UTC). Use `localDate(new Date())` in the browser.
 - `docs.$id.tsx` keys its screen by page ID. Keep that: without it, moving between pages reuses the previous page's Yjs doc and editor.
+- Block IDs (`blockId` on each paragraph): browser code may only label lines its own edit creates; only `DocumentAgent` labels existing lines. Anything that creates lines on the server must give them an ID. See `app/lib/block-ids.ts`.
 - Workspace index schema changes are migrations: append to `MIGRATIONS` in `agents/workspace-index.ts` and bump `SCHEMA_VERSION`. Never edit `SCHEMA_V1` or a shipped migration, and test the upgrade from the previous version.
 - Workspace index tests run real SQL on Node's built-in SQLite through `tests/helpers/sqlite.ts`; Node prints an experimental-feature warning, which is expected.
 

@@ -38,12 +38,14 @@ export const USER_COLOURS = [
  * v2: CriticMarkup stored as ProseMirror marks, threads in Y.Map("threads")
  * v3: optional page title in Y.Map("meta").title
  * v4: `wikilink` marks (links by page ID)
+ * v5: a `blockId` attribute on every paragraph (permanent block IDs)
  *
  * Browsers send the version their code understands when they connect, and
  * DocumentAgent refuses older ones: an editor that meets a mark it does not
- * know deletes that text, and the deletion syncs everywhere.
+ * know deletes that text, and one that meets an attribute it does not know
+ * removes it; either change syncs everywhere.
  */
-export const DOC_FORMAT_VERSION = 4;
+export const DOC_FORMAT_VERSION = 5;
 
 /** WebSocket query parameter carrying the browser's DOC_FORMAT_VERSION. */
 export const FORMAT_PARAM = "format";

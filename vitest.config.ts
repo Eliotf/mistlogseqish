@@ -9,9 +9,9 @@ import tsconfigPaths from "vite-tsconfig-paths";
  * 80 / 75 / 80 / 80). See PRD.md section 7, "Quality gates".
  */
 const coverageThresholds = {
-  lines: 80,
+  lines: 81,
   branches: 73,
-  functions: 80,
+  functions: 81,
   statements: 79,
 };
 

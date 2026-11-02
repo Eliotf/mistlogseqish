@@ -23,6 +23,8 @@ export interface LineMark {
 export interface DocLine {
   text: string;
   marks: LineMark[];
+  /** The line's permanent block ID (PRD F41), once it has one. */
+  id?: string;
 }
 
 export interface LineShape {

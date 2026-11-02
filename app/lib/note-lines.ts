@@ -1,6 +1,7 @@
 import * as Y from "yjs";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import type { DocLine, LineMark } from "./note-parser";
+import { BLOCK_ID_ATTR, isBlockId } from "./block-ids";
 
 /**
  * Convert a document into the parser's input: one DocLine per top-level
@@ -50,7 +51,11 @@ export function linesFromYjs(fragment: Y.XmlFragment): DocLine[] {
   for (const child of fragment.toArray()) {
     const line: DocLine = { text: "", marks: [] };
     if (child instanceof Y.XmlText) appendYText(line, child);
-    else if (child instanceof Y.XmlElement) appendYChildren(line, child);
+    else if (child instanceof Y.XmlElement) {
+      appendYChildren(line, child);
+      const id: unknown = child.getAttribute(BLOCK_ID_ATTR);
+      if (isBlockId(id)) line.id = id;
+    }
     lines.push(line);
   }
   return lines;
@@ -69,6 +74,8 @@ export function linesFromProseMirror(doc: ProseMirrorNode): DocLine[] {
       }
       return false;
     });
+    const id: unknown = block.attrs[BLOCK_ID_ATTR];
+    if (isBlockId(id)) line.id = id;
     lines.push(line);
   });
   return lines;

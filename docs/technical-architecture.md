@@ -155,6 +155,13 @@ Tests in `tests/unit/lib/note-*.test.ts` include a round trip through Yjs using 
 - `app/lib/bullet-editing.ts` (`BulletEditing`, registered in `Editor.tsx`) applies the plans as ProseMirror transactions, so they sync over Yjs and undo normally. Inserted indentation is plain text and never takes a mark; Enter splits with `tr.split` so moved text keeps its marks. Keys are ignored during IME composition. In suggest mode, Tab and Shift+Tab are swallowed (focus stays in the editor) and Enter and Backspace are left to Mist (F34 will design indentation suggestions).
 - `bulletDecorations` draws each leading tab as a fixed-width indent with a guide (`.md-indent`) and a bullet's `-` as a dot (`.md-bullet`), skipping code fences. The caret still moves one character at a time across `- `.
 
+## Block IDs
+
+- Every line (top-level paragraph) has a permanent `blockId` attribute, a UUID (PRD F41, document format version 5). In Yjs it is an attribute on the paragraph's `XmlElement`; in ProseMirror a paragraph attribute, drawn as `data-block-id`. The index stores it as `DocLine.id` inside each line's saved content, so references and tasks can name a line.
+- **Who labels a line.** Two writers must never give one line different IDs, so there is exactly one writer per line. The browser labels only the lines its own local edit creates, in the same transaction (`app/lib/block-id-editing.ts`, `BlockParagraph`), so they reach Yjs labelled. Every other line without an ID (documents from before v5, and the first line of a new page, which ProseMirror creates before any edit) is labelled by `DocumentAgent.labelLines`: once on load, before any browser is sent the document, and after a browser's edit that adds lines. Remote (y-sync) transactions are never labelled in the browser.
+- **The rules** (`linesNeedingIds` in `app/lib/block-ids.ts`, shared by both): a line needs an ID if it has none, or if its ID is held by a line that existed before the edit, or by an earlier line. A line counts as existing if its start maps through the edit (assoc 1, not deleted). So splitting keeps the ID on the upper half, Enter before the text keeps it on the text, joining keeps the upper line's ID, a moved line keeps its own, and pasted lines get new IDs because the attribute is never parsed from HTML.
+- Undo restores a deleted line with its old ID (Yjs undo arrives as a remote change). The server pass writes nothing when every line already has a unique ID, so it is safe to run repeatedly.
+
 ## Durable Object Usage
 
 Durable Objects are billed for every second they are awake; they hibernate after about 10 idle seconds (WebSocket hibernation, on by default in the Agents SDK). The free plan allows about 28 hours of awake time a day.

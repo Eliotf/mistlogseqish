@@ -1366,6 +1366,107 @@ describe("DocumentAgent", () => {
 
     /* ---- Journals: created by their first real text ---- */
 
+    describe("block IDs", () => {
+      const ID_A = "00000000-0000-4000-8000-00000000000a";
+      const ids = (doc: Y.Doc) => (doc.getXmlFragment("default").toArray() as Y.XmlElement[]).map((p) => p.getAttribute("blockId"));
+      const UUID = expect.stringMatching(/^[0-9a-f-]{36}$/);
+
+      it("gives a line a browser added without an ID one, for every tab", async () => {
+        await create();
+        const a = connectYjsClient();
+        const b = connectYjsClient();
+        addLine(a, "first line of a new page");
+        expect(ids(a.doc)).toEqual([UUID]);
+        expect(ids(b.doc)).toEqual(ids(a.doc));
+        addLine(a, "second");
+        expect(ids(a.doc)[0]).toBe(ids(b.doc)[0]);
+        expect(new Set(ids(a.doc)).size).toBe(2);
+        cleanup(a, b);
+      });
+
+      it("keeps the ID a browser gave its new line", async () => {
+        await create();
+        const a = connectYjsClient();
+        const para = new Y.XmlElement("paragraph");
+        para.setAttribute("blockId", ID_A);
+        para.insert(0, [new Y.XmlText("labelled by the browser")]);
+        a.doc.getXmlFragment("default").insert(0, [para]);
+        expect(ids(a.doc)).toEqual([ID_A]);
+        cleanup(a);
+      });
+
+      it("labels a document saved before block IDs when it loads, and saves the labels", async () => {
+        // A document from before block IDs: lines with no attribute
+        const old = new Y.Doc();
+        const frag = old.getXmlFragment("default");
+        for (const text of ["one", "two"]) {
+          const p = new Y.XmlElement("paragraph");
+          p.insert(0, [new Y.XmlText(text)]);
+          frag.insert(frag.length, [p]);
+        }
+        const state = Y.encodeStateAsUpdate(old);
+        mockSqlStore.set("state", state.buffer.slice(state.byteOffset, state.byteOffset + state.byteLength));
+        mockSqlStore.set("exists", new Uint8Array([1]).buffer);
+
+        const client = connectYjsClient();
+        const first = ids(client.doc);
+        expect(first).toEqual([UUID, UUID]);
+        expect(first[0]).not.toBe(first[1]);
+        cleanup(client);
+
+        // Reopened: the same IDs, and nothing written on load
+        const saved = mockSqlStore.get("state");
+        const fresh = new DocumentAgent({} as never, {} as never);
+        (fresh as unknown as { name: string }).name = PAGE_ID;
+        const reopened = connectYjsClient(fresh);
+        expect(ids(reopened.doc)).toEqual(first);
+        expect(mockSqlStore.get("state")).toBe(saved);
+        cleanup(reopened);
+      });
+
+      it("gives imported lines IDs", async () => {
+        await create("line one\nline two");
+        const client = connectYjsClient();
+        expect(ids(client.doc)).toEqual([UUID, UUID]);
+        cleanup(client);
+      });
+
+      it("records each line's ID in the index", async () => {
+        await create("- links to [[nothing]]");
+        await agent.reindex();
+        const client = connectYjsClient();
+        expect(updates.at(-1)?.lines.map((l) => l.id)).toEqual(ids(client.doc));
+        cleanup(client);
+      });
+
+      it("does not label or save an empty line in a journal that was never created", async () => {
+        (agent as unknown as { name: string }).name = "journal-2026-10-26";
+        const client = connectYjsClient();
+        addLine(client, "");
+        expect(ids(client.doc)).toEqual([undefined]);
+        expect(mockSqlStore.has("state")).toBe(false);
+        addLine(client, "now written");
+        expect(ids(client.doc)).toEqual([UUID, UUID]);
+        cleanup(client);
+      });
+
+      it("never lets a labelling failure break editing or sync", async () => {
+        await create();
+        const a = connectYjsClient();
+        const b = connectYjsClient();
+        const error = vi.spyOn(console, "error").mockImplementation(() => {});
+        const setAttribute = vi.spyOn(Y.XmlElement.prototype, "setAttribute").mockImplementationOnce(() => {
+          throw new Error("boom");
+        });
+        addLine(a, "still syncs");
+        expect(b.doc.getXmlFragment("default").toString()).toContain("still syncs");
+        expect(error).toHaveBeenCalledWith("Could not assign block IDs", expect.any(Error));
+        setAttribute.mockRestore();
+        error.mockRestore();
+        cleanup(a, b);
+      });
+    });
+
     describe("journals", () => {
       const DAY = "journal-2026-10-26";
       beforeEach(() => {

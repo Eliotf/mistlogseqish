@@ -4,7 +4,6 @@ import { Extension, getMarkRange, type Editor as TiptapEditor } from "@tiptap/co
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import Document from "@tiptap/extension-document";
-import Paragraph from "@tiptap/extension-paragraph";
 import Text from "@tiptap/extension-text";
 import Collaboration from "@tiptap/extension-collaboration";
 import CollaborationCaret from "@tiptap/extension-collaboration-caret";
@@ -12,6 +11,7 @@ import { CriticAddition, CriticDeletion, CriticComment, CriticHighlight, CriticD
 import { markdownDecorations, cleanViewKey } from "~/lib/markdown-decorations";
 import { suggestModePlugin } from "~/lib/suggest-mode";
 import { BulletEditing } from "~/lib/bullet-editing";
+import { BlockParagraph } from "~/lib/block-id-editing";
 import { Wikilink, OPEN_LINK_EVENT } from "~/lib/wikilink-editing";
 import { pageTitles } from "~/lib/page-titles";
 import { usePresenceWhileFocused } from "~/lib/connection-budget";
@@ -226,7 +226,7 @@ export default function Editor({
       immediatelyRender: false,
       extensions: [
         Document,
-        Paragraph,
+        BlockParagraph,
         Text,
         CriticAddition,
         CriticDeletion,

@@ -7,6 +7,7 @@ import * as encoding from "lib0/encoding";
 import * as decoding from "lib0/decoding";
 import { MSG_SYNC, MSG_AWARENESS, DOC_FORMAT_VERSION, CLOSE_OUTDATED_CLIENT, clientUnderstandsFormat } from "../app/shared/constants";
 import { linesFromYjs } from "../app/lib/note-lines";
+import { BLOCK_ID_ATTR, assignBlockIds, newBlockId } from "../app/lib/block-ids";
 import { PARSER_VERSION } from "../app/lib/note-parser";
 import { isJournalId, isPageId } from "../app/lib/note-ids";
 import { normalizeTitle, type DocumentRenameResult, type CreateWithTitleResult } from "../app/lib/page-title";
@@ -70,6 +71,12 @@ const NEW_INDEX_STATE: IndexState = { dirty: false, lastSent: 0, ack: null, retr
 
 const OUTDATED_REASON = "Mistlog was updated. Reload to keep editing.";
 const DOCUMENT_SOCKET_PATH = /^\/agents\/document-agent\/[^/]+$/;
+
+/** True if a transaction added or removed lines (not just edited the text in one). */
+function linesChanged(transaction: Y.Transaction, doc: Y.Doc): boolean {
+  const fragment: unknown = doc.getXmlFragment("default");
+  return [...transaction.changed.keys()].some((type) => type === fragment);
+}
 
 /** A WebSocket to a document from code older than DOC_FORMAT_VERSION. */
 export function isOutdatedEditorRequest(request: Request): boolean {
@@ -136,7 +143,7 @@ class DocumentAgent extends Agent {
     // Persist on every update, then queue it for the workspace index.
     // Browsers' updates are relayed by onMessage; the server's own changes
     // (such as a rename, or reverting a browser's title change) are sent here.
-    this.doc.on("update", (update: Uint8Array, origin: unknown) => {
+    this.doc.on("update", (update: Uint8Array, origin: unknown, _doc: Y.Doc, transaction: Y.Transaction) => {
       if (origin !== CLIENT_ORIGIN) this.broadcastUpdate(update);
       // A journal is created by its first real text; until then nothing is saved
       if (this.isUncreatedJournal() && !this.createJournalIfWritten()) return;
@@ -146,6 +153,8 @@ class DocumentAgent extends Agent {
         ON CONFLICT(key) DO UPDATE SET value = excluded.value
       `;
       this.markForIndex();
+      // Lines a browser added without an ID (the first line of a new page) get one
+      if (origin === CLIENT_ORIGIN && linesChanged(transaction, this.doc!)) this.labelLines();
     });
 
     // Only the server sets the title (rename, after the index claims it), so
@@ -166,7 +175,24 @@ class DocumentAgent extends Agent {
       this.reindexNow();
     });
 
+    // Label lines from before block IDs, before any browser is sent the document
+    this.labelLines();
+
     return { doc: this.doc, awareness: this.awareness };
+  }
+
+  /**
+   * Give every line without a block ID one (PRD F41). The server is the only
+   * place that labels lines it did not create, so two tabs never label the
+   * same line differently. Never throws: it runs on load and on update.
+   */
+  private labelLines(): void {
+    try {
+      const doc = this.doc!;
+      doc.transact(() => assignBlockIds(doc.getXmlFragment("default")), SERVER_ORIGIN);
+    } catch (err) {
+      console.error("Could not assign block IDs", err);
+    }
   }
 
   async onConnect(connection: Connection, ctx: ConnectionContext) {
@@ -328,6 +354,7 @@ class DocumentAgent extends Agent {
               for (const line of lines) {
                 const { cleanText, marks } = parseCriticMarkupToContent(line);
                 const para = new Y.XmlElement("paragraph");
+                para.setAttribute(BLOCK_ID_ATTR, newBlockId());
                 const ytext = new Y.XmlText(cleanText);
                 // Apply marks via Yjs formatting attributes
                 for (const mark of marks) {
