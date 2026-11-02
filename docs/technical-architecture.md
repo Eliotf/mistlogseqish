@@ -162,6 +162,13 @@ Tests in `tests/unit/lib/note-*.test.ts` include a round trip through Yjs using 
 - **The rules** (`linesNeedingIds` in `app/lib/block-ids.ts`, shared by both): a line needs an ID if it has none, or if its ID is held by a line that existed before the edit, or by an earlier line. A line counts as existing if its start maps through the edit (assoc 1, not deleted). So splitting keeps the ID on the upper half, Enter before the text keeps it on the text, joining keeps the upper line's ID, a moved line keeps its own, and pasted lines get new IDs because the attribute is never parsed from HTML.
 - Undo restores a deleted line with its old ID (Yjs undo arrives as a remote change). The server pass writes nothing when every line already has a unique ID, so it is safe to run repeatedly.
 
+## Folding
+
+- A folded line has `collapsed: true` on its paragraph (Logseq's `collapsed:: true`), part of document format 5, so folds sync to every device and every viewer (PRD F37). Unfolding removes the attribute.
+- `app/lib/folding.ts` is the pure logic: hidden lines, folded ancestors, the nearest visible line. A block is the line and the following lines indented deeper (`blockEnd`).
+- `app/lib/folding-editing.ts` (`Folding`, priority 110 so its Enter runs before `BulletEditing`) draws hidden lines with `display: none` (`.fold-hidden`), a ring on folded bullets (`.is-folded`) and an arrow widget before the bullet on lines with children. Cmd/Ctrl+↑/↓ fold and unfold the caret's line, and only consume the key when something changes. Fold transactions carry `addToHistory: false`.
+- **The caret never stays in a hidden line** (`keepCaretVisible`, an `appendTransaction`): a selection move into a folded block carries on past it in the same direction; a local edit that leaves the caret inside one unfolds its folded ancestors; a fold (local or from another tab) that hides the caret moves it to the folded line without writing anything. Enter at the end of a folded line inserts a sibling after the hidden children.
+
 ## Durable Object Usage
 
 Durable Objects are billed for every second they are awake; they hibernate after about 10 idle seconds (WebSocket hibernation, on by default in the Agents SDK). The free plan allows about 28 hours of awake time a day.

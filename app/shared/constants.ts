@@ -38,7 +38,8 @@ export const USER_COLOURS = [
  * v2: CriticMarkup stored as ProseMirror marks, threads in Y.Map("threads")
  * v3: optional page title in Y.Map("meta").title
  * v4: `wikilink` marks (links by page ID)
- * v5: a `blockId` attribute on every paragraph (permanent block IDs)
+ * v5: a `blockId` attribute on every paragraph (permanent block IDs) and
+ *     a `collapsed` attribute on folded ones
  *
  * Browsers send the version their code understands when they connect, and
  * DocumentAgent refuses older ones: an editor that meets a mark it does not

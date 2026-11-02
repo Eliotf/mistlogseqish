@@ -12,6 +12,7 @@ import { markdownDecorations, cleanViewKey } from "~/lib/markdown-decorations";
 import { suggestModePlugin } from "~/lib/suggest-mode";
 import { BulletEditing } from "~/lib/bullet-editing";
 import { BlockParagraph } from "~/lib/block-id-editing";
+import { Folding } from "~/lib/folding-editing";
 import { Wikilink, OPEN_LINK_EVENT } from "~/lib/wikilink-editing";
 import { pageTitles } from "~/lib/page-titles";
 import { usePresenceWhileFocused } from "~/lib/connection-budget";
@@ -242,6 +243,7 @@ export default function Editor({
         MarkdownDecorations,
         SuggestMode.configure({ docState }),
         BulletEditing.configure({ docState }),
+        Folding.configure({ docState }),
         Wikilink.configure({ titles: pageTitles(), docState }),
         CommentClickHandler.configure({ onCommentClick }),
         CommentHighlight,

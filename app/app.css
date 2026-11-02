@@ -68,6 +68,56 @@ body {
   color: var(--color-muted);
 }
 
+/* Folding (folding-editing.ts): hidden children, the folded bullet's ring, and the arrow shown on hover */
+.tiptap p.fold-hidden {
+  display: none;
+}
+
+.tiptap p.is-folded .md-bullet::before {
+  color: var(--color-ink);
+}
+
+.tiptap p.is-folded .md-bullet::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0.27em;
+  width: 0.85em;
+  height: 0.85em;
+  border-radius: 9999px;
+  background: var(--color-border);
+  transform: translate(-50%, -50%);
+  z-index: -1;
+}
+
+.tiptap .fold-toggle {
+  position: relative;
+  user-select: none;
+}
+
+.tiptap .fold-toggle::before {
+  content: "\25B8";
+  position: absolute;
+  top: 0;
+  left: -1em;
+  width: 0.9em;
+  text-align: center;
+  color: var(--color-muted);
+  cursor: pointer;
+  opacity: 0;
+  transform: rotate(90deg);
+  transition: opacity 120ms;
+}
+
+.tiptap .fold-toggle[aria-expanded="false"]::before {
+  transform: none;
+}
+
+.tiptap p:hover > .fold-toggle::before,
+.tiptap .fold-toggle:hover::before {
+  opacity: 1;
+}
+
 .tiptap .collaboration-cursor__caret {
   position: relative;
   margin-left: -1px;

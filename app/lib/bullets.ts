@@ -34,7 +34,7 @@ export function bulletContentStart(text: string): number | null {
 }
 
 /** The index just after line `i`'s last child: the following lines indented deeper. */
-export function blockEnd(lines: string[], i: number): number {
+export function blockEnd(lines: readonly string[], i: number): number {
   const base = indentOf(lines[i]);
   let j = i + 1;
   while (j < lines.length && indentOf(lines[j]) > base && lines[j] !== "") j++;
