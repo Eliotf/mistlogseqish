@@ -8,6 +8,7 @@ import { COLLAPSED_ATTR, foldedAncestors, hasChildren, hiddenLines, nearestVisib
 import { BLOCK_ID_ATTR } from "./block-ids";
 import { zoomRange } from "./zoom";
 import { zoomKey } from "./zoom-editing";
+import { modKeyLabel } from "./mod-key";
 
 /**
  * Folding in the editor (PRD F37, rules in folding.ts). A line with children
@@ -57,7 +58,7 @@ function foldToggle(view: EditorView, getPos: () => number | undefined, folded: 
   el.setAttribute("role", "button");
   el.setAttribute("aria-label", folded ? "Unfold" : "Fold");
   el.setAttribute("aria-expanded", String(!folded));
-  el.title = `${folded ? "Unfold" : "Fold"} (${navigator.platform.startsWith("Mac") ? "⌘" : "Ctrl"}+${folded ? "↓" : "↑"})`;
+  el.title = `${folded ? "Unfold" : "Fold"} (${modKeyLabel()}+${folded ? "↓" : "↑"})`;
   el.addEventListener("mousedown", (event) => {
     event.preventDefault();
     const pos = getPos();

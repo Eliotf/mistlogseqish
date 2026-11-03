@@ -18,6 +18,12 @@ export default function AppHeader({ children }: { children?: ReactNode }) {
       <div className="shrink-0 border-r border-border">
         <TodayButton />
       </div>
+      <Link
+        to="/tasks"
+        className="flex shrink-0 items-center border-r border-border px-3 text-sm uppercase tracking-wider transition-colors hover:bg-border"
+      >
+        Tasks
+      </Link>
       <div className="shrink-0 border-r border-border">
         <NewPageButton />
       </div>

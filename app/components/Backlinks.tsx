@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useState, type MouseEvent } from "react";
-import { lineSegments, type BacklinkGroup, type BacklinkLine } from "~/lib/backlink-lines";
+import { useCallback, useEffect, useState } from "react";
+import type { BacklinkGroup } from "~/lib/backlink-lines";
 import { linkHref } from "~/lib/page-titles";
-import { useLinkTarget } from "~/lib/useLinkTarget";
-import { useOpenLink } from "~/lib/side-panel";
+import ReferenceLine, { PageLink } from "~/components/ReferenceLine";
 
 /** Linked references for a page, from GET /api/pages/backlinks. */
 export async function fetchBacklinks(pageId: string): Promise<BacklinkGroup[]> {
@@ -60,58 +59,12 @@ export default function Backlinks({ pageId, load = fetchBacklinks }: { pageId: s
             <ul className="mt-1 space-y-1 border-l border-border pl-3">
               {group.lines.map((line) => (
                 <li key={line.line} className="text-ink">
-                  <Line line={line} />
+                  <ReferenceLine line={line} />
                 </li>
               ))}
             </ul>
           </div>
         ))}
     </section>
-  );
-}
-
-function PageLink({ pageId, href, className, children }: { pageId: string; href: string; className: string; children: React.ReactNode }) {
-  const openLink = useOpenLink();
-  const onClick = (event: MouseEvent<HTMLAnchorElement>) => {
-    event.preventDefault();
-    openLink(href, { pageId, side: event.metaKey || event.ctrlKey });
-  };
-  return (
-    <a href={href} onClick={onClick} className={className}>
-      {children}
-    </a>
-  );
-}
-
-function Line({ line }: { line: BacklinkLine }) {
-  return (
-    <>
-      {lineSegments(line).map((segment, i) =>
-        segment.kind === "text" ? (
-          <span key={i}>{segment.text}</span>
-        ) : segment.kind === "bracket" ? (
-          <span key={i} className="text-muted opacity-60">
-            {segment.text}
-          </span>
-        ) : (
-          <LinkedTitle key={i} pageId={segment.pageId} stored={segment.text} />
-        ),
-      )}
-    </>
-  );
-}
-
-/** A link inside a reference: its current title, opening the page. */
-function LinkedTitle({ pageId, stored }: { pageId: string; stored: string }) {
-  const target = useLinkTarget(pageId);
-  const title = target && !target.missing ? target.title : stored;
-  return (
-    <PageLink
-      pageId={pageId}
-      href={linkHref(pageId, target)}
-      className={`underline decoration-2 underline-offset-[3px] ${target?.missing ? "text-muted decoration-dashed decoration-muted" : "decoration-chartreuse"}`}
-    >
-      {title}
-    </PageLink>
   );
 }

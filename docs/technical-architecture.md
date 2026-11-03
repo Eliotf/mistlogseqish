@@ -193,6 +193,14 @@ Tests in `tests/unit/lib/note-*.test.ts` include a round trip through Yjs using 
 - Folding, block selection and the breadcrumb follow the zoom: the zoomed block always shows its children (folds outside it are ignored), selections never reach outside it, and `ancestorsOf` uses the same block rule (`blockEnd`) as folding.
 - If the zoomed block disappears (deleted, or moved by another tab), the editor shows the whole page and `ZoomCrumbs` says so, once the document has synced.
 
+## Tasks
+
+- A task is a line whose content starts with `TODO`, `DOING`, `DONE`, `LATER` or `NOW` (PRD F6, F42); a priority is the first `[#A]`–`[#C]` outside inline code. Both are parsed by the shared parser (`parseLine`, `priorityAt`; parser version 2).
+- `app/lib/tasks.ts` holds the cycles (Cmd/Ctrl+Enter: none → TODO → DOING → DONE → none, LATER → NOW → DONE) as prefix edits, and the `TaskItem` shape the Tasks view gets. `app/lib/task-editing.ts` (`TaskEditing`) cycles the lines a selection touches and styles keywords and priorities; `block-selection.ts` cycles the top lines of selected blocks.
+- The index's `tasks` table (schema 3) keeps each task's block ID, priority and stored line. `WorkspaceAgent.tasks` returns serialisable `TaskItem`s, the line reduced like a linked reference (`toBacklinkLine`); rows from before schema 3 come back as their keyword and text until their page is re-indexed.
+- `/tasks` (`app/routes/tasks.tsx`, `TasksView`) is read-only: NOW, DOING, TODO, LATER (index order within each: priority, then journals newest first, then pages by title), and the 50 most recently changed done tasks. A task's text is one link to `zoomHref(pagePath(page), blockId)` (its links show current titles as text, via `ReferenceLine` with `plainLinks`); its page name links to the page. Cmd/Ctrl+click opens the page in the side panel. The list reloads when the tab is shown again, never by polling.
+- Until the index rebuild after a parser change (M1 chunk 1.6) is built, pages are re-indexed only when opened, so tasks on pages not opened since block IDs open the whole page rather than zoomed.
+
 ## Durable Object Usage
 
 Durable Objects are billed for every second they are awake; they hibernate after about 10 idle seconds (WebSocket hibernation, on by default in the Agents SDK). The free plan allows about 28 hours of awake time a day.

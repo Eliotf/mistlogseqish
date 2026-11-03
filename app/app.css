@@ -61,31 +61,31 @@ body {
   color: transparent;
 }
 
-/* Task keywords and priorities (app/lib/task-editing.ts): styled text, as agreed in the prototype */
-.tiptap .task-kw {
+/* Task keywords and priorities: styled text in the editor (task-editing.ts) and in stored lines (ReferenceLine) */
+.task-kw {
   font-family: var(--font-mono);
   font-size: 0.8em;
   font-weight: 600;
   letter-spacing: 0.04em;
 }
 
-.tiptap .task-todo,
-.tiptap .task-later {
+.task-todo,
+.task-later {
   color: var(--color-coral);
 }
 
-.tiptap .task-later {
+.task-later {
   opacity: 0.75;
 }
 
-.tiptap .task-doing,
-.tiptap .task-now {
+.task-doing,
+.task-now {
   background: var(--color-canary);
   color: #1a1a1a;
   padding: 0 0.2em;
 }
 
-.tiptap .task-done {
+.task-done {
   color: var(--color-muted);
 }
 
