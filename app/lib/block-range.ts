@@ -30,7 +30,7 @@ export function extendRange(lines: readonly string[], hidden: readonly boolean[]
     if (above === null) return range;
     return { from: above, to: Math.max(range.to, blockEnd(lines, above)) };
   }
-  if (range.to >= lines.length) return range;
+  if (range.to >= lines.length || hidden[range.to]) return range;
   return { from: range.from, to: Math.max(range.to, blockEnd(lines, range.to)) };
 }
 

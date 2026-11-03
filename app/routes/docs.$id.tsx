@@ -1,4 +1,5 @@
-import { data, redirect, useLocation, useNavigate } from "react-router";
+import { useCallback } from "react";
+import { data, redirect, useLocation, useNavigate, useSearchParams } from "react-router";
 import type { Route } from "./+types/docs.$id";
 import { isValidDocumentId, APP_DISPLAY_NAME } from "~/shared/constants";
 import { currentSlugOrNull, loadDocument } from "~/lib/document-loader.server";
@@ -22,21 +23,24 @@ import JournalHeading from "~/components/JournalHeading";
 import AppHeader from "~/components/AppHeader";
 import ConnectedEditor from "~/components/ConnectedEditor";
 import { isJournalId } from "~/lib/note-ids";
+import { ZOOM_PARAM, zoomHref } from "~/lib/zoom";
 
 export function meta(_args: Route.MetaArgs) {
   return [{ title: APP_DISPLAY_NAME }];
 }
 
-export async function loader({ params, context }: Route.LoaderArgs) {
+export async function loader({ params, context, request }: Route.LoaderArgs) {
   const id = params.id;
+  // Redirects keep the query (a zoomed block, ?block=)
+  const search = new URL(request.url).search;
   // Journals live at /journal/<date>
-  if (isJournalId(id)) throw redirect(pagePath(id, null));
+  if (isJournalId(id)) throw redirect(pagePath(id, null) + search);
   if (!isValidDocumentId(id)) {
     throw data(null, { status: 404 });
   }
   // /docs/<id> is the permanent address; pages with a title live at /page/<slug>
   const slug = await currentSlugOrNull(context, id);
-  if (slug) throw redirect(pagePath(id, slug));
+  if (slug) throw redirect(pagePath(id, slug) + search);
   const doc = await loadDocument(context, id);
   return { ...doc, path: pagePath(id, null) };
 }
@@ -76,6 +80,10 @@ function DocumentLayout({ id, exists, path, focusTitle }: Omit<ScreenProps, "cre
     if (newPath !== path) navigate(newPath, { replace: true });
   };
   const { yjs, mode } = useDocument();
+  // Zoomed into one block (?block=<id>); zooming is navigation, so Back zooms out again
+  const [params] = useSearchParams();
+  const zoom = params.get(ZOOM_PARAM);
+  const onZoom = useCallback((blockId: string | null) => navigate(zoomHref(path, blockId)), [navigate, path]);
   // The side panel takes the comments column while it shows pages
   const panel = useSidePanel();
   const panelOpen = panel.shown && panel.pages.length > 0;
@@ -102,7 +110,7 @@ function DocumentLayout({ id, exists, path, focusTitle }: Omit<ScreenProps, "cre
           ) : (
             <PageTitle doc={yjs.doc} pageId={id} autoFocus={focusTitle} onRenamed={onRenamed} />
           )}
-          <ConnectedEditor />
+          <ConnectedEditor zoom={zoom} onZoom={onZoom} />
           <Backlinks pageId={id} />
         </main>
         <aside className={`hidden w-96 flex-col overflow-hidden ${panelOpen ? "" : "lg:flex"}`}>

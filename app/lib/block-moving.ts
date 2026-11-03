@@ -5,6 +5,7 @@ import { Fragment, type Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { bulletContentStart, indentOf } from "./bullets";
 import { dropPlan, indexAfterMove, moveBlockPlan, movedIndent, type MovePlan } from "./moving";
 import { BLOCK_ID_ATTR, isBlockId } from "./block-ids";
+import { requestZoom } from "./zoom-editing";
 
 /**
  * Moving blocks in the editor (PRD F38, rules in moving.ts).
@@ -151,7 +152,7 @@ function dragHandle(view: EditorView, getPos: () => number | undefined, canMove:
   el.contentEditable = "false";
   el.draggable = true;
   el.setAttribute("aria-hidden", "true");
-  el.title = "Drag to move this block (or Alt+Shift+↑/↓)";
+  el.title = "Click to zoom in, drag to move";
   el.addEventListener("dragstart", (event) => {
     const pos = getPos();
     if (pos === undefined || !canMove()) {
@@ -167,6 +168,15 @@ function dragHandle(view: EditorView, getPos: () => number | undefined, canMove:
       const lineDom = view.nodeDOM(lineStarts(view.state.doc)[line]);
       if (lineDom instanceof HTMLElement) event.dataTransfer.setDragImage(lineDom, 0, 0);
     }
+  });
+  // A click (not a drag) asks the page to zoom into the block (zoom-editing.ts)
+  el.addEventListener("click", (event) => {
+    const pos = getPos();
+    if (pos === undefined) return;
+    event.preventDefault();
+    const id: unknown = view.state.doc.child(view.state.doc.resolve(pos).index(0)).attrs[BLOCK_ID_ATTR];
+    if (!isBlockId(id)) return;
+    requestZoom(view.dom, id);
   });
   el.addEventListener("dragend", () => {
     dragging = null;

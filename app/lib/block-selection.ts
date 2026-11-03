@@ -7,6 +7,7 @@ import { indentPlan } from "./bullets";
 import { applyEdits, readLines } from "./bullet-editing";
 import { COLLAPSED_ATTR, hiddenLines } from "./folding";
 import { blockAt, extendRange, moveRange, type LineRange } from "./block-range";
+import { zoomOf } from "./zoom-editing";
 
 /**
  * Selecting whole blocks (PRD F39, rules in block-range.ts). Esc selects
@@ -57,14 +58,18 @@ export function selectedLines(state: EditorState): LineRange | null {
   return from >= 0 && to > from ? { from, to } : null;
 }
 
-function lineInfo(doc: ProseMirrorNode) {
+/** Lines, and which are hidden: inside a folded block, or outside the zoomed block. */
+function lineInfo(state: EditorState) {
   const texts: string[] = [];
   const collapsed: boolean[] = [];
-  doc.forEach((node) => {
+  state.doc.forEach((node) => {
     texts.push(node.textContent);
     collapsed.push(node.attrs[COLLAPSED_ATTR] === true);
   });
-  return { texts, hidden: hiddenLines(texts, collapsed), starts: lineStarts(doc) };
+  const zoom = zoomOf(state)?.range;
+  const effective = zoom ? collapsed.map((c, i) => c && i > zoom.from && i < zoom.to) : collapsed;
+  const hidden = hiddenLines(texts, effective).map((h, i) => h || (!!zoom && (i < zoom.from || i >= zoom.to)));
+  return { texts, hidden, starts: lineStarts(state.doc) };
 }
 
 /** Select lines range.from..range.to: block highlight plus an undrawn text selection over them. */
@@ -87,7 +92,7 @@ function leave(state: EditorState, line: number): Transaction {
 export function selectCaretBlock(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
   const { $head } = state.selection;
   if ($head.depth !== 1) return false;
-  if (dispatch) dispatch(selectLines(state, blockAt(lineInfo(state.doc).texts, $head.index(0))));
+  if (dispatch) dispatch(selectLines(state, blockAt(lineInfo(state).texts, $head.index(0))));
   return true;
 }
 
@@ -144,7 +149,7 @@ export function handleSelectionKey(view: EditorView, event: KeyboardEvent, canEd
     dispatch(leave(state, range.from));
     return false;
   }
-  const info = lineInfo(state.doc);
+  const info = lineInfo(state);
   if (key === "Escape" || (key === "Enter" && !event.shiftKey && !event.altKey)) {
     dispatch(leave(state, range.from));
   } else if ((key === "ArrowUp" || key === "ArrowDown") && !event.altKey) {

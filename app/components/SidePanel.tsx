@@ -1,4 +1,5 @@
-import { Link, useLocation } from "react-router";
+import { useCallback } from "react";
+import { Link, useLocation, useNavigate } from "react-router";
 import { useYjsEditor } from "~/lib/useYjsEditor";
 import { DocumentProvider } from "~/lib/DocumentContext";
 import { useSidePanel } from "~/lib/side-panel";
@@ -7,6 +8,7 @@ import { useLinkTarget } from "~/lib/useLinkTarget";
 import { journalTitle, parseJournalDate } from "~/lib/note-ids";
 import { UNTITLED } from "~/lib/page-title";
 import ConnectedEditor from "~/components/ConnectedEditor";
+import { zoomHref } from "~/lib/zoom";
 
 function titleFor(pageId: string, target: LinkTarget | undefined): string {
   const date = parseJournalDate(pageId);
@@ -69,11 +71,15 @@ function SidePage({ pageId }: { pageId: string }) {
   const yjs = useYjsEditor(pageId);
   const target = useLinkTarget(pageId);
   const title = titleFor(pageId, target);
+  // A bullet click opens the page in the main view, zoomed into that block
+  const navigate = useNavigate();
+  const href = linkHref(pageId, target);
+  const onZoom = useCallback((blockId: string | null) => navigate(zoomHref(href, blockId)), [navigate, href]);
 
   return (
     <section aria-label={title} className="border-b border-border pb-4">
       <div className="flex items-baseline gap-2 px-6 pt-4">
-        <Link to={linkHref(pageId, target)} className="grow truncate text-lg font-semibold text-ink hover:underline" title="Open in the main view">
+        <Link to={href} className="grow truncate text-lg font-semibold text-ink hover:underline" title="Open in the main view">
           {title}
         </Link>
         <button type="button" onClick={() => panel.close(pageId)} aria-label={`Close ${title}`} className="px-1 text-muted hover:text-ink">
@@ -81,7 +87,7 @@ function SidePage({ pageId }: { pageId: string }) {
         </button>
       </div>
       <DocumentProvider docId={pageId} createdAt={null} yjs={yjs}>
-        <ConnectedEditor />
+        <ConnectedEditor onZoom={onZoom} />
       </DocumentProvider>
     </section>
   );

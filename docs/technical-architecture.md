@@ -184,6 +184,15 @@ Tests in `tests/unit/lib/note-*.test.ts` include a round trip through Yjs using 
 - While blocks are selected, the editor's text selection spans them so the browser fires copy and cut, but it is not drawn (`.has-block-selection`); the lines get `.block-selected`. Copy and cut write Logseq text (one line each, through the editor's `clipboardTextSerializer`, so links show current titles) and HTML from `serializeForClipboard` (links keep their page IDs). `BubbleToolbar` shows nothing during a block selection.
 - Changing blocks needs an editable editor outside suggest mode; copying always works.
 
+## Zoom
+
+- A zoomed page shows one block and its children (PRD F40). The zoom is in the address, `?block=<block ID>` (`ZOOM_PARAM` in `app/lib/zoom.ts`), so Back and Forward zoom out and in, and links can open a block. Page redirects (`/docs/<id>` to `/page/<slug>`, old slugs) keep the query.
+- The page owns the zoom: `docs.$id.tsx` reads `?block=` and passes `zoom` and `onZoom` to `ConnectedEditor`, which shows `ZoomCrumbs` (page › the blocks above › the zoomed block, from the live Yjs doc) and passes them on to `Editor`. The feed (`JournalDay`) and side panel (`SidePanel`) pass only `onZoom`, which navigates to that page zoomed.
+- `app/lib/zoom-editing.ts` (`Zoom`, priority 120): `setZoom` (a transaction meta) sets the zoomed block; lines outside it get `.zoom-hidden`, and its own indentation is drawn with no width (`.zoom-indent`) so it sits flush left. A bullet click (the drag handle in `block-moving.ts`), Cmd/Ctrl+. (into the caret's block) and Cmd/Ctrl+, (out one level) send a `ZOOM_EVENT` on the editor, which `Editor` turns into `onZoom`, like `OPEN_LINK_EVENT` for links.
+- **Edits stay inside the zoomed block** (`staysInZoom`, a `filterTransaction`): this tab's transaction is refused if a step touches the line boundary above the zoomed line or anything after its last child, if the zoomed line loses its ID, or if a line it held ends up outside it (an outdent past it, plain lines pasted at its end). Other tabs' edits always apply. The caret is kept inside it. Enter at the end of the zoomed line adds its first child.
+- Folding, block selection and the breadcrumb follow the zoom: the zoomed block always shows its children (folds outside it are ignored), selections never reach outside it, and `ancestorsOf` uses the same block rule (`blockEnd`) as folding.
+- If the zoomed block disappears (deleted, or moved by another tab), the editor shows the whole page and `ZoomCrumbs` says so, once the document has synced.
+
 ## Durable Object Usage
 
 Durable Objects are billed for every second they are awake; they hibernate after about 10 idle seconds (WebSocket hibernation, on by default in the Agents SDK). The free plan allows about 28 hours of awake time a day.

@@ -8,13 +8,14 @@ import { pagePath } from "~/lib/slug";
  * redirect to the current one; unknown slugs are 404. The page itself is the
  * same screen as /docs/<id>.
  */
-export async function loader({ params, context }: Route.LoaderArgs) {
+export async function loader({ params, context, request }: Route.LoaderArgs) {
   const index = await workspaceIndex(context);
   const resolved = await index.resolveSlug(params.slug);
   if (!resolved) throw data(null, { status: 404 });
   // Old slugs, and different case or accent composition, go to the one canonical address
   if (!resolved.current || params.slug.normalize("NFC") !== resolved.currentSlug) {
-    throw redirect(pagePath(resolved.pageId, resolved.currentSlug));
+    // Keep the query (a zoomed block, ?block=) across the redirect
+    throw redirect(pagePath(resolved.pageId, resolved.currentSlug) + new URL(request.url).search);
   }
   const doc = await loadDocument(context, resolved.pageId);
   return { ...doc, path: pagePath(resolved.pageId, resolved.currentSlug) };

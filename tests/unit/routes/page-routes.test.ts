@@ -36,9 +36,10 @@ async function thrown(promise: Promise<unknown>): Promise<Response> {
   throw new Error("expected the loader to throw");
 }
 
-const docs = (id: string) => docsLoader({ params: { id }, context: {} } as never);
-const page = (slug: string) => pageLoader({ params: { slug }, context: {} } as never);
-const journal = (date: string) => journalLoader({ params: { date }, context: {} } as never);
+const request = (path: string, search = "") => new Request(`https://mistlog.test${path}${search}`);
+const docs = (id: string, search = "") => docsLoader({ params: { id }, context: {}, request: request(`/docs/${id}`, search) } as never);
+const page = (slug: string, search = "") => pageLoader({ params: { slug }, context: {}, request: request(`/page/${slug}`, search) } as never);
+const journal = (date: string) => journalLoader({ params: { date }, context: {}, request: request(`/journal/${date}`) } as never);
 
 describe("page routes", () => {
   beforeEach(() => {
@@ -55,6 +56,13 @@ describe("page routes", () => {
       expect(res.status).toBe(302);
       expect(res.headers.get("Location")).toBe("/page/meeting-notes");
       expect(mockDocFetch).not.toHaveBeenCalled();
+    });
+
+    it("keeps a zoomed block (?block=) when redirecting", async () => {
+      mockIndex.currentSlug.mockResolvedValue("meeting-notes");
+      const block = "?block=00000000-0000-4000-8000-000000000001";
+      expect((await thrown(docs("abcd1234", block))).headers.get("Location")).toBe(`/page/meeting-notes${block}`);
+      expect((await thrown(docs("journal-2026-11-03", block))).headers.get("Location")).toBe(`/journal/2026-11-03${block}`);
     });
 
     it("encodes slugs with accents in the redirect", async () => {
@@ -106,6 +114,12 @@ describe("page routes", () => {
       const res = await thrown(page("old-name"));
       expect(res.status).toBe(302);
       expect(res.headers.get("Location")).toBe("/page/new-name");
+    });
+
+    it("keeps a zoomed block (?block=) when redirecting an old slug", async () => {
+      mockIndex.resolveSlug.mockResolvedValue({ pageId: "abcd1234", current: false, currentSlug: "new-name" });
+      const res = await thrown(page("old-name", "?block=00000000-0000-4000-8000-000000000001"));
+      expect(res.headers.get("Location")).toBe("/page/new-name?block=00000000-0000-4000-8000-000000000001");
     });
 
     it("redirects a different-case address to the canonical one", async () => {

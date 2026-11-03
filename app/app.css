@@ -164,6 +164,17 @@ body {
   background: color-mix(in srgb, var(--color-chartreuse) 22%, transparent);
 }
 
+/* Zoom (zoom-editing.ts): only the zoomed block and its children are shown */
+.tiptap p.zoom-hidden {
+  display: none;
+}
+
+.tiptap .zoom-indent {
+  tab-size: 0;
+  font-size: 0;
+  background: none;
+}
+
 .tiptap .collaboration-cursor__caret {
   position: relative;
   margin-left: -1px;

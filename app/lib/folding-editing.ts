@@ -5,6 +5,9 @@ import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { ySyncPluginKey } from "@tiptap/y-tiptap";
 import { bulletContentStart, indentOf, blockEnd } from "./bullets";
 import { COLLAPSED_ATTR, foldedAncestors, hasChildren, hiddenLines, nearestVisible } from "./folding";
+import { BLOCK_ID_ATTR } from "./block-ids";
+import { zoomRange } from "./zoom";
+import { zoomKey } from "./zoom-editing";
 
 /**
  * Folding in the editor (PRD F37, rules in folding.ts). A line with children
@@ -32,6 +35,10 @@ interface FoldState {
   hidden: boolean[];
   /** Position where each line's text starts. */
   starts: number[];
+  /** Folds that apply: inside a zoom, only those strictly within the zoomed block. */
+  effective: boolean[];
+  /** The zoomed block (zoom-editing.ts): it always shows its children, and folds outside it do not apply. */
+  zoomRoot: string | null;
 }
 
 export const foldingKey = new PluginKey<FoldState>("folding");
@@ -61,16 +68,21 @@ function foldToggle(view: EditorView, getPos: () => number | undefined, folded: 
   return el;
 }
 
-function build(doc: ProseMirrorNode): FoldState {
+function build(doc: ProseMirrorNode, zoomRoot: string | null): FoldState {
   const texts: string[] = [];
   const collapsed: boolean[] = [];
+  const ids: unknown[] = [];
   const starts: number[] = [];
   doc.forEach((node, offset) => {
     texts.push(node.textContent);
     collapsed.push(node.attrs[COLLAPSED_ATTR] === true);
+    ids.push(node.attrs[BLOCK_ID_ATTR]);
     starts.push(offset + 1);
   });
-  const hidden = hiddenLines(texts, collapsed);
+  // Zoomed: only folds strictly inside the zoomed block hide anything
+  const zoom = zoomRoot ? zoomRange(texts, ids, zoomRoot) : null;
+  const effective = zoom ? collapsed.map((c, i) => c && i > zoom.from && i < zoom.to) : collapsed;
+  const hidden = hiddenLines(texts, effective);
   const decorations: Decoration[] = [];
   texts.forEach((text, i) => {
     const node = doc.child(i);
@@ -78,8 +90,9 @@ function build(doc: ProseMirrorNode): FoldState {
       decorations.push(Decoration.node(starts[i] - 1, starts[i] - 1 + node.nodeSize, { class: "fold-hidden" }));
       return;
     }
-    if (!hasChildren(texts, i)) return;
-    const folded = collapsed[i];
+    // The zoomed line always shows its children, so it has no arrow
+    if (!hasChildren(texts, i) || (zoom && i === zoom.from)) return;
+    const folded = effective[i];
     if (folded) decorations.push(Decoration.node(starts[i] - 1, starts[i] - 1 + node.nodeSize, { class: "is-folded" }));
     decorations.push(
       Decoration.widget(starts[i] + indentOf(text), (view, getPos) => foldToggle(view, getPos, folded), {
@@ -90,7 +103,7 @@ function build(doc: ProseMirrorNode): FoldState {
       }),
     );
   });
-  return { decorations: DecorationSet.create(doc, decorations), texts, collapsed, hidden, starts };
+  return { decorations: DecorationSet.create(doc, decorations), texts, collapsed, effective, hidden, starts, zoomRoot };
 }
 
 /** Fold (or unfold) line `line`. Returns false if there is nothing to change. */
@@ -145,7 +158,7 @@ export function keepCaretVisible(trs: readonly Transaction[], oldState: EditorSt
   const localEdit = trs.some((tr) => tr.docChanged) && !trs.some(isRemote) && !trs.some((tr) => tr.getMeta(FOLD));
   if (localEdit) {
     const tr = newState.tr;
-    for (const j of foldedAncestors(fs.texts, fs.collapsed, line)) tr.setNodeAttribute(fs.starts[j] - 1, COLLAPSED_ATTR, null);
+    for (const j of foldedAncestors(fs.texts, fs.effective, line)) tr.setNodeAttribute(fs.starts[j] - 1, COLLAPSED_ATTR, null);
     return tr.setMeta(FOLD, true).setMeta("addToHistory", false);
   }
   if (trs.some((tr) => tr.docChanged)) {
@@ -209,8 +222,12 @@ export const Folding = Extension.create<{ docState: ModeSource | null }>({
       new Plugin<FoldState>({
         key: foldingKey,
         state: {
-          init: (_, state) => build(state.doc),
-          apply: (tr, old) => (tr.docChanged ? build(tr.doc) : old),
+          init: (_, state) => build(state.doc, null),
+          apply: (tr, old) => {
+            const zoom = tr.getMeta(zoomKey) as string | null | undefined;
+            if (zoom !== undefined) return build(tr.doc, zoom);
+            return tr.docChanged ? build(tr.doc, old.zoomRoot) : old;
+          },
         },
         props: {
           decorations: (state) => foldingKey.getState(state)?.decorations,

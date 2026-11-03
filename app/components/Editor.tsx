@@ -15,6 +15,7 @@ import { BlockParagraph } from "~/lib/block-id-editing";
 import { Folding } from "~/lib/folding-editing";
 import { BlockMoving } from "~/lib/block-moving";
 import { BlockSelection, BlockSelectionStart } from "~/lib/block-selection";
+import { Zoom, ZOOM_EVENT, setZoom, type ZoomDetail } from "~/lib/zoom-editing";
 import { Wikilink, OPEN_LINK_EVENT } from "~/lib/wikilink-editing";
 import { pageTitles } from "~/lib/page-titles";
 import { usePresenceWhileFocused } from "~/lib/connection-budget";
@@ -205,6 +206,8 @@ export default function Editor({
   onResolveAtCursor,
   onDeleteAtCursor,
   onOpenLink,
+  zoom = null,
+  onZoom,
 }: {
   yjs: YjsEditorState;
   hidden?: boolean;
@@ -218,6 +221,10 @@ export default function Editor({
   onDeleteAtCursor?: () => void;
   /** Open a linked page: navigate, or (side) open it in the side panel. Defaults to a full page load. */
   onOpenLink?: (href: string, link: { pageId: string; side: boolean }) => void;
+  /** The block shown zoomed in (its block ID), or null for the whole page. */
+  zoom?: string | null;
+  /** A bullet click or Cmd/Ctrl+. or , asks to zoom in or out; without this, those do nothing. */
+  onZoom?: (blockId: string | null) => void;
 }) {
   const { doc, awareness, user, docState } = yjs;
   const prevHighlightRef = useRef<{ from: number; to: number } | null>(null);
@@ -249,6 +256,7 @@ export default function Editor({
         BlockMoving.configure({ docState }),
         BlockSelection.configure({ docState }),
         BlockSelectionStart,
+        Zoom.configure({ suggesting: () => docState?.get("mode") === "suggest" }),
         Wikilink.configure({ titles: pageTitles(), docState }),
         CommentClickHandler.configure({ onCommentClick }),
         CommentHighlight,
@@ -275,6 +283,20 @@ export default function Editor({
     dom.addEventListener(OPEN_LINK_EVENT, open);
     return () => dom.removeEventListener(OPEN_LINK_EVENT, open);
   }, [editor, onOpenLink]);
+
+  // Zoom asks (bullet clicks, Cmd/Ctrl+. and ,) go to the page, which owns the address
+  useEffect(() => {
+    if (!editor || !onZoom) return;
+    const dom = editor.view.dom;
+    const zoomTo = (event: Event) => onZoom((event as CustomEvent<ZoomDetail>).detail.blockId);
+    dom.addEventListener(ZOOM_EVENT, zoomTo);
+    return () => dom.removeEventListener(ZOOM_EVENT, zoomTo);
+  }, [editor, onZoom]);
+
+  // Show the zoomed block (or the whole page)
+  useEffect(() => {
+    if (editor) editor.view.dispatch(setZoom(editor.state, zoom));
+  }, [editor, zoom]);
 
   // Refused as outdated: edits could no longer sync, so stop taking them
   useEffect(() => {

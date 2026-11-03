@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router";
 import { useYjsEditor } from "~/lib/useYjsEditor";
 import { DocumentProvider } from "~/lib/DocumentContext";
 import { journalId, journalTitle, weekdayOf } from "~/lib/note-ids";
 import JournalHeading from "~/components/JournalHeading";
 import ConnectedEditor from "~/components/ConnectedEditor";
 import DayBar from "~/components/DayBar";
+import { zoomHref } from "~/lib/zoom";
 
 /** How far ahead of the screen a day connects, so it is live before you reach it. */
 export const CONNECT_MARGIN = "1200px 0px";
@@ -50,11 +52,14 @@ function LiveDay({ date, exists }: { date: string; exists: boolean }) {
   const id = journalId(date);
   const yjs = useYjsEditor(id);
   const path = `/journal/${date}`;
+  // A bullet click opens the day zoomed into that block
+  const navigate = useNavigate();
+  const onZoom = useCallback((blockId: string | null) => navigate(zoomHref(path, blockId)), [navigate, path]);
   return (
     <DocumentProvider docId={id} createdAt={null} yjs={yjs}>
       <JournalHeading doc={yjs.doc} pageId={id} exists={exists} href={path} synced={yjs.synced} setsTitle={false} level={2} />
       <DayBar path={path} />
-      <ConnectedEditor />
+      <ConnectedEditor onZoom={onZoom} />
     </DocumentProvider>
   );
 }
