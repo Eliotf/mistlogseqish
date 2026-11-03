@@ -9,9 +9,13 @@ import { WIKILINK_MARK, isWikilinkAttrs } from "./wikilink";
  * Bump PARSER_VERSION whenever the output for the same input changes; the
  * index rebuilds when it does (docs/technical-architecture.md).
  */
-export const PARSER_VERSION = 1;
+export const PARSER_VERSION = 2;
 
-export type TaskState = "TODO" | "DOING" | "DONE";
+/** Task keywords (PRD F6, F42): TODO -> DOING -> DONE, and Logseq's LATER -> NOW -> DONE. */
+export type TaskState = "TODO" | "DOING" | "DONE" | "LATER" | "NOW";
+
+/** Logseq's priorities, written `[#A]`, `[#B]` or `[#C]` in a line. */
+export type TaskPriority = "A" | "B" | "C";
 
 export interface LineMark {
   type: string;
@@ -56,6 +60,10 @@ export interface ParsedTask {
   indent: number;
   /** The line's content after the task keyword. */
   text: string;
+  /** The first `[#A]`–`[#C]` in the line (outside inline code), if any. */
+  priority: TaskPriority | null;
+  /** The line's permanent block ID, so the Tasks view can open it (zoomed). */
+  blockId: string | null;
 }
 
 export interface ParsedNote {
@@ -66,7 +74,8 @@ export interface ParsedNote {
   text: string;
 }
 
-const TASK_RE = /^(TODO|DOING|DONE)(?= |$)/;
+const TASK_RE = /^(TODO|DOING|DONE|LATER|NOW)(?= |$)/;
+const PRIORITY_RE = /\[#([ABC])\]/;
 // A tag starts at the line start or after whitespace, and is letters,
 // digits, `_`, `-` or `/`. Tags made only of digits ("issue #42") are skipped.
 const TAG_RE = /(^|\s)#([\p{L}\p{N}_][\p{L}\p{N}_/-]*)/gu;
@@ -93,6 +102,17 @@ export function parseLine(text: string): LineShape {
     if (text[i] === " ") i++;
   }
   return { indent, bullet, task, bodyStart: i };
+}
+
+/** A line's priority and where its `[#X]` starts: the first `[#A]`, `[#B]` or `[#C]` outside inline code. */
+export function priorityAt(text: string): { priority: TaskPriority; at: number } | null {
+  const visible = text.replace(INLINE_CODE_RE, (code) => " ".repeat(code.length));
+  const m = PRIORITY_RE.exec(visible);
+  return m ? { priority: m[1] as TaskPriority, at: m.index } : null;
+}
+
+export function priorityOf(text: string): TaskPriority | null {
+  return priorityAt(text)?.priority ?? null;
 }
 
 /** Replace the given ranges with spaces so offsets stay the same. */
@@ -129,7 +149,7 @@ export function parseNote(lines: DocLine[]): ParsedNote {
   const seenLinks = new Set<string>();
   let inFence = false;
 
-  lines.forEach(({ text, marks }, line) => {
+  lines.forEach(({ text, marks, id }, line) => {
     // Links are explicit marks, so they count even inside code fences.
     // A link split into several runs (by other marks) is reported once per line.
     for (const mark of marks) {
@@ -149,7 +169,7 @@ export function parseNote(lines: DocLine[]): ParsedNote {
     if (inFence) return;
 
     if (shape.task) {
-      tasks.push({ line, state: shape.task, indent: shape.indent, text: text.slice(shape.bodyStart) });
+      tasks.push({ line, state: shape.task, indent: shape.indent, text: text.slice(shape.bodyStart), priority: priorityOf(text), blockId: id ?? null });
     }
     tags.push(...extractTags(text, marks, line));
   });

@@ -405,6 +405,21 @@ describe("WorkspaceIndex", () => {
       expect(upgraded.getPage("bbbb2222")?.title).toBe("Meeting Notes");
     });
 
+    it("upgrades a version 2 index: old task rows keep working, and gain the new fields when re-indexed", () => {
+      const old = versionOneDb();
+      new WorkspaceIndex(old); // to version 2 (and on to the current one)
+      // Rebuild the version 2 tasks table, as it was before schema 3
+      old.exec(`DROP TABLE tasks`);
+      old.exec(`CREATE TABLE tasks (page_id TEXT NOT NULL, line INTEGER NOT NULL, state TEXT NOT NULL, indent INTEGER NOT NULL, text TEXT NOT NULL, PRIMARY KEY (page_id, line))`);
+      old.exec(`INSERT INTO tasks (page_id, line, state, indent, text) VALUES ('aaaa1111', 0, 'TODO', 0, 'old task')`);
+      old.exec(`UPDATE meta SET value = '2' WHERE key = 'schema_version'`);
+      const upgraded = new WorkspaceIndex(old);
+      expect(upgraded.schemaVersion()).toBe(3);
+      expect(upgraded.tasks()).toEqual([expect.objectContaining({ text: "old task", priority: null, blockId: null, content: null })]);
+      upgraded.updatePage(page("aaaa1111", "Meeting notes!", [line("TODO [#A] new task")], 2000));
+      expect(upgraded.tasks()).toEqual([expect.objectContaining({ text: "[#A] new task", priority: "A", content: { text: "TODO [#A] new task", marks: [] } })]);
+    });
+
     it("migrates only once", () => {
       const old = versionOneDb();
       new WorkspaceIndex(old);
@@ -543,10 +558,35 @@ describe("WorkspaceIndex", () => {
       ]);
     });
 
-    it("includes indent, line and page title", () => {
+    it("includes the page, line, priority, block ID and the stored line", () => {
       expect(index.tasks(["DOING"])).toEqual([
-        { pageId: MIST, pageTitle: "Mistlog", line: 1, state: "DOING", indent: 1, text: "build index" },
+        {
+          pageId: MIST,
+          pageTitle: "Mistlog",
+          pageKind: "page",
+          updatedAt: 1000,
+          line: 1,
+          state: "DOING",
+          indent: 1,
+          text: "build index",
+          priority: null,
+          blockId: null,
+          content: { text: "\t- DOING build index", marks: [] },
+        },
       ]);
+    });
+
+    it("knows LATER and NOW, and lists higher priorities first", () => {
+      index.updatePage(page(ACCESS, "Access", [line("LATER [#C] someday"), { text: "NOW [#A] urgent", marks: [], id: "00000000-0000-4000-8000-000000000001" }, line("TODO [#B] soon")]));
+      expect(index.tasks(["TODO", "LATER", "NOW"]).map((t) => [t.state, t.priority, t.text])).toEqual([
+        ["NOW", "A", "[#A] urgent"],
+        ["TODO", "B", "[#B] soon"],
+        ["LATER", "C", "[#C] someday"],
+        ["TODO", null, "write review"],
+        ["TODO", null, "verify deploy gate"],
+        ["TODO", null, "agree interactions"],
+      ]);
+      expect(index.tasks(["NOW"])[0].blockId).toBe("00000000-0000-4000-8000-000000000001");
     });
 
     it("filters by state, and returns nothing for no states", () => {

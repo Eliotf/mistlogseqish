@@ -48,6 +48,13 @@ describe("parseLine", () => {
     expect(parseLine(text)).toMatchObject({ task, bodyStart });
   });
 
+  it.each([
+    ["LATER read", "LATER", 6],
+    ["\t- NOW ship", "NOW", 7],
+  ] as const)("finds Logseq's %j", (text, task, bodyStart) => {
+    expect(parseLine(text)).toMatchObject({ task, bodyStart });
+  });
+
   it("accepts a task keyword with nothing after it", () => {
     expect(parseLine("- TODO")).toMatchObject({ task: "TODO", bodyStart: 6 });
   });
@@ -116,15 +123,28 @@ describe("parseNote: tasks", () => {
       line("DONE ship it"),
     ]);
     expect(note.tasks).toEqual([
-      { line: 0, state: "TODO", indent: 0, text: "buy milk" },
-      { line: 1, state: "DOING", indent: 1, text: "write tests" },
-      { line: 3, state: "DONE", indent: 0, text: "ship it" },
+      { line: 0, state: "TODO", indent: 0, text: "buy milk", priority: null, blockId: null },
+      { line: 1, state: "DOING", indent: 1, text: "write tests", priority: null, blockId: null },
+      { line: 3, state: "DONE", indent: 0, text: "ship it", priority: null, blockId: null },
+    ]);
+  });
+
+  it("knows Logseq's LATER and NOW, priorities outside code, and each task's block ID", () => {
+    const note = parseNote([
+      { text: "- LATER [#B] read the docs", marks: [], id: "00000000-0000-4000-8000-000000000001" },
+      line("\t- NOW `[#A]` is code, [#C] is not"),
+      line("- TODO no priority, [#D] is not one"),
+    ]);
+    expect(note.tasks).toEqual([
+      { line: 0, state: "LATER", indent: 0, text: "[#B] read the docs", priority: "B", blockId: "00000000-0000-4000-8000-000000000001" },
+      { line: 1, state: "NOW", indent: 1, text: "`[#A]` is code, [#C] is not", priority: "C", blockId: null },
+      { line: 2, state: "TODO", indent: 0, text: "no priority, [#D] is not one", priority: null, blockId: null },
     ]);
   });
 
   it("ignores task keywords inside a code fence", () => {
     const note = parseNote([line("- ```"), line("TODO not a task"), line("- ```"), line("TODO real")]);
-    expect(note.tasks).toEqual([{ line: 3, state: "TODO", indent: 0, text: "real" }]);
+    expect(note.tasks).toEqual([{ line: 3, state: "TODO", indent: 0, text: "real", priority: null, blockId: null }]);
   });
 
   it("treats an unclosed fence as running to the end", () => {

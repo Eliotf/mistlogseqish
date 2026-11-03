@@ -15,6 +15,7 @@ import { BlockParagraph } from "~/lib/block-id-editing";
 import { Folding } from "~/lib/folding-editing";
 import { BlockMoving } from "~/lib/block-moving";
 import { BlockSelection, BlockSelectionStart } from "~/lib/block-selection";
+import { TaskEditing } from "~/lib/task-editing";
 import { Zoom, ZOOM_EVENT, setZoom, type ZoomDetail } from "~/lib/zoom-editing";
 import { Wikilink, OPEN_LINK_EVENT } from "~/lib/wikilink-editing";
 import { pageTitles } from "~/lib/page-titles";
@@ -252,6 +253,7 @@ export default function Editor({
         MarkdownDecorations,
         SuggestMode.configure({ docState }),
         BulletEditing.configure({ docState }),
+        TaskEditing.configure({ docState }),
         Folding.configure({ docState }),
         BlockMoving.configure({ docState }),
         BlockSelection.configure({ docState }),

@@ -1,5 +1,5 @@
 import { titleKey } from "../app/lib/page-title";
-import { parseNote, PARSER_VERSION, type DocLine, type TaskState } from "../app/lib/note-parser";
+import { parseNote, PARSER_VERSION, type DocLine, type TaskPriority, type TaskState } from "../app/lib/note-parser";
 import { isJournalId, isJournalTitle, isPageId, journalTitle, parseJournalDate } from "../app/lib/note-ids";
 import { slugify } from "../app/lib/slug";
 
@@ -26,7 +26,7 @@ export interface SqlDb {
   transaction<T>(fn: () => T): T;
 }
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 /** Durable Object SQLite's limit on bound parameters in one query. */
 const MAX_BOUND_PARAMS = 100;
@@ -84,6 +84,13 @@ const MIGRATIONS: Array<(db: SqlDb) => void> = [
     db.exec(`CREATE INDEX IF NOT EXISTS slugs_page ON slugs (page_id)`);
     const titled = db.exec(`SELECT page_id, title FROM pages WHERE kind = 'page' AND title != '' ORDER BY page_id`);
     for (const row of titled) assignSlug(db, row.page_id as string, row.title as string);
+  },
+  // 2 -> 3: the Tasks view (M2b.1f) opens a task zoomed into its line and shows it like a
+  // linked reference. Older rows get these when their page is next indexed.
+  (db) => {
+    db.exec(`ALTER TABLE tasks ADD COLUMN block_id TEXT`);
+    db.exec(`ALTER TABLE tasks ADD COLUMN priority TEXT`);
+    db.exec(`ALTER TABLE tasks ADD COLUMN content TEXT`);
   },
 ];
 
@@ -185,10 +192,17 @@ export interface SearchHit {
 export interface IndexedTask {
   pageId: string;
   pageTitle: string;
+  pageKind: "page" | "journal";
+  /** When the page was last indexed: how recent a done task is. */
+  updatedAt: number;
   line: number;
   state: TaskState;
   indent: number;
   text: string;
+  priority: TaskPriority | null;
+  blockId: string | null;
+  /** The whole line as stored, null for rows from before schema 3. */
+  content: DocLine | null;
 }
 
 function toPage(row: SqlRow): IndexedPage {
@@ -297,8 +311,8 @@ export class WorkspaceIndex {
       }
       for (const task of parsed.tasks) {
         this.db.exec(
-          `INSERT INTO tasks (page_id, line, state, indent, text) VALUES (?, ?, ?, ?, ?)`,
-          pageId, task.line, task.state, task.indent, task.text,
+          `INSERT INTO tasks (page_id, line, state, indent, text, block_id, priority, content) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          pageId, task.line, task.state, task.indent, task.text, task.blockId, task.priority, JSON.stringify(lines[task.line]),
         );
       }
       this.db.exec(`INSERT INTO pages_fts (page_id, title, body) VALUES (?, ?, ?)`, pageId, title, parsed.text);
@@ -438,24 +452,29 @@ export class WorkspaceIndex {
       .map((row) => ({ pageId: row.page_id as string, title: row.title as string, snippet: row.snippet as string }));
   }
 
-  /** Tasks in the given states, journals newest first, then pages by title. */
+  /** Tasks in the given states: by priority (A first, none last), then journals newest first, then pages by title. */
   tasks(states: TaskState[] = ["TODO", "DOING"]): IndexedTask[] {
     if (!states.length) return [];
     const placeholders = states.map(() => "?").join(", ");
     return this.db
       .exec(
-        `SELECT t.*, p.title FROM tasks t JOIN pages p ON p.page_id = t.page_id
+        `SELECT t.*, p.title, p.kind, p.updated_at FROM tasks t JOIN pages p ON p.page_id = t.page_id
          WHERE t.state IN (${placeholders})
-         ORDER BY p.kind = 'page', p.journal_date DESC, p.title_key, t.line`,
+         ORDER BY t.priority IS NULL, t.priority, p.kind = 'page', p.journal_date DESC, p.title_key, t.line`,
         ...states,
       )
       .map((row) => ({
         pageId: row.page_id as string,
         pageTitle: row.title as string,
+        pageKind: row.kind as "page" | "journal",
+        updatedAt: row.updated_at as number,
         line: row.line as number,
         state: row.state as TaskState,
         indent: row.indent as number,
         text: row.text as string,
+        priority: (row.priority as TaskPriority | null) ?? null,
+        blockId: (row.block_id as string | null) ?? null,
+        content: row.content ? (JSON.parse(row.content as string) as DocLine) : null,
       }));
   }
 

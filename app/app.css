@@ -61,6 +61,50 @@ body {
   color: transparent;
 }
 
+/* Task keywords and priorities (app/lib/task-editing.ts): styled text, as agreed in the prototype */
+.tiptap .task-kw {
+  font-family: var(--font-mono);
+  font-size: 0.8em;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.tiptap .task-todo,
+.tiptap .task-later {
+  color: var(--color-coral);
+}
+
+.tiptap .task-later {
+  opacity: 0.75;
+}
+
+.tiptap .task-doing,
+.tiptap .task-now {
+  background: var(--color-canary);
+  color: #1a1a1a;
+  padding: 0 0.2em;
+}
+
+.tiptap .task-done {
+  color: var(--color-muted);
+}
+
+.tiptap .task-done-text {
+  color: var(--color-muted);
+  text-decoration: line-through;
+}
+
+.tiptap .task-priority {
+  font-family: var(--font-mono);
+  font-size: 0.8em;
+  font-weight: 600;
+  color: var(--color-muted);
+}
+
+.tiptap .task-priority-a {
+  color: var(--color-coral);
+}
+
 .tiptap .md-bullet::before {
   content: "\2022";
   position: absolute;

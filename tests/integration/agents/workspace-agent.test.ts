@@ -87,13 +87,31 @@ describe("WorkspaceAgent", () => {
       ]);
       expect((await agent.searchTitles("oct")).map((p) => p.pageId)).toEqual(["journal-2026-10-22"]);
       expect((await agent.search("read")).map((h) => h.pageId)).toEqual(["journal-2026-10-22"]);
-      expect((await agent.tasks()).map((t) => t.text)).toEqual(["read Mistlog #reading"]);
+      // Serialisable task items, the line reduced like a linked reference
+      expect(await agent.tasks()).toEqual([
+        {
+          pageId: "journal-2026-10-22",
+          pageTitle: "Oct 22nd, 2026",
+          pageKind: "journal",
+          updatedAt: expect.any(Number),
+          state: "TODO",
+          priority: null,
+          blockId: null,
+          line: { line: 0, text: "TODO read Mistlog #reading", links: [{ from: 10, to: 17, pageId: "abcd1234" }] },
+        },
+      ]);
       expect((await agent.journals()).map((p) => p.journalDate)).toEqual(["2026-10-22"]);
       expect(await agent.staleCount()).toBe(0);
       expect(await agent.registeredPages()).toEqual(["abcd1234", "journal-2026-10-22"]);
       await agent.clearDerived();
       expect(await agent.getPage("journal-2026-10-22")).toBeNull();
       expect(await agent.registeredPages()).toEqual(["abcd1234", "journal-2026-10-22"]);
+    });
+
+    it("shows a task row from before schema 3 (no stored line) as its keyword and text", async () => {
+      await agent.updatePage({ pageId: "abcd1234", title: "Mistlog", updatedAt: 1, lines: [{ text: "TODO new", marks: [] }] });
+      storage.sql.exec(`UPDATE tasks SET content = NULL, text = 'old text'`).toArray();
+      expect((await agent.tasks()).map((t) => t.line)).toEqual([{ line: 0, text: "TODO old text", links: [] }]);
     });
 
     it("keeps one index across calls", async () => {

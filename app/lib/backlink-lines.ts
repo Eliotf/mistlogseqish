@@ -1,4 +1,5 @@
-import { parseLine } from "./note-parser";
+import { parseLine, type DocLine } from "./note-parser";
+import { WIKILINK_MARK, isWikilinkAttrs } from "./wikilink";
 
 /**
  * Linked references (PRD F4): what the backlinks route returns, and how one
@@ -26,6 +27,19 @@ export interface BacklinkGroup {
   kind: "page" | "journal";
   slug: string | null;
   lines: BacklinkLine[];
+}
+
+/**
+ * A stored line reduced to its text and link positions: what crosses an RPC
+ * boundary (results must be serialisable, and other mark attributes are not
+ * needed). Used for linked references and the Tasks view.
+ */
+export function toBacklinkLine(line: number, content: DocLine): BacklinkLine {
+  return {
+    line,
+    text: content.text,
+    links: content.marks.flatMap((m) => (m.type === WIKILINK_MARK && isWikilinkAttrs(m.attrs) ? [{ from: m.from, to: m.to, pageId: m.attrs.pageId }] : [])),
+  };
 }
 
 export type Segment = { kind: "text"; text: string } | { kind: "bracket"; text: string } | { kind: "link"; text: string; pageId: string };

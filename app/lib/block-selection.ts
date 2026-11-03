@@ -8,6 +8,8 @@ import { applyEdits, readLines } from "./bullet-editing";
 import { COLLAPSED_ATTR, hiddenLines } from "./folding";
 import { blockAt, extendRange, moveRange, type LineRange } from "./block-range";
 import { zoomOf } from "./zoom-editing";
+import { cycleLines } from "./task-editing";
+import { indentOf } from "./bullets";
 
 /**
  * Selecting whole blocks (PRD F39, rules in block-range.ts). Esc selects
@@ -145,6 +147,17 @@ export function handleSelectionKey(view: EditorView, event: KeyboardEvent, canEd
   if (MODIFIER_KEYS.has(key)) return false;
   // Copy and cut go through the browser's events (copyOrCut)
   if (mod && (key === "c" || key === "x")) return false;
+  // Cycle tasks on the selected blocks' top lines (not their children), as in the prototype
+  if (mod && key === "Enter") {
+    if (canEdit()) {
+      const texts = readLines(state.doc).texts;
+      const level = indentOf(texts[range.from]);
+      const lines: number[] = [];
+      for (let i = range.from; i < range.to; i++) if (indentOf(texts[i]) === level) lines.push(i);
+      dispatch(cycleLines(state, lines));
+    }
+    return true;
+  }
   if (mod) {
     dispatch(leave(state, range.from));
     return false;

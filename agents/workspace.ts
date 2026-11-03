@@ -1,5 +1,5 @@
-import { WIKILINK_MARK, isWikilinkAttrs } from "../app/lib/wikilink";
-import type { BacklinkSource } from "../app/lib/backlink-lines";
+import { toBacklinkLine, type BacklinkSource } from "../app/lib/backlink-lines";
+import type { TaskItem } from "../app/lib/tasks";
 import { Agent } from "agents";
 import type { Connection, ConnectionContext } from "agents";
 import type { TaskState } from "../app/lib/note-parser";
@@ -87,13 +87,7 @@ class WorkspaceAgent extends Agent {
       sourceId: b.sourceId,
       sourceTitle: b.sourceTitle,
       sourceKind: b.sourceKind,
-      lines: b.lines.map(({ line, content }) => ({
-        line,
-        text: content.text,
-        links: content.marks.flatMap((m) =>
-          m.type === WIKILINK_MARK && isWikilinkAttrs(m.attrs) ? [{ from: m.from, to: m.to, pageId: m.attrs.pageId }] : [],
-        ),
-      })),
+      lines: b.lines.map(({ line, content }) => toBacklinkLine(line, content)),
     }));
   }
 
@@ -105,8 +99,19 @@ class WorkspaceAgent extends Agent {
     return this.index.search(query, limit);
   }
 
-  async tasks(states?: TaskState[]) {
-    return this.index.tasks(states);
+  /** Tasks as the Tasks view shows them; lines reduced like linked references, so the result is serialisable. */
+  async tasks(states?: TaskState[]): Promise<TaskItem[]> {
+    return this.index.tasks(states).map((t) => ({
+      pageId: t.pageId,
+      pageTitle: t.pageTitle,
+      pageKind: t.pageKind,
+      updatedAt: t.updatedAt,
+      state: t.state,
+      priority: t.priority,
+      blockId: t.blockId,
+      // Rows from before schema 3 have no stored line: rebuild a plain one from the keyword and text
+      line: t.content ? toBacklinkLine(t.line, t.content) : { line: t.line, text: `${t.state} ${t.text}`, links: [] },
+    }));
   }
 
   async journals(limit?: number, before?: string) {
