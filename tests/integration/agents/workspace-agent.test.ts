@@ -12,6 +12,8 @@ let storage: ReturnType<typeof memoryStorage>["storage"];
 let schedules: Array<[number, string]>;
 /** What getAgentByName returns for a DocumentAgent. */
 let docStub: (pageId: string) => { refreshIndex: () => Promise<void> };
+/** Scheduled steps not yet run (the SDK removes a task when it runs it). */
+let pendingSteps: number;
 
 vi.mock("agents", () => ({
   getAgentByName: async (_ns: unknown, name: string) => docStub(name),
@@ -22,7 +24,11 @@ vi.mock("agents", () => ({
     }
     schedule(when: number, callback: string) {
       schedules.push([when, callback]);
+      pendingSteps++;
       return Promise.resolve({ id: String(schedules.length) });
+    }
+    getSchedules() {
+      return Array.from({ length: pendingSteps }, () => ({ callback: "rebuildStep" }));
     }
   },
 }));
@@ -37,6 +43,7 @@ describe("WorkspaceAgent", () => {
   beforeEach(async () => {
     storage = memoryStorage().storage;
     schedules = [];
+    pendingSteps = 0;
     docStub = () => ({ refreshIndex: async () => {} });
     const mod = await import("../../../agents/workspace");
     WorkspaceAgent = mod.default;
@@ -51,6 +58,12 @@ describe("WorkspaceAgent", () => {
     const update = (pageId: string, updatedAt = 1) => ({ pageId, title: pageId, updatedAt, lines: [{ text: "x", marks: [] }] });
 
     /** Registered pages that need re-indexing, in a fresh agent (as after a deploy wakes it). */
+    /** Run the scheduled step, as the SDK does: the task leaves the schedule list, then its callback runs. */
+    async function runStep(a: InstanceType<typeof WorkspaceAgent>) {
+      pendingSteps = Math.max(0, pendingSteps - 1);
+      await a.rebuildStep();
+    }
+
     async function staleAgent(ids = PAGES) {
       for (const id of ids) await agent.registerPage(id, 1);
       agent = new WorkspaceAgent({} as never, {} as never);
@@ -67,15 +80,15 @@ describe("WorkspaceAgent", () => {
       await a.getPage(ids[0]); // later calls don't start another
       expect(schedules).toHaveLength(1);
 
-      await a.rebuildStep(); // the first batch, then the next step is scheduled
+      await runStep(a); // the first batch, then the next step is scheduled
       expect(await a.indexStatus()).toEqual({ pending: 2 });
       expect(schedules).toHaveLength(2);
-      await a.rebuildStep(); // the rest
+      await runStep(a); // the rest
       expect(await a.indexStatus()).toEqual({ pending: 0 });
       expect(schedules).toHaveLength(3);
-      await a.rebuildStep(); // nothing left: the pass ends without scheduling again
+      await runStep(a); // nothing left: the pass ends without scheduling again
       expect(schedules).toHaveLength(3);
-      await a.rebuildStep(); // and a stray step does nothing
+      await runStep(a); // and a stray step does nothing
       expect(schedules).toHaveLength(3);
     });
 
@@ -84,7 +97,7 @@ describe("WorkspaceAgent", () => {
       const fresh = new WorkspaceAgent({} as never, {} as never);
       await fresh.indexStatus();
       expect(schedules).toEqual([]);
-      await fresh.rebuildStep(); // a leftover step with no rebuild running
+      await runStep(fresh); // a leftover step with no rebuild running
       expect(schedules).toEqual([]);
     });
 
@@ -98,8 +111,8 @@ describe("WorkspaceAgent", () => {
         },
       });
       await a.indexStatus();
-      await a.rebuildStep();
-      await a.rebuildStep();
+      await runStep(a);
+      await runStep(a);
       expect(await a.indexStatus()).toEqual({ pending: 1 });
       expect(error).toHaveBeenCalledWith("Rebuild could not re-index aaaa0002", expect.any(Error));
       error.mockRestore();
@@ -108,6 +121,23 @@ describe("WorkspaceAgent", () => {
       schedules = [];
       await next.indexStatus();
       expect(schedules).toEqual([[REBUILD_PAUSE_SECONDS, "rebuildStep"]]);
+    });
+
+    it("resumes a pass whose next step was lost, and a running step never starts a second chain", async () => {
+      const ids = Array.from({ length: REBUILD_BATCH + 2 }, (_, k) => `cccc${String(k).padStart(4, "0")}`);
+      const a = await staleAgent(ids);
+      await a.indexStatus();
+      await runStep(a); // first batch done, next step scheduled
+      expect(schedules).toHaveLength(2);
+      pendingSteps = 0; // ...and lost (say a step failed before scheduling it)
+      const woken = new WorkspaceAgent({} as never, {} as never);
+      await woken.indexStatus();
+      expect(schedules).toHaveLength(3);
+      // A fresh instance woken by its own scheduled step schedules only the step after it
+      const stepper = new WorkspaceAgent({} as never, {} as never);
+      await runStep(stepper);
+      expect(schedules).toHaveLength(4);
+      expect(await stepper.indexStatus()).toEqual({ pending: 0 });
     });
 
     it("does not start a second pass while one is running (it continues through its own schedule)", async () => {

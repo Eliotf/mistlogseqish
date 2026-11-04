@@ -54,15 +54,20 @@ class WorkspaceAgent extends Agent<Env> {
    * the object still sleeps). Nothing is cleared first, so search, backlinks
    * and titles keep working; each page's rows are replaced as it reports.
    * Checked once each time the object wakes; a page that fails is retried by
-   * the next pass. Never throws.
+   * the next pass, and a pass whose next step was lost (a step that failed
+   * before scheduling it) is resumed. Never throws.
    */
   private startRebuildIfNeeded(index: WorkspaceIndex): void {
     try {
-      // A pass already running continues through its own schedule
-      if (index.rebuildCursor() !== null || index.refreshCount() === 0) return;
-      index.setRebuildCursor("");
+      const cursor = index.rebuildCursor();
+      if (cursor !== null) {
+        // A pass is running: it continues through its own schedule, unless that was lost
+        if (this.getSchedules().some((task) => task.callback === "rebuildStep")) return;
+      } else {
+        if (index.refreshCount() === 0) return;
+        index.setRebuildCursor("");
+      }
       this.schedule(REBUILD_PAUSE_SECONDS, "rebuildStep").catch((err: unknown) => {
-        index.setRebuildCursor(null);
         console.error("Could not schedule the index rebuild", err);
       });
     } catch (err) {
@@ -72,6 +77,8 @@ class WorkspaceAgent extends Agent<Env> {
 
   /** One rebuild step: re-index the next batch of pages, then schedule the next step. */
   async rebuildStep(): Promise<void> {
+    // A running step is the pass itself: it must not check for (and start) another
+    this.rebuildChecked = true;
     const index = this.index;
     const cursor = index.rebuildCursor();
     if (cursor === null) return;
