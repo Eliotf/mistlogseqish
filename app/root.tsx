@@ -10,6 +10,7 @@ import {
 
 import type { Route } from "./+types/root";
 import Fathom from "~/components/Fathom";
+import PhoneToolbar from "~/components/PhoneToolbar";
 import SidePanel from "~/components/SidePanel";
 import { SidePanelProvider, useSidePanel, useToggleShortcut } from "~/lib/side-panel";
 import "./app.css";
@@ -67,6 +68,7 @@ function Shell() {
         <Outlet />
       </div>
       <SidePanel />
+      <PhoneToolbar />
     </div>
   );
 }

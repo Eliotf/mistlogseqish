@@ -61,7 +61,7 @@ export default function ConnectionStatus() {
       <span
         className={`h-2 w-2 rounded-full ${display.dotClass} relative top-[-0.5px]`}
       />
-      <span className="text-sm uppercase tracking-wider text-muted">
+      <span className="sr-only text-sm uppercase tracking-wider text-muted sm:not-sr-only">
         {display.text}
       </span>
     </span>

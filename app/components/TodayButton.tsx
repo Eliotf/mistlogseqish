@@ -11,7 +11,7 @@ export default function TodayButton({ now = () => new Date() }: { now?: () => Da
     <button
       type="button"
       onClick={() => navigate(`/journal/${localDate(now())}`)}
-      className="flex h-full cursor-pointer items-center px-3 text-sm uppercase tracking-wider transition-colors hover:bg-border"
+      className="flex h-full cursor-pointer items-center px-2 text-xs uppercase tracking-wider sm:px-3 sm:text-sm transition-colors hover:bg-border"
     >
       Today
     </button>

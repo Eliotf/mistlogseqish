@@ -6,7 +6,8 @@ import ShareButton from "~/components/ShareButton";
 /**
  * Compact Mist controls for one day in the journal feed: edit or suggest,
  * connection, share, and a link to the day's own page, where comments,
- * threads and accepting suggestions live.
+ * threads and accepting suggestions live. Hidden on phones (PRD F17): the
+ * date heading opens the day.
  */
 export default function DayBar({ path }: { path: string }) {
   const { mode, toggleMode } = useDocument();
@@ -17,7 +18,7 @@ export default function DayBar({ path }: { path: string }) {
     `px-2 py-1 transition-colors ${active ? "bg-ink text-paper" : "text-muted hover:text-ink"}`;
 
   return (
-    <div className="mx-6 mt-2 flex w-max max-w-[calc(100%-3rem)] flex-wrap items-stretch border border-border text-xs">
+    <div className="mx-6 mt-2 hidden w-max max-w-[calc(100%-3rem)] flex-wrap items-stretch border border-border text-xs sm:flex">
       <div role="group" aria-label="Editing mode" className="flex">
         <button type="button" aria-pressed={mode === "edit"} onClick={pick("edit")} className={segment(mode === "edit")}>
           Edit

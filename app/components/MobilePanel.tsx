@@ -17,7 +17,8 @@ const tabs: { id: Tab; label: string }[] = [
 
 export default function MobilePanel({ className }: { className?: string }) {
   const { activeThreadId } = useDocument();
-  const [activeTab, setActiveTab] = useState<Tab | null>("editing");
+  // Starts collapsed (just the tabs), so writing gets the whole screen (PRD F17)
+  const [activeTab, setActiveTab] = useState<Tab | null>(null);
   const prevThreadIdRef = useRef(activeThreadId);
 
   // Switch to comments tab when a thread is activated (e.g. clicking in editor)

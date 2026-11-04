@@ -16,6 +16,7 @@ import { Folding } from "~/lib/folding-editing";
 import { BlockMoving } from "~/lib/block-moving";
 import { BlockSelection, BlockSelectionStart } from "~/lib/block-selection";
 import { TaskEditing } from "~/lib/task-editing";
+import { activeEditor } from "~/lib/active-editor";
 import { Zoom, ZOOM_EVENT, setZoom, type ZoomDetail } from "~/lib/zoom-editing";
 import { Wikilink, OPEN_LINK_EVENT } from "~/lib/wikilink-editing";
 import { pageTitles } from "~/lib/page-titles";
@@ -299,6 +300,20 @@ export default function Editor({
   useEffect(() => {
     if (editor) editor.view.dispatch(setZoom(editor.state, zoom));
   }, [editor, zoom]);
+
+  // The editor in use, for controls outside it (the phone keyboard toolbar)
+  useEffect(() => {
+    if (!editor) return;
+    const focus = () => activeEditor.set({ editor, suggesting: () => docState?.get("mode") === "suggest" });
+    const blur = () => activeEditor.clear(editor);
+    editor.on("focus", focus);
+    editor.on("blur", blur);
+    return () => {
+      editor.off("focus", focus);
+      editor.off("blur", blur);
+      activeEditor.clear(editor);
+    };
+  }, [editor, docState]);
 
   // Refused as outdated: edits could no longer sync, so stop taking them
   useEffect(() => {

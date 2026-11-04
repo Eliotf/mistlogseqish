@@ -91,12 +91,13 @@ function DocumentLayout({ id, exists, path, focusTitle }: Omit<ScreenProps, "cre
   return (
     <div className="flex h-screen flex-col">
       <AppHeader>
-        <div className="flex grow shrink-0 items-center px-4">
+        <div className="hidden grow shrink-0 items-center px-4 sm:flex">
           <span className="font-mono text-sm text-muted" title="This page's address">
             {decodeURIComponent(path)}
           </span>
         </div>
-        <div className="flex shrink-0 items-center border-l border-border px-3">
+        <div className="grow sm:hidden" />
+        <div className="flex shrink-0 items-center border-l border-border px-2 sm:px-3">
           <ConnectionStatus />
         </div>
         <div className="shrink-0 border-l border-border">

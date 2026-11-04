@@ -63,7 +63,7 @@ It starts from [Mist](https://github.com/inanimate-tech/mist) (Cloudflare Worker
 | F14 | Offline editing | ⬜ | M3 | Yjs IndexedDB persistence (new dependency, needs approval) |
 | F15 | Export to Logseq markdown | 🟡 | M3 | `pages/<slug>.md` and `journals/YYYY_MM_DD.md`, links written as `[[Current Title]]` |
 | F16 | Comments and suggest mode (CriticMarkup) | 🟢 | — | Inherited from Mist and kept, along with live collaboration (F30). How they fit the workspace index, export and sharing is to be designed later (see open questions) |
-| F17 | Responsive layout for phones | 🟡 | M2b.2 | Left panel opens from a hamburger button. While typing, a keyboard toolbar offers indent, outdent, task, link and date. Dragging a bullet sideways could be added later as a shortcut |
+| F17 | Responsive layout for phones | 🟡 | M2b.2 | Done 2026-11-04: while typing on a touch screen, a keyboard toolbar (outdent, indent, task, link, move up and down, fold, done) sits above the on-screen keyboard; compact header; no per-day Mist bar in the feed; Mist's panel starts collapsed; fold arrows always visible on touch. To come: the left panel from a hamburger button (with the sidebar), and a date button (with fuzzy dates, F20). Dragging a bullet sideways could be added later as a shortcut |
 | F18 | Cmd/Ctrl+click a link opens the page in the right panel | 🟢 | M2 | Like Roam's side-by-side pages (done 2026-10-29, chunk 2.5d). Cmd/Ctrl+click or Alt+Shift+Enter opens a page there; pages stack newest first (at most 10), each a live editor with a close button; `t r` shows or hides the panel; remembered per browser. On a page it takes the comments column's place (its Comments button hides it). A full-screen sheet on phones |
 | F20 | Fuzzy dates | ⬜ | M2b.3 | See 6.2 |
 | F21 | All pages list | ⬜ | M2b.2 | See 6.3. With delete |
@@ -346,3 +346,4 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced with the Ag
 - 2026-11-03: Built zoom (F40): bullet click or Cmd/Ctrl+. zooms in at `?block=`, breadcrumb and Cmd/Ctrl+, zoom out; redirects keep the zoom.
 - 2026-11-03: Built task states in the editor (F42, part of F6): `LATER`/`NOW`, priorities `[#A]`–`[#C]`, Cmd/Ctrl+Enter cycling (also on selected blocks); parser version 2, index schema 3 (tasks keep block ID, priority and the stored line).
 - 2026-11-03: Built the Tasks view (F6): `/tasks`, linked from the header. Fixed a server crash before it shipped (reading `navigator.platform` at module load).
+- 2026-11-04: Built the phone layout's first part (F17): keyboard toolbar, compact header, touch-friendly folding. Analysed the owner's Logseq graph (read-only): import after M2b.4.

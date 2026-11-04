@@ -35,7 +35,7 @@ export default function NewPageButton({ create = createPage }: { create?: () => 
       onClick={() => void onClick()}
       disabled={busy}
       title={failed ? "Couldn't create a page. Check your connection and try again." : undefined}
-      className="flex h-full cursor-pointer items-center px-3 text-sm uppercase tracking-wider transition-colors hover:bg-border disabled:cursor-wait disabled:opacity-60"
+      className="flex h-full cursor-pointer items-center px-2 text-xs uppercase tracking-wider sm:px-3 sm:text-sm transition-colors hover:bg-border disabled:cursor-wait disabled:opacity-60"
     >
       {failed ? "Try again" : "New page"}
     </button>

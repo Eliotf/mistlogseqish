@@ -11,7 +11,7 @@ export default function AppHeader({ children }: { children?: ReactNode }) {
     <header className="flex items-stretch overflow-x-auto scrollbar-none border-b border-border">
       <Link
         to="/"
-        className="flex items-center bg-ink px-4 py-2 font-medium text-paper transition-colors hover:bg-chartreuse hover:text-[#1a1a1a]"
+        className="flex shrink-0 items-center bg-ink px-3 py-2 text-sm font-medium text-paper sm:px-4 sm:text-base transition-colors hover:bg-chartreuse hover:text-[#1a1a1a]"
       >
         {APP_DISPLAY_NAME}
       </Link>
@@ -20,7 +20,7 @@ export default function AppHeader({ children }: { children?: ReactNode }) {
       </div>
       <Link
         to="/tasks"
-        className="flex shrink-0 items-center border-r border-border px-3 text-sm uppercase tracking-wider transition-colors hover:bg-border"
+        className="flex shrink-0 items-center border-r border-border px-2 text-xs uppercase tracking-wider transition-colors hover:bg-border sm:px-3 sm:text-sm"
       >
         Tasks
       </Link>
@@ -28,7 +28,8 @@ export default function AppHeader({ children }: { children?: ReactNode }) {
         <NewPageButton />
       </div>
       {children ?? <div className="grow" />}
-      <div className="flex shrink-0 items-center border-l border-border">
+      {/* On a phone, a page's own controls (connection, Share) need the room */}
+      <div className={`shrink-0 items-center border-l border-border ${children ? "hidden sm:flex" : "flex"}`}>
         <ThemeSelector />
       </div>
     </header>

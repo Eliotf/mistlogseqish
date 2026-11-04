@@ -23,7 +23,11 @@ describe("MobilePanel", () => {
       { context: { mode: "suggest" } },
     );
 
-    // Editing tab starts active, should show ModeToggle content
+    // Starts collapsed, so writing gets the whole screen (PRD F17)
+    expect(queryByText("Suggest changes")).toBeFalsy();
+
+    // Click Editing tab: ModeToggle content
+    fireEvent.click(getByText("Editing"));
     expect(queryByText("Suggest changes")).toBeTruthy();
 
     // Click Comments tab
@@ -40,8 +44,8 @@ describe("MobilePanel", () => {
       createElement(MobilePanel, { className: "lg:hidden" }),
     );
 
-    // Editing tab is active by default
     // ModeToggle shows "Edit mode" when mode is "edit"
+    fireEvent.click(getByText("Editing"));
     expect(getByText("Edit mode")).toBeTruthy();
     expect(getByLabelText("Toggle suggest mode")).toBeTruthy();
   });

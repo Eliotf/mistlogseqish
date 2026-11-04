@@ -36,3 +36,22 @@ describe("Editor when this tab's code is outdated", () => {
     await waitFor(() => expect(editor!.isEditable).toBe(editable));
   });
 });
+
+describe("Editor and the active editor (phone toolbar)", () => {
+  afterEach(cleanup);
+
+  it("registers itself while it has focus, and clears itself on blur and when it goes away", async () => {
+    const { activeEditor } = await import("~/lib/active-editor");
+    let editor: TiptapEditor | null = null;
+    const view = render(createElement(Editor, { yjs: yjs(false), onEditorReady: (e: TiptapEditor) => (editor = e) }));
+    await waitFor(() => expect(editor).not.toBeNull());
+    editor!.emit("focus", { editor: editor!, event: new FocusEvent("focus"), transaction: editor!.state.tr });
+    expect(activeEditor.get()?.editor).toBe(editor);
+    expect(activeEditor.get()?.suggesting()).toBe(false);
+    editor!.emit("blur", { editor: editor!, event: new FocusEvent("blur"), transaction: editor!.state.tr });
+    expect(activeEditor.get()).toBeNull();
+    editor!.emit("focus", { editor: editor!, event: new FocusEvent("focus"), transaction: editor!.state.tr });
+    view.unmount();
+    expect(activeEditor.get()).toBeNull();
+  });
+});

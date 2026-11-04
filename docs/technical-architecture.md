@@ -201,6 +201,12 @@ Tests in `tests/unit/lib/note-*.test.ts` include a round trip through Yjs using 
 - `/tasks` (`app/routes/tasks.tsx`, `TasksView`) is read-only: NOW, DOING, TODO, LATER (index order within each: priority, then journals newest first, then pages by title), and the 50 most recently changed done tasks. A task's text is one link to `zoomHref(pagePath(page), blockId)` (its links show current titles as text, via `ReferenceLine` with `plainLinks`); its page name links to the page. Cmd/Ctrl+click opens the page in the side panel. The list reloads when the tab is shown again, never by polling.
 - Until the index rebuild after a parser change (M1 chunk 1.6) is built, pages are re-indexed only when opened, so tasks on pages not opened since block IDs open the whole page rather than zoomed.
 
+## Phones
+
+- On touch screens (`(pointer: coarse)`), `PhoneToolbar` (mounted once in `root.tsx`) shows while an editor has focus: outdent, indent, task, link, up, down, fold, done (PRD F17). It sits above the on-screen keyboard by following `window.visualViewport`. Buttons act on pointer down with `preventDefault` and `tabIndex=-1`, so focus (and the keyboard) stays in the editor.
+- The focused editor is published by `Editor` to `app/lib/active-editor.ts` on focus and cleared on blur or unmount (only if it is still the active one). `app/lib/phone-actions.ts` runs each button as its keyboard command (`indentSelection`, `cycleLines`, `moveCaretBlock`, `setFolded`, typing `[[` through `handleTextInput`), so suggest mode, zoom and read-only rules are the same; outline actions are off in suggest mode.
+- Below the `sm` breakpoint: the header drops the page address and the theme picker on page screens, and the connection status shows only its dot; `DayBar` is hidden in the feed; `MobilePanel` starts collapsed. On `(hover: none)` fold arrows always show; on `(pointer: coarse)` the bullet's tap target is wider.
+
 ## Durable Object Usage
 
 Durable Objects are billed for every second they are awake; they hibernate after about 10 idle seconds (WebSocket hibernation, on by default in the Agents SDK). The free plan allows about 28 hours of awake time a day.

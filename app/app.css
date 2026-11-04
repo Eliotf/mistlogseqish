@@ -162,6 +162,13 @@ body {
   opacity: 1;
 }
 
+/* Touch screens (PRD F17): no hover, so fold arrows always show (faintly) */
+@media (hover: none) {
+  .tiptap .fold-toggle::before {
+    opacity: 0.6;
+  }
+}
+
 /* Moving blocks (block-moving.ts): a drag handle over each bullet, and where a dragged block will land */
 .tiptap .bullet-handle {
   position: relative;
@@ -178,6 +185,13 @@ body {
   /* Above the bullet's own text, so the mouse picks up the handle */
   z-index: 1;
   cursor: grab;
+}
+
+/* A finger needs a bigger target than a pointer */
+@media (pointer: coarse) {
+  .tiptap .bullet-handle::before {
+    width: 0.9em;
+  }
 }
 
 .tiptap p.drop-above {
