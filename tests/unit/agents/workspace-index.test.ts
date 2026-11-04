@@ -414,10 +414,22 @@ describe("WorkspaceIndex", () => {
       old.exec(`INSERT INTO tasks (page_id, line, state, indent, text) VALUES ('aaaa1111', 0, 'TODO', 0, 'old task')`);
       old.exec(`UPDATE meta SET value = '2' WHERE key = 'schema_version'`);
       const upgraded = new WorkspaceIndex(old);
-      expect(upgraded.schemaVersion()).toBe(3);
+      expect(upgraded.schemaVersion()).toBe(SCHEMA_VERSION);
       expect(upgraded.tasks()).toEqual([expect.objectContaining({ text: "old task", priority: null, blockId: null, content: null })]);
       upgraded.updatePage(page("aaaa1111", "Meeting notes!", [line("TODO [#A] new task")], 2000));
       expect(upgraded.tasks()).toEqual([expect.objectContaining({ text: "[#A] new task", priority: "A", content: { text: "TODO [#A] new task", marks: [] } })]);
+    });
+
+    it("upgrades a version 3 index with a table of deleted pages", () => {
+      const old = versionOneDb();
+      new WorkspaceIndex(old);
+      old.exec(`DROP TABLE deleted_pages`);
+      old.exec(`UPDATE meta SET value = '3' WHERE key = 'schema_version'`);
+      const upgraded = new WorkspaceIndex(old);
+      expect(upgraded.schemaVersion()).toBe(4);
+      expect(upgraded.isDeleted("aaaa1111")).toBe(false);
+      upgraded.deletePage("aaaa1111", 1);
+      expect(upgraded.isDeleted("aaaa1111")).toBe(true);
     });
 
     it("migrates only once", () => {
@@ -611,6 +623,56 @@ describe("WorkspaceIndex", () => {
     it("pages backwards with a limit and a before date", () => {
       expect(index.journals(1).map((p) => p.journalDate)).toEqual(["2026-10-22"]);
       expect(index.journals(5, "2026-10-22").map((p) => p.journalDate)).toEqual(["2026-10-21", "2026-10-19"]);
+    });
+  });
+
+  describe("All pages and deleting (F21)", () => {
+    beforeEach(() => {
+      index.updatePage(page(MIST, "Mistlog", [line("see access", [[4, 10, ACCESS]])], 3000));
+      index.updatePage(page(READING, "Reading", [line("access again", [[0, 6, ACCESS]]), line("and again", [[4, 9, ACCESS]])], 2000));
+      index.updatePage(page(ACCESS, "Access", [line("TODO self link", [[5, 9, ACCESS]]), line("#tag")], 1000));
+      index.updatePage(page(TODAY, "", [line("today")], 4000));
+    });
+
+    it("lists every page and journal, newest first, with how many other pages link to each", () => {
+      expect(index.allPages()).toEqual([
+        { pageId: TODAY, kind: "journal", title: "Oct 22nd, 2026", slug: null, hasContent: true, updatedAt: 4000, backlinks: 0 },
+        { pageId: MIST, kind: "page", title: "Mistlog", slug: "mistlog", hasContent: true, updatedAt: 3000, backlinks: 0 },
+        { pageId: READING, kind: "page", title: "Reading", slug: "reading", hasContent: true, updatedAt: 2000, backlinks: 0 },
+        // Linked twice from Reading and once from Mistlog; its own self-link doesn't count
+        { pageId: ACCESS, kind: "page", title: "Access", slug: "access", hasContent: true, updatedAt: 1000, backlinks: 2 },
+      ]);
+    });
+
+    it("deleting a page removes it and what it says, frees its title and addresses, and keeps links to it", () => {
+      expect(index.deletePage(ACCESS, 5000)).toBe("Access");
+      expect(index.getPage(ACCESS)).toBeNull();
+      expect(index.tasks(["TODO"])).toEqual([]);
+      expect(index.search("self")).toEqual([]);
+      expect(index.resolveSlug("access")).toBeNull();
+      expect(index.registeredPages()).not.toContain(ACCESS);
+      expect(index.pagesToRefresh()).not.toContain(ACCESS);
+      // Links from other pages to it stay: they show as unresolved
+      expect(index.backlinks(ACCESS).map((b) => b.sourceId).sort()).toEqual([MIST, READING]);
+      // Its title is free for another page
+      expect(index.claimTitle(READING, "Access", 6000)).toMatchObject({ ok: true });
+    });
+
+    it("a deleted page's links no longer count, and late updates or registrations never bring it back", () => {
+      index.deletePage(READING, 5000);
+      expect(index.allPages().find((p) => p.pageId === ACCESS)?.backlinks).toBe(1);
+      expect(index.updatePage(page(READING, "Reading", [line("late edit")], 9000)).applied).toBe(true);
+      index.registerPage(READING, 9000);
+      expect(index.getPage(READING)).toBeNull();
+      expect(index.registeredPages()).not.toContain(READING);
+      expect(index.isDeleted(READING)).toBe(true);
+      expect(index.isDeleted(MIST)).toBe(false);
+    });
+
+    it("deleting twice is harmless", () => {
+      index.deletePage(MIST, 5000);
+      expect(index.deletePage(MIST, 6000)).toBe("");
+      expect(Number(db.exec(`SELECT COUNT(*) AS n FROM deleted_pages`)[0].n)).toBe(1);
     });
   });
 

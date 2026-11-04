@@ -7,7 +7,7 @@ import { Awareness } from "y-protocols/awareness";
 import type { Editor as TiptapEditor } from "@tiptap/core";
 import Editor from "~/components/Editor";
 
-function yjs(outdated: boolean) {
+function yjs(outdated: boolean, deleted = false) {
   const doc = new Y.Doc();
   return {
     doc,
@@ -15,6 +15,7 @@ function yjs(outdated: boolean) {
     socket: null,
     synced: true,
     outdated,
+    deleted,
     user: { name: "Test", color: "#000", colorLight: "#ccc" },
     mode: "edit" as const,
     setMode: () => {},
@@ -34,6 +35,17 @@ describe("Editor when this tab's code is outdated", () => {
     render(createElement(Editor, { yjs: yjs(outdated), onEditorReady: (e: TiptapEditor) => (editor = e) }));
     await waitFor(() => expect(editor).not.toBeNull());
     await waitFor(() => expect(editor!.isEditable).toBe(editable));
+  });
+});
+
+describe("Editor on a deleted page", () => {
+  afterEach(cleanup);
+
+  it("stops taking edits", async () => {
+    let editor: TiptapEditor | null = null;
+    render(createElement(Editor, { yjs: yjs(false, true), onEditorReady: (e: TiptapEditor) => (editor = e) }));
+    await waitFor(() => expect(editor).not.toBeNull());
+    await waitFor(() => expect(editor!.isEditable).toBe(false));
   });
 });
 

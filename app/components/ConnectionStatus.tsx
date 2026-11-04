@@ -41,6 +41,15 @@ export default function ConnectionStatus() {
     };
   }, [socket]);
 
+  if (yjs.deleted) {
+    return (
+      <span className="inline-flex items-baseline gap-1.5" title="This page was deleted. Its links now show as missing.">
+        <span className="h-2 w-2 rounded-full bg-red-500 relative top-[-0.5px]" />
+        <span className="text-sm uppercase tracking-wider text-muted">Deleted</span>
+      </span>
+    );
+  }
+
   if (yjs.outdated) {
     // The server refused this tab's older code (see DOC_FORMAT_VERSION)
     return (

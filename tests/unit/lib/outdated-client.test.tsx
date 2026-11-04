@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import { CLOSE_OUTDATED_CLIENT, DOC_FORMAT_VERSION, clientUnderstandsFormat } from "~/shared/constants";
+import { CLOSE_OUTDATED_CLIENT, CLOSE_DELETED_PAGE, DOC_FORMAT_VERSION, clientUnderstandsFormat } from "~/shared/constants";
 
 /** Enough of PartySocket: events, close and reconnect. */
 class FakeSocket extends EventTarget {
@@ -50,12 +50,23 @@ describe("useYjsEditor and older code", () => {
     expect(socket.close).toHaveBeenCalled();
   });
 
+  it("stops reconnecting and reports a deleted page when the server says so", () => {
+    const { result } = renderHook(() => useYjsEditor("abcd1234"));
+    act(() => {
+      socket.dispatchEvent(Object.assign(new Event("close"), { code: CLOSE_DELETED_PAGE }));
+    });
+    expect(result.current.deleted).toBe(true);
+    expect(result.current.outdated).toBe(false);
+    expect(socket.close).toHaveBeenCalled();
+  });
+
   it("ignores ordinary disconnects, which PartySocket retries", () => {
     const { result } = renderHook(() => useYjsEditor("abcd1234"));
     act(() => {
       socket.dispatchEvent(Object.assign(new Event("close"), { code: 1006 }));
     });
     expect(result.current.outdated).toBe(false);
+    expect(result.current.deleted).toBe(false);
     expect(socket.close).not.toHaveBeenCalled();
   });
 });

@@ -193,6 +193,15 @@ class WorkspaceAgent extends Agent<Env> {
     this.index.clearDerived();
   }
 
+  /** Only DocumentAgent.deletePage calls this, holding the page's index lock. Returns the title it had. */
+  async deletePage(pageId: string, at: number) {
+    return this.index.deletePage(pageId, at);
+  }
+
+  async allPages() {
+    return this.index.allPages();
+  }
+
   async registeredPages(limit?: number, after?: string) {
     return this.index.registeredPages(limit, after);
   }

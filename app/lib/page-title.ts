@@ -22,6 +22,9 @@ export type CreateWithTitleResult =
   | { ok: false; code: "invalid"; reason: string }
   | { ok: false; code: "journal" | "exists" };
 
+/** DocumentAgent.deletePage, and POST /api/pages/delete (F21). */
+export type DeletePageResult = { ok: true; title: string } | { ok: false; code: "journal" | "missing" | "failed" };
+
 /** POST /api/pages: the page a link to this title points at (found or created), or why not. */
 export type LinkPageResult = { ok: true; pageId: string; title: string; slug: string | null; kind: "page" | "journal"; empty: boolean } | { ok: false; reason: string };
 

@@ -5,12 +5,12 @@ import * as syncProtocol from "y-protocols/sync";
 import * as awarenessProtocol from "y-protocols/awareness";
 import * as encoding from "lib0/encoding";
 import * as decoding from "lib0/decoding";
-import { MSG_SYNC, MSG_AWARENESS, DOC_FORMAT_VERSION, CLOSE_OUTDATED_CLIENT, clientUnderstandsFormat } from "../app/shared/constants";
+import { MSG_SYNC, MSG_AWARENESS, DOC_FORMAT_VERSION, CLOSE_OUTDATED_CLIENT, CLOSE_DELETED_PAGE, clientUnderstandsFormat } from "../app/shared/constants";
 import { linesFromYjs } from "../app/lib/note-lines";
 import { BLOCK_ID_ATTR, assignBlockIds, newBlockId } from "../app/lib/block-ids";
 import { PARSER_VERSION } from "../app/lib/note-parser";
 import { isJournalId, isPageId } from "../app/lib/note-ids";
-import { normalizeTitle, type DocumentRenameResult, type CreateWithTitleResult } from "../app/lib/page-title";
+import { normalizeTitle, type DocumentRenameResult, type CreateWithTitleResult, type DeletePageResult } from "../app/lib/page-title";
 import { WORKSPACE_NAME } from "./workspace";
 
 /**
@@ -70,6 +70,7 @@ interface IndexState {
 const NEW_INDEX_STATE: IndexState = { dirty: false, lastSent: 0, ack: null, retries: 0 };
 
 const OUTDATED_REASON = "Mistlog was updated. Reload to keep editing.";
+const DELETED_REASON = "This page was deleted.";
 const DOCUMENT_SOCKET_PATH = /^\/agents\/document-agent\/[^/]+$/;
 
 /** True if a transaction added or removed lines (not just edited the text in one). */
@@ -204,6 +205,11 @@ class DocumentAgent extends Agent {
       return;
     }
     const { doc, awareness } = this.ensureInitialised();
+    // A deleted page is not edited any more (its storage is kept for a later Trash)
+    if (this.isDeleted()) {
+      connection.close(CLOSE_DELETED_PAGE, DELETED_REASON);
+      return;
+    }
 
     // Send SyncStep1 to the new client
     const syncEncoder = encoding.createEncoder();
@@ -398,12 +404,9 @@ class DocumentAgent extends Agent {
     }
 
     if (request.method === "GET") {
-      // Check whether this document exists
+      // Check whether this document exists (a deleted page does not)
       this.ensureInitialised();
-      const rows = this.sql<{ value: ArrayBuffer }>`
-        SELECT value FROM doc_state WHERE key = 'exists'
-      `;
-      const exists = rows.length > 0;
+      const exists = this.exists();
 
       const createdAtRows = this.sql<{ value: ArrayBuffer }>`
         SELECT value FROM doc_state WHERE key = 'createdAt'
@@ -426,9 +429,44 @@ class DocumentAgent extends Agent {
   /** Cached 'exists' marker; null until read. */
   private existsCache: boolean | null = null;
 
+  /** Created, and not deleted. */
   private exists(): boolean {
-    this.existsCache ??= this.sql<{ value: ArrayBuffer }>`SELECT value FROM doc_state WHERE key = 'exists'`.length > 0;
+    this.existsCache ??= this.sql<{ value: ArrayBuffer }>`SELECT value FROM doc_state WHERE key = 'exists'`.length > 0 && !this.isDeleted();
     return this.existsCache;
+  }
+
+  private isDeleted(): boolean {
+    return this.sql<{ value: ArrayBuffer }>`SELECT value FROM doc_state WHERE key = 'deleted'`.length > 0;
+  }
+
+  /**
+   * Delete this page (F21). It leaves the index (and so search, backlinks,
+   * tasks and its addresses; its title is free again), its open tabs are
+   * closed, and it is no longer indexed or served. Its storage is kept, so a
+   * later Trash can restore it. Journal days are not deleted yet (their
+   * address is fixed, so a deleted day would come back when opened).
+   * Runs under the index lock, so no reindex can re-add it.
+   */
+  async deletePage(): Promise<DeletePageResult> {
+    if (isJournalId(this.name)) return { ok: false, code: "journal" };
+    this.ensureInitialised();
+    return this.withIndexLock(async (): Promise<DeletePageResult> => {
+      if (!this.exists()) return { ok: false, code: "missing" };
+      this.sql`INSERT INTO doc_state (key, value) VALUES ('deleted', ${sqlBlob(new Uint8Array([1]))}) ON CONFLICT(key) DO NOTHING`;
+      this.existsCache = false;
+      try {
+        const index = await getAgentByName(this.env.WorkspaceAgent, WORKSPACE_NAME);
+        const title = await index.deletePage(this.name, Date.now());
+        for (const connection of this.getConnections()) connection.close(CLOSE_DELETED_PAGE, DELETED_REASON);
+        return { ok: true, title };
+      } catch (err) {
+        // The index still has it: undo, so the page and the index agree
+        this.sql`DELETE FROM doc_state WHERE key = 'deleted'`;
+        this.existsCache = null;
+        console.error("Could not delete the page from the index", err);
+        return { ok: false, code: "failed" };
+      }
+    });
   }
 
   /** A journal day nobody has written in yet. It has no POST: it is created by its first text. */

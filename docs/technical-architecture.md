@@ -207,6 +207,12 @@ Tests in `tests/unit/lib/note-*.test.ts` include a round trip through Yjs using 
 - The focused editor is published by `Editor` to `app/lib/active-editor.ts` on focus and cleared on blur or unmount (only if it is still the active one). `app/lib/phone-actions.ts` runs each button as its keyboard command (`indentSelection`, `cycleLines`, `moveCaretBlock`, `setFolded`, typing `[[` through `handleTextInput`), so suggest mode, zoom and read-only rules are the same; outline actions are off in suggest mode.
 - Below the `sm` breakpoint: the header drops the page address and the theme picker on page screens, and the connection status shows only its dot; `DayBar` is hidden in the feed; `MobilePanel` starts collapsed. On `(hover: none)` fold arrows always show; on `(pointer: coarse)` the bullet's tap target is wider.
 
+## All Pages and Deleting
+
+- `/pages` (`app/routes/pages.tsx`, `AllPagesView`) lists `WorkspaceAgent.allPages()`: every page and journal with its slug, last indexed time and how many other pages link to it. Filtering and sorting are pure functions in `app/lib/all-pages.ts`, which also defines the row type (shared by the index and the view). The first 200 rows render, then "Show all". Dates are formatted only in the browser, so server and client render the same HTML.
+- Deleting (`POST /api/pages/delete` → `DocumentAgent.deletePage`, under the index lock): the document records a `deleted` marker (so `exists()` is false: no indexing, `GET` says it doesn't exist, new WebSockets are closed with `CLOSE_DELETED_PAGE` 4002), then the index's `deletePage` removes the page's entry, everything derived from it, its slugs and its registry entry, and records it in `deleted_pages` (schema 4). If the index call fails, the marker is removed again. Open tabs are closed with 4002; `useYjsEditor` reports `deleted`, the editor turns read-only and the status says "Deleted".
+- The index ignores `updatePage` and `registerPage` for a page in `deleted_pages`, so a late update from an open tab, or a rebuild, can never bring it back. Links to it from other pages stay in their rows and show as missing. Its Yjs state stays in its Durable Object for a later Trash. Journal days can't be deleted yet.
+
 ## Durable Object Usage
 
 Durable Objects are billed for every second they are awake; they hibernate after about 10 idle seconds (WebSocket hibernation, on by default in the Agents SDK). The free plan allows about 28 hours of awake time a day.

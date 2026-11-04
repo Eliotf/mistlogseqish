@@ -13,7 +13,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as Y from "yjs";
 import * as awarenessProtocol from "y-protocols/awareness";
-import { DOC_FORMAT_VERSION, CLOSE_OUTDATED_CLIENT } from "~/shared/constants";
+import { DOC_FORMAT_VERSION, CLOSE_OUTDATED_CLIENT, CLOSE_DELETED_PAGE } from "~/shared/constants";
 import { YjsProvider } from "~/lib/yjs-provider";
 import { PARSER_VERSION } from "~/lib/note-parser";
 import { WorkspaceIndex, type PageUpdate, type PageUpdateAck, type ClaimResult } from "../../../agents/workspace-index";
@@ -33,6 +33,7 @@ let mockIndexStub: {
   updatePage: (update: PageUpdate) => Promise<PageUpdateAck>;
   registerPage: (pageId: string, createdAt: number) => Promise<void>;
   claimTitle: (pageId: string, title: string, at: number) => Promise<ClaimResult>;
+  deletePage?: (pageId: string, at: number) => Promise<string>;
 };
 
 vi.mock("agents", () => ({
@@ -66,7 +67,10 @@ vi.mock("agents", () => ({
       if (query.includes("doc_state") && !this.tablesCreated) throw new Error("no such table: doc_state");
 
       if (query.includes("delete from doc_state")) {
-        mockSqlStore.clear();
+        // Like real SQLite: only the matching row, or every row with no WHERE
+        const keyed = query.match(/key\s*=\s*'(\w+)'/);
+        if (keyed) mockSqlStore.delete(keyed[1]);
+        else mockSqlStore.clear();
         return [];
       }
 
@@ -715,6 +719,7 @@ describe("DocumentAgent", () => {
           calls.push(`claim ${title}`);
           return index.claimTitle(pageId, title, at);
         },
+        deletePage: async (pageId, at) => index.deletePage(pageId, at),
       };
       (agent as unknown as { name: string }).name = PAGE_ID;
     });
@@ -1365,6 +1370,55 @@ describe("DocumentAgent", () => {
     });
 
     /* ---- Journals: created by their first real text ---- */
+
+    describe("deletePage (F21)", () => {
+      async function exists() {
+        const res = await agent.onRequest(new Request("https://do/"));
+        return ((await res.json()) as { exists: boolean }).exists;
+      }
+
+      it("takes the page out of the index, closes its tabs, and stops serving and indexing it", async () => {
+        await create("- keep this text");
+        await agent.reindex();
+        const tab = connectYjsClient();
+        expect(await agent.deletePage()).toEqual({ ok: true, title: "" });
+        expect(index.getPage(PAGE_ID)).toBeNull();
+        expect(index.isDeleted(PAGE_ID)).toBe(true);
+        expect(tab.connection.closeCode).toBe(CLOSE_DELETED_PAGE);
+        expect(await exists()).toBe(false);
+        // A new tab is refused, and nothing is indexed again
+        const late = createConnection();
+        await agent.onConnect(late as never, CURRENT_CLIENT);
+        expect(late.closeCode).toBe(CLOSE_DELETED_PAGE);
+        const sent = updates.length;
+        await agent.refreshIndex();
+        expect(updates).toHaveLength(sent);
+        // The text is kept in storage, for a later Trash
+        const fresh = new DocumentAgent({} as never, {} as never);
+        (fresh as unknown as { name: string }).name = PAGE_ID;
+        const reopened = connectYjsClient(fresh);
+        expect(reopened.connection.closeCode).toBe(CLOSE_DELETED_PAGE);
+        expect(mockSqlStore.has("state")).toBe(true);
+        cleanup(tab, reopened);
+      });
+
+      it("refuses journal days and pages that don't exist", async () => {
+        expect(await agent.deletePage()).toEqual({ ok: false, code: "missing" });
+        (agent as unknown as { name: string }).name = "journal-2026-10-26";
+        expect(await agent.deletePage()).toEqual({ ok: false, code: "journal" });
+      });
+
+      it("keeps the page if the index can't be reached", async () => {
+        await create("- still here");
+        vi.spyOn(console, "error").mockImplementation(() => {});
+        mockIndexStub.deletePage = async () => {
+          throw new Error("down");
+        };
+        expect(await agent.deletePage()).toEqual({ ok: false, code: "failed" });
+        expect(await exists()).toBe(true);
+        vi.restoreAllMocks();
+      });
+    });
 
     describe("refreshIndex (asked by a rebuild)", () => {
       it("sends the page's lines again even with no new edits", async () => {

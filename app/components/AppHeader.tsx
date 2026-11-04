@@ -11,7 +11,7 @@ export default function AppHeader({ children }: { children?: ReactNode }) {
     <header className="flex items-stretch overflow-x-auto scrollbar-none border-b border-border">
       <Link
         to="/"
-        className="flex shrink-0 items-center bg-ink px-3 py-2 text-sm font-medium text-paper sm:px-4 sm:text-base transition-colors hover:bg-chartreuse hover:text-[#1a1a1a]"
+        className="flex shrink-0 items-center bg-ink px-2 py-2 text-xs font-medium text-paper sm:px-4 sm:text-base transition-colors hover:bg-chartreuse hover:text-[#1a1a1a]"
       >
         {APP_DISPLAY_NAME}
       </Link>
@@ -23,6 +23,12 @@ export default function AppHeader({ children }: { children?: ReactNode }) {
         className="flex shrink-0 items-center border-r border-border px-2 text-xs uppercase tracking-wider transition-colors hover:bg-border sm:px-3 sm:text-sm"
       >
         Tasks
+      </Link>
+      <Link
+        to="/pages"
+        className="flex shrink-0 items-center border-r border-border px-2 text-xs uppercase tracking-wider transition-colors hover:bg-border sm:px-3 sm:text-sm"
+      >
+        Pages
       </Link>
       <div className="shrink-0 border-r border-border">
         <NewPageButton />

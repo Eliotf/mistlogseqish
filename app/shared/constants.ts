@@ -54,6 +54,9 @@ export const FORMAT_PARAM = "format";
 /** Close code DocumentAgent uses to refuse a browser running older code. */
 export const CLOSE_OUTDATED_CLIENT = 4001;
 
+/** Close code DocumentAgent uses for a page that was deleted (F21): its tabs stop editing it. */
+export const CLOSE_DELETED_PAGE = 4002;
+
 /** True if a connection URL comes from code that understands this document format. */
 export function clientUnderstandsFormat(url: string): boolean {
   const raw = new URL(url).searchParams.get(FORMAT_PARAM);

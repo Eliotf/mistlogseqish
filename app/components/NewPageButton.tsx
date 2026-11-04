@@ -37,7 +37,17 @@ export default function NewPageButton({ create = createPage }: { create?: () => 
       title={failed ? "Couldn't create a page. Check your connection and try again." : undefined}
       className="flex h-full cursor-pointer items-center px-2 text-xs uppercase tracking-wider sm:px-3 sm:text-sm transition-colors hover:bg-border disabled:cursor-wait disabled:opacity-60"
     >
-      {failed ? "Try again" : "New page"}
+      {failed ? (
+        "Try again"
+      ) : (
+        <>
+          {/* "New" on phones, where the header is short of room */}
+          <span aria-hidden="true" className="sm:hidden">
+            New
+          </span>
+          <span className="sr-only sm:not-sr-only">New page</span>
+        </>
+      )}
     </button>
   );
 }

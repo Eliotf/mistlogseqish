@@ -315,10 +315,10 @@ export default function Editor({
     };
   }, [editor, docState]);
 
-  // Refused as outdated: edits could no longer sync, so stop taking them
+  // Refused as outdated, or the page was deleted: edits could no longer sync, so stop taking them
   useEffect(() => {
-    if (editor && yjs.outdated) editor.setEditable(false);
-  }, [editor, yjs.outdated]);
+    if (editor && (yjs.outdated || yjs.deleted)) editor.setEditable(false);
+  }, [editor, yjs.outdated, yjs.deleted]);
 
   // Only announce presence from the editor in use, so idle pages stay asleep
   usePresenceWhileFocused(editor, awareness, user as unknown as Record<string, unknown>);

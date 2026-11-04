@@ -1,4 +1,5 @@
 import { titleKey } from "../app/lib/page-title";
+import type { AllPagesRow } from "../app/lib/all-pages";
 import { parseNote, PARSER_VERSION, type DocLine, type TaskPriority, type TaskState } from "../app/lib/note-parser";
 import { isJournalId, isJournalTitle, isPageId, journalTitle, parseJournalDate } from "../app/lib/note-ids";
 import { slugify } from "../app/lib/slug";
@@ -26,7 +27,7 @@ export interface SqlDb {
   transaction<T>(fn: () => T): T;
 }
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 /** Durable Object SQLite's limit on bound parameters in one query. */
 const MAX_BOUND_PARAMS = 100;
@@ -91,6 +92,12 @@ const MIGRATIONS: Array<(db: SqlDb) => void> = [
     db.exec(`ALTER TABLE tasks ADD COLUMN block_id TEXT`);
     db.exec(`ALTER TABLE tasks ADD COLUMN priority TEXT`);
     db.exec(`ALTER TABLE tasks ADD COLUMN content TEXT`);
+  },
+  // 3 -> 4: deleting pages (F21). A deleted page leaves the registry, so a
+  // rebuild never brings it back; this records it (its storage is kept, so a
+  // later Trash can restore it).
+  (db) => {
+    db.exec(`CREATE TABLE IF NOT EXISTS deleted_pages (page_id TEXT PRIMARY KEY, title TEXT NOT NULL, deleted_at INTEGER NOT NULL)`);
   },
 ];
 
@@ -262,6 +269,7 @@ export class WorkspaceIndex {
   /** Record a page in the registry. Safe to call more than once; keeps the first creation time. */
   registerPage(pageId: string, createdAt: number): void {
     if (!isPageId(pageId)) throw new Error(`Invalid page ID: ${pageId}`);
+    if (this.isDeleted(pageId)) return;
     this.db.exec(`INSERT OR IGNORE INTO registry (page_id, created_at) VALUES (?, ?)`, pageId, createdAt);
   }
 
@@ -275,6 +283,8 @@ export class WorkspaceIndex {
   updatePage(update: PageUpdate): PageUpdateAck {
     const { pageId, updatedAt, lines } = update;
     if (!isPageId(pageId)) throw new Error(`Invalid page ID: ${pageId}`);
+    // A late update from a deleted page (a tab still open) must not bring it back
+    if (this.isDeleted(pageId)) return { pageId, parserVersion: PARSER_VERSION, updatedAt, applied: true };
     const journalDate = parseJournalDate(pageId);
     const kind = isJournalId(pageId) ? "journal" : "page";
     const title = journalDate ? journalTitle(journalDate) : update.title.trim();
@@ -537,6 +547,52 @@ export class WorkspaceIndex {
   setRebuildCursor(cursor: string | null): void {
     if (cursor === null) this.db.exec(`DELETE FROM meta WHERE key = 'rebuild_cursor'`);
     else this.db.exec(`INSERT INTO meta (key, value) VALUES ('rebuild_cursor', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value`, cursor);
+  }
+
+  isDeleted(pageId: string): boolean {
+    return this.db.exec(`SELECT 1 FROM deleted_pages WHERE page_id = ?`, pageId).length > 0;
+  }
+
+  /**
+   * Delete a page from the index (F21): its entry, everything derived from it,
+   * its slugs (its addresses stop working) and its registry entry, so its
+   * title is free and a rebuild never brings it back. Links to it from other
+   * pages stay, and show as unresolved. Returns the title it had.
+   */
+  deletePage(pageId: string, at: number): string {
+    if (!isPageId(pageId)) throw new Error(`Invalid page ID: ${pageId}`);
+    return this.db.transaction((): string => {
+      const title = (this.db.exec(`SELECT title FROM pages WHERE page_id = ?`, pageId)[0]?.title as string | undefined) ?? "";
+      this.db.exec(`DELETE FROM links WHERE source_id = ?`, pageId);
+      for (const table of ["pages", "tags", "tasks", "pages_fts", "slugs", "registry"]) {
+        this.db.exec(`DELETE FROM ${table} WHERE page_id = ?`, pageId);
+      }
+      this.db.exec(`INSERT INTO deleted_pages (page_id, title, deleted_at) VALUES (?, ?, ?) ON CONFLICT (page_id) DO NOTHING`, pageId, title, at);
+      return title;
+    });
+  }
+
+  /**
+   * Every page and journal in the index for the All pages list (F21), most
+   * recently edited first, each with how many other pages link to it.
+   */
+  allPages(): AllPagesRow[] {
+    return this.db
+      .exec(
+        `SELECT p.page_id, p.kind, p.title, p.journal_date, p.has_content, p.updated_at, s.slug,
+           (SELECT COUNT(DISTINCT l.source_id) FROM links l WHERE l.target_id = p.page_id AND l.source_id != p.page_id) AS backlinks
+         FROM pages p LEFT JOIN slugs s ON s.page_id = p.page_id AND s.current = 1
+         ORDER BY p.updated_at DESC, p.page_id`,
+      )
+      .map((row) => ({
+        pageId: row.page_id as string,
+        kind: row.kind as "page" | "journal",
+        title: row.title as string,
+        slug: (row.slug as string | null) ?? null,
+        hasContent: row.has_content === 1,
+        updatedAt: row.updated_at as number,
+        backlinks: Number(row.backlinks),
+      }));
   }
 
   /** Registered page IDs in ID order, for walking the registry in batches. */

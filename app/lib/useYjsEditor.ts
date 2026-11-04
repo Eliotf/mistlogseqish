@@ -3,7 +3,7 @@ import { useAgent } from "agents/react";
 import * as Y from "yjs";
 import { Awareness } from "y-protocols/awareness";
 import { YjsProvider } from "./yjs-provider";
-import { USER_COLOURS, DOC_FORMAT_VERSION, FORMAT_PARAM, CLOSE_OUTDATED_CLIENT } from "~/shared/constants";
+import { USER_COLOURS, DOC_FORMAT_VERSION, FORMAT_PARAM, CLOSE_OUTDATED_CLIENT, CLOSE_DELETED_PAGE } from "~/shared/constants";
 import type { UserInfo, DocMode } from "~/shared/types";
 import { useDisconnectWhenHidden } from "./connection-budget";
 
@@ -29,6 +29,7 @@ export function useYjsEditor(docId: string) {
   const [mode, setModeState] = useState<DocMode>("edit");
   const [isOnboarding, setIsOnboarding] = useState(false);
   const [outdated, setOutdated] = useState(false);
+  const [deleted, setDeleted] = useState(false);
 
   const socket = useAgent({
     agent: "document-agent",
@@ -37,12 +38,13 @@ export function useYjsEditor(docId: string) {
     query: FORMAT_QUERY,
   });
 
-  // Refused as outdated: stop reconnecting; the page asks for a reload
+  // Refused as outdated (the page asks for a reload) or deleted: stop reconnecting
   useEffect(() => {
     if (!socket) return;
     const onClose = (event: CloseEvent) => {
-      if (event.code !== CLOSE_OUTDATED_CLIENT) return;
-      setOutdated(true);
+      if (event.code === CLOSE_OUTDATED_CLIENT) setOutdated(true);
+      else if (event.code === CLOSE_DELETED_PAGE) setDeleted(true);
+      else return;
       socket.close();
     };
     socket.addEventListener("close", onClose);
@@ -91,5 +93,5 @@ export function useYjsEditor(docId: string) {
   // A long-hidden tab lets its Durable Object sleep; it reconnects on return
   useDisconnectWhenHidden(socket);
 
-  return { doc, awareness, socket, synced, outdated, user, mode, setMode, docState, isOnboarding };
+  return { doc, awareness, socket, synced, outdated, deleted, user, mode, setMode, docState, isOnboarding };
 }

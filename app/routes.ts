@@ -7,10 +7,12 @@ export default [
   route("page/:slug", "routes/page.$slug.tsx"),
   route("journal/:date", "routes/journal.$date.tsx"),
   route("tasks", "routes/tasks.tsx"),
+  route("pages", "routes/pages.tsx"),
   route("api/rename", "routes/api.rename.ts"),
   route("api/journals", "routes/api.journals.ts"),
   route("api/pages", "routes/api.pages.ts"),
   route("api/pages/titles", "routes/api.pages.titles.ts"),
   route("api/pages/search", "routes/api.pages.search.ts"),
   route("api/pages/backlinks", "routes/api.pages.backlinks.ts"),
+  route("api/pages/delete", "routes/api.pages.delete.ts"),
 ] satisfies RouteConfig;
