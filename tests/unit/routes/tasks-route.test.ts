@@ -30,7 +30,7 @@ const load = () => loader({ context: {} } as never);
 describe("/tasks loader", () => {
   beforeEach(() => {
     mockTasks.mockReset();
-    mockGetAgentByName.mockReset().mockResolvedValue({ tasks: mockTasks });
+    mockGetAgentByName.mockReset().mockResolvedValue({ tasks: mockTasks, indexStatus: async () => ({ pending: 4 }) });
   });
 
   it("asks the index for open tasks (NOW, DOING, TODO, LATER) and done ones, most recent first", async () => {
@@ -41,7 +41,7 @@ describe("/tasks loader", () => {
     const data = await load();
     expect(mockGetAgentByName).toHaveBeenCalledWith("workspace", "default");
     expect(mockTasks).toHaveBeenCalledWith(["NOW", "DOING", "TODO", "LATER"]);
-    expect(data).toEqual({ open, done: [expect.objectContaining({ pageId: "efgh5678" }), expect.objectContaining({ pageId: "abcd1234" })], loadFailed: false });
+    expect(data).toEqual({ open, done: [expect.objectContaining({ pageId: "efgh5678" }), expect.objectContaining({ pageId: "abcd1234" })], pending: 4, loadFailed: false });
   });
 
   it("shows at most the latest done tasks", async () => {
@@ -54,7 +54,7 @@ describe("/tasks loader", () => {
   it("says when the index can't be reached, instead of failing the page", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     mockTasks.mockRejectedValue(new Error("down"));
-    expect(await load()).toEqual({ open: [], done: [], loadFailed: true });
+    expect(await load()).toEqual({ open: [], done: [], pending: 0, loadFailed: true });
     vi.restoreAllMocks();
   });
 });

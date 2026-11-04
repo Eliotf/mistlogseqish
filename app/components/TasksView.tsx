@@ -11,6 +11,8 @@ import ReferenceLine, { PageLink } from "~/components/ReferenceLine";
 interface TasksViewProps {
   open: TaskItem[];
   done: TaskItem[];
+  /** Pages the index is still catching up on (a rebuild); until then tasks may be missing. */
+  pending?: number;
   loadFailed: boolean;
 }
 
@@ -27,12 +29,17 @@ function pageName(task: TaskItem): string {
  * opens the page in the side panel). Tasks from pages not re-indexed since
  * block IDs open the whole page.
  */
-export default function TasksView({ open, done, loadFailed }: TasksViewProps) {
+export default function TasksView({ open, done, pending = 0, loadFailed }: TasksViewProps) {
   const MOD = useModKeyLabel();
   return (
     <div className="mx-6 mb-10 mt-8 max-w-[65ch]">
       <h1 className="text-[1.75rem] font-semibold leading-tight text-ink">Tasks</h1>
       <p className="mt-2 text-sm text-muted">Open a task to change it on its page. {MOD}+Enter cycles it.</p>
+      {pending > 0 && (
+        <p role="status" className="mt-4 text-sm text-muted">
+          Updating the index: {pending} {pending === 1 ? "page" : "pages"} to go. Some tasks may be missing until it finishes.
+        </p>
+      )}
       {loadFailed && (
         <p role="alert" className="mt-4 text-sm text-muted">
           Couldn't load tasks. Try again in a moment.

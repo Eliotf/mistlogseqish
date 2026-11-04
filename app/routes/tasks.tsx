@@ -14,12 +14,12 @@ export const DONE_LIMIT = 50;
 export async function loader({ context }: Route.LoaderArgs) {
   try {
     const index = await workspaceIndex(context);
-    const [open, done] = await Promise.all([index.tasks([...OPEN_STATES]), index.tasks(["DONE"])]);
+    const [open, done, status] = await Promise.all([index.tasks([...OPEN_STATES]), index.tasks(["DONE"]), index.indexStatus()]);
     const recent = [...done].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, DONE_LIMIT);
-    return { open, done: recent, loadFailed: false };
+    return { open, done: recent, pending: status.pending, loadFailed: false };
   } catch (err) {
     console.error("Loading tasks failed", err);
-    return { open: [], done: [], loadFailed: true };
+    return { open: [], done: [], pending: 0, loadFailed: true };
   }
 }
 
@@ -42,7 +42,7 @@ export default function Tasks({ loaderData }: Route.ComponentProps) {
     <div className="flex h-screen flex-col">
       <AppHeader />
       <main className="flex-1 overflow-y-auto">
-        <TasksView open={loaderData.open} done={loaderData.done} loadFailed={loaderData.loadFailed} />
+        <TasksView open={loaderData.open} done={loaderData.done} pending={loaderData.pending} loadFailed={loaderData.loadFailed} />
       </main>
     </div>
   );

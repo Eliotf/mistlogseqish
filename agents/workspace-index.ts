@@ -501,6 +501,44 @@ export class WorkspaceIndex {
     });
   }
 
+  /**
+   * Registered pages the index has not built with the current parser (never
+   * indexed, or by an older one), in ID order after `after`: what a rebuild
+   * asks to re-index (docs/technical-architecture.md, "How it stays correct").
+   */
+  pagesToRefresh(limit = 10, after = ""): string[] {
+    return this.db
+      .exec(
+        `SELECT r.page_id FROM registry r LEFT JOIN pages p ON p.page_id = r.page_id
+         WHERE r.page_id > ? AND (p.page_id IS NULL OR p.parser_version < ?)
+         ORDER BY r.page_id LIMIT ?`,
+        after, PARSER_VERSION, limit,
+      )
+      .map((row) => row.page_id as string);
+  }
+
+  /** How many registered pages a rebuild still has to re-index. */
+  refreshCount(): number {
+    return Number(
+      this.db.exec(
+        `SELECT COUNT(*) AS n FROM registry r LEFT JOIN pages p ON p.page_id = r.page_id
+         WHERE p.page_id IS NULL OR p.parser_version < ?`,
+        PARSER_VERSION,
+      )[0].n,
+    );
+  }
+
+  /** Where a running rebuild has got to (the last page ID it asked), or null when none is running. */
+  rebuildCursor(): string | null {
+    const value = this.db.exec(`SELECT value FROM meta WHERE key = 'rebuild_cursor'`)[0]?.value;
+    return typeof value === "string" ? value : null;
+  }
+
+  setRebuildCursor(cursor: string | null): void {
+    if (cursor === null) this.db.exec(`DELETE FROM meta WHERE key = 'rebuild_cursor'`);
+    else this.db.exec(`INSERT INTO meta (key, value) VALUES ('rebuild_cursor', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value`, cursor);
+  }
+
   /** Registered page IDs in ID order, for walking the registry in batches. */
   registeredPages(limit = 100, after = ""): string[] {
     return this.db

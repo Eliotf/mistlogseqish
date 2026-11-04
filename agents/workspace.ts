@@ -1,6 +1,6 @@
 import { toBacklinkLine, type BacklinkSource } from "../app/lib/backlink-lines";
 import type { TaskItem } from "../app/lib/tasks";
-import { Agent } from "agents";
+import { Agent, getAgentByName } from "agents";
 import type { Connection, ConnectionContext } from "agents";
 import type { TaskState } from "../app/lib/note-parser";
 import { WorkspaceIndex, type SqlDb, type SqlValue, type PageUpdate } from "./workspace-index";
@@ -14,6 +14,10 @@ import { WORKSPACE_NAME } from "../app/shared/constants";
  */
 
 export { WORKSPACE_NAME };
+
+/** Pages a rebuild re-indexes per step, and the pause between steps. */
+export const REBUILD_BATCH = 10;
+export const REBUILD_PAUSE_SECONDS = 1;
 
 const PRIVATE_AGENT_PATH = /^\/agents\/workspace-agent(\/|$)/i;
 
@@ -29,12 +33,68 @@ function durableSql(storage: DurableObjectStorage): SqlDb {
   };
 }
 
-class WorkspaceAgent extends Agent {
+class WorkspaceAgent extends Agent<Env> {
   private _index: WorkspaceIndex | null = null;
+  /** Whether this instance has looked for pages to rebuild since it woke. */
+  private rebuildChecked = false;
 
   private get index(): WorkspaceIndex {
     this._index ??= new WorkspaceIndex(durableSql(this.ctx.storage));
+    if (!this.rebuildChecked) {
+      this.rebuildChecked = true;
+      this.startRebuildIfNeeded(this._index);
+    }
     return this._index;
+  }
+
+  /**
+   * Rebuild (M1 chunk 1.6): after a parser change, or for registered pages
+   * never indexed, ask each such page's DocumentAgent to send its lines again,
+   * a batch at a time through this.schedule() (never a repeating timer, so
+   * the object still sleeps). Nothing is cleared first, so search, backlinks
+   * and titles keep working; each page's rows are replaced as it reports.
+   * Checked once each time the object wakes; a page that fails is retried by
+   * the next pass. Never throws.
+   */
+  private startRebuildIfNeeded(index: WorkspaceIndex): void {
+    try {
+      // A pass already running continues through its own schedule
+      if (index.rebuildCursor() !== null || index.refreshCount() === 0) return;
+      index.setRebuildCursor("");
+      this.schedule(REBUILD_PAUSE_SECONDS, "rebuildStep").catch((err: unknown) => {
+        index.setRebuildCursor(null);
+        console.error("Could not schedule the index rebuild", err);
+      });
+    } catch (err) {
+      console.error("Could not check for an index rebuild", err);
+    }
+  }
+
+  /** One rebuild step: re-index the next batch of pages, then schedule the next step. */
+  async rebuildStep(): Promise<void> {
+    const index = this.index;
+    const cursor = index.rebuildCursor();
+    if (cursor === null) return;
+    const batch = index.pagesToRefresh(REBUILD_BATCH, cursor);
+    if (batch.length === 0) {
+      index.setRebuildCursor(null);
+      return;
+    }
+    for (const pageId of batch) {
+      try {
+        const doc = await getAgentByName(this.env.DocumentAgent, pageId);
+        await doc.refreshIndex();
+      } catch (err) {
+        console.error(`Rebuild could not re-index ${pageId}`, err);
+      }
+    }
+    index.setRebuildCursor(batch[batch.length - 1]);
+    await this.schedule(REBUILD_PAUSE_SECONDS, "rebuildStep");
+  }
+
+  /** How many pages the index is still catching up on (shown where results may be incomplete). */
+  async indexStatus(): Promise<{ pending: number }> {
+    return { pending: this.index.refreshCount() };
   }
 
   async onRequest(_request: Request): Promise<Response> {

@@ -1366,6 +1366,27 @@ describe("DocumentAgent", () => {
 
     /* ---- Journals: created by their first real text ---- */
 
+    describe("refreshIndex (asked by a rebuild)", () => {
+      it("sends the page's lines again even with no new edits", async () => {
+        await create("- a line");
+        await agent.reindex();
+        const sent = updates.length;
+        await agent.reindex(); // nothing new: nothing sent
+        expect(updates).toHaveLength(sent);
+        await agent.refreshIndex();
+        expect(updates).toHaveLength(sent + 1);
+        expect(updates.at(-1)?.lines.map((l) => l.text)).toEqual(["- a line"]);
+      });
+
+      it("does nothing for a document that was never created", async () => {
+        (agent as unknown as { name: string }).name = "journal-2026-10-26";
+        await agent.refreshIndex();
+        expect(updates).toEqual([]);
+        // Nothing stored for it at all, not even index bookkeeping
+        expect([...mockSqlStore.keys()]).toEqual([]);
+      });
+    });
+
     describe("block IDs", () => {
       const ID_A = "00000000-0000-4000-8000-00000000000a";
       const ids = (doc: Y.Doc) => (doc.getXmlFragment("default").toArray() as Y.XmlElement[]).map((p) => p.getAttribute("blockId"));

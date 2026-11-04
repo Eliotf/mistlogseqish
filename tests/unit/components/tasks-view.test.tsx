@@ -93,6 +93,14 @@ describe("TasksView", () => {
     expect(screen.getByTitle("Open Mistlog at this task").className).toContain("line-through");
   });
 
+  it("says while the index is still catching up, and not otherwise", () => {
+    show({ pending: 3 });
+    expect(screen.getByRole("status").textContent).toContain("Updating the index: 3 pages to go");
+    cleanup();
+    show({ pending: 0 });
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
   it("says when there are no open tasks, or when they couldn't load", () => {
     show({});
     expect(screen.getByText(/No open tasks/)).toBeTruthy();

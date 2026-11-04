@@ -625,6 +625,17 @@ class DocumentAgent extends Agent {
    * schedule the next round. A failure retries with backoff and never
    * affects editing or sync. Runs under the index lock.
    */
+  /**
+   * Asked by the index during a rebuild (after a parser change, or for a page
+   * never indexed): send this page's lines again, even with no new edits.
+   */
+  async refreshIndex(): Promise<void> {
+    this.ensureInitialised();
+    if (!this.isIndexable()) return;
+    this.writeIndexState({ ...this.readIndexState(), dirty: true });
+    await this.reindex();
+  }
+
   async reindex(): Promise<void> {
     return this.withIndexLock(() => this.reindexLocked());
   }

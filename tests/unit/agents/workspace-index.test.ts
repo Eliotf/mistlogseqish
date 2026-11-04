@@ -614,6 +614,32 @@ describe("WorkspaceIndex", () => {
     });
   });
 
+  describe("rebuild bookkeeping", () => {
+    it("lists registered pages never indexed or indexed by an older parser, in ID order after a cursor", () => {
+      index.updatePage(page(MIST, "Mistlog", [line("x")]));
+      index.updatePage(page(ACCESS, "Access", [line("x")]));
+      index.registerPage(TODAY, 1); // registered, never indexed
+      expect(index.pagesToRefresh()).toEqual([TODAY]);
+      db.exec(`UPDATE pages SET parser_version = ? WHERE page_id = ?`, PARSER_VERSION - 1, MIST);
+      expect(index.pagesToRefresh()).toEqual([TODAY, MIST]);
+      expect(index.refreshCount()).toBe(2);
+      expect(index.pagesToRefresh(1)).toEqual([TODAY]);
+      expect(index.pagesToRefresh(10, TODAY)).toEqual([MIST]);
+      index.updatePage(page(MIST, "Mistlog", [line("x")], 2000));
+      expect(index.pagesToRefresh()).toEqual([TODAY]);
+    });
+
+    it("remembers where a rebuild has got to, and forgets it when done", () => {
+      expect(index.rebuildCursor()).toBeNull();
+      index.setRebuildCursor("");
+      expect(index.rebuildCursor()).toBe("");
+      index.setRebuildCursor(MIST);
+      expect(index.rebuildCursor()).toBe(MIST);
+      index.setRebuildCursor(null);
+      expect(index.rebuildCursor()).toBeNull();
+    });
+  });
+
   describe("staleCount", () => {
     it("counts pages built by an older parser", () => {
       index.updatePage(page(MIST, "Mistlog", [line("x")]));
