@@ -9,7 +9,7 @@ import { WIKILINK_MARK, isWikilinkAttrs } from "./wikilink";
  * Bump PARSER_VERSION whenever the output for the same input changes; the
  * index rebuilds when it does (docs/technical-architecture.md).
  */
-export const PARSER_VERSION = 2;
+export const PARSER_VERSION = 3;
 
 /** Task keywords (PRD F6, F42): TODO -> DOING -> DONE, and Logseq's LATER -> NOW -> DONE. */
 export type TaskState = "TODO" | "DOING" | "DONE" | "LATER" | "NOW";
@@ -124,20 +124,60 @@ function blank(text: string, ranges: Array<[number, number]>): string {
   return chars.join("");
 }
 
-function extractTags(text: string, marks: LineMark[], line: number): ParsedTag[] {
-  // Link text is a title snapshot, and code is literal, so neither holds tags
-  const hidden: Array<[number, number]> = marks
-    .filter((m) => m.type === WIKILINK_MARK)
-    .map((m) => [m.from, m.to]);
-  for (const m of text.matchAll(INLINE_CODE_RE)) {
-    hidden.push([m.index, m.index + m[0].length]);
+/** Whether a page title can be written as a plain `#name` tag; otherwise it needs `#[[...]]`. */
+export function isPlainTagName(name: string): boolean {
+  return /^[\p{L}\p{N}_][\p{L}\p{N}_/-]*$/u.test(name) && !/^\p{N}+$/u.test(name);
+}
+
+/** One tag in a line: `#name` or `#[[multi word name]]` (PRD F45). */
+export interface TagMatch {
+  /** Where the `#` is. */
+  from: number;
+  to: number;
+  /** The name's own range (inside the brackets for `#[[...]]`). */
+  innerFrom: number;
+  innerTo: number;
+  name: string;
+  bracketed: boolean;
+}
+
+const BRACKETED_TAG_RE = /(^|\s)#\[\[([^[\]\n]*)\]\]/g;
+const LINK_TEXT_RE = /\[\[[^[\]\n]*\]\]/g;
+
+/**
+ * The tags in a line, in order. A tag starts at the line start or after
+ * whitespace: `#name` (letters, digits, `_`, `-`, `/`, not only digits) or
+ * `#[[any name]]`. Not inside inline code, and not inside a `[[link]]`'s
+ * text (a title snapshot). Used by the index and the editor alike
+ * (invariant 7).
+ */
+export function tagsInLine(text: string): TagMatch[] {
+  const tags: TagMatch[] = [];
+  const hidden: Array<[number, number]> = [];
+  for (const m of text.matchAll(INLINE_CODE_RE)) hidden.push([m.index, m.index + m[0].length]);
+  const inCode = (at: number) => hidden.some(([a, b]) => at >= a && at < b);
+  for (const m of text.matchAll(BRACKETED_TAG_RE)) {
+    const from = m.index + m[1].length;
+    const name = m[2];
+    if (inCode(from) || !name.trim()) continue;
+    tags.push({ from, to: from + 3 + name.length + 2, innerFrom: from + 3, innerTo: from + 3 + name.length, name, bracketed: true });
   }
+  // Brackets (a link's title, or a bracketed tag) and code hold no #name tags
+  for (const m of text.matchAll(LINK_TEXT_RE)) hidden.push([m.index, m.index + m[0].length]);
   const visible = blank(text, hidden);
-  const tags: ParsedTag[] = [];
   for (const m of visible.matchAll(TAG_RE)) {
     const name = m[2];
     if (/^\p{N}+$/u.test(name)) continue;
-    tags.push({ name, key: name.toLowerCase(), line });
+    const from = m.index + m[1].length;
+    tags.push({ from, to: from + 1 + name.length, innerFrom: from + 1, innerTo: from + 1 + name.length, name, bracketed: false });
+  }
+  return tags.sort((a, b) => a.from - b.from);
+}
+
+function extractTags(text: string, line: number): ParsedTag[] {
+  const tags: ParsedTag[] = [];
+  for (const { name } of tagsInLine(text)) {
+    tags.push({ name, key: name.trim().toLowerCase(), line });
   }
   return tags;
 }
@@ -171,7 +211,7 @@ export function parseNote(lines: DocLine[]): ParsedNote {
     if (shape.task) {
       tasks.push({ line, state: shape.task, indent: shape.indent, text: text.slice(shape.bodyStart), priority: priorityOf(text), blockId: id ?? null });
     }
-    tags.push(...extractTags(text, marks, line));
+    tags.push(...extractTags(text, line));
   });
 
   return { links, tags, tasks, text: lines.map((l) => l.text).join("\n") };

@@ -151,7 +151,7 @@ describe("the wikilink mark", () => {
 describe("linkSpans", () => {
   it("finds [[...]] and the page whose mark covers the whole title", () => {
     const { editor } = setup(SEE_LINK);
-    expect(linkSpans(editor.state.doc)).toEqual([{ from: FROM, to: TO, innerFrom: INNER, innerTo: INNER_END, inner: "Reading list", pageId: BOOKS }]);
+    expect(linkSpans(editor.state.doc)).toEqual([{ kind: "link", bracketed: true, from: FROM, to: TO, innerFrom: INNER, innerTo: INNER_END, inner: "Reading list", pageId: BOOKS }]);
   });
 
   it("treats a title split by another mark as one link", () => {
@@ -590,5 +590,105 @@ describe("copying as plain text", () => {
     const { editor } = setup([["[[", ["Read", BOOKS], ["ing", BOOKS, "added"], "]] [[", ["Old", NOVELS], "]]"]], { titles });
     const { doc } = editor.state;
     expect(clipboardText(doc.slice(0, doc.content.size), titles)).toBe("[[Reading]] [[Old]]");
+  });
+});
+
+describe("tags (F45)", () => {
+  const page = (pageId: string, title: string): LinkPage => ({ pageId, title, kind: "page", slug: null, empty: false });
+
+  it("finds #tags and #[[multi word]] tags as tags, and their brackets are not a separate link", () => {
+    const { editor } = setup([["see #books, #[[Reading list]] and [[Novels]] `#code` #42 a#b # heading"]]);
+    expect(linkSpans(editor.state.doc).map((s) => [s.kind, s.bracketed, s.inner])).toEqual([
+      ["tag", false, "books"], // the comma ends it
+      ["tag", true, "Reading list"],
+      ["link", true, "Novels"],
+    ]);
+  });
+
+  it("links a typed #tag when you move on, creating its page if need be", async () => {
+    const { doc, editor, linkPage } = setup([["x"]], { linkPage: async (title) => page(NOVELS, title) });
+    caret(editor, 2);
+    type(editor, " #novels");
+    expect(linkPage).not.toHaveBeenCalled(); // still typing it
+    type(editor, " ");
+    await settle();
+    expect(linkPage).toHaveBeenCalledWith("novels");
+    expect(text(doc)).toEqual(["x #novels "]);
+    expect(links(doc)).toEqual([NOVELS]);
+  });
+
+  it("suggests pages as you type a tag, and choosing one writes it as #name or #[[name]], then a space", async () => {
+    vi.useFakeTimers();
+    const pages = [page(NOVELS, "Novels"), page(BOOKS, "Reading list")];
+    const { doc, editor, search } = setup([[""]], { pages });
+    caret(editor, 1);
+    type(editor, "#no");
+    await vi.advanceTimersByTimeAsync(200);
+    expect(search).toHaveBeenLastCalledWith("no");
+    expect([...document.querySelectorAll(".link-suggest [role=option]")].map((o) => o.textContent)).toEqual(["Novels", "Reading list", "New page: no"]);
+    press(editor, "Enter");
+    expect(text(doc)).toEqual(["#Novels "]);
+    expect(links(doc)).toEqual([NOVELS]);
+    expect(editor.state.selection.head).toBe(editor.state.doc.content.size - 1);
+    type(editor, "#re");
+    await vi.advanceTimersByTimeAsync(200);
+    press(editor, "ArrowDown");
+    press(editor, "Enter");
+    expect(text(doc)).toEqual(["#Novels #[[Reading list]] "]);
+    expect(links(doc)).toEqual([NOVELS, BOOKS]);
+  });
+
+  it("suggests from the first letter of a new tag", async () => {
+    vi.useFakeTimers();
+    const { editor, search } = setup([[""]], { pages: [page(NOVELS, "Novels")] });
+    caret(editor, 1);
+    type(editor, "#n");
+    await vi.advanceTimersByTimeAsync(200);
+    expect(search).toHaveBeenLastCalledWith("n");
+    expect([...document.querySelectorAll(".link-suggest:not([hidden]) [role=option]")].map((o) => o.textContent)).toContain("Novels");
+  });
+
+  it("shows a tag's current title, styled as a tag", () => {
+    const { editor } = setup([["see #", ["books", BOOKS], " here"]], { titles: fakeTitles({ [BOOKS]: { title: "Bookshelf" } }) });
+    expect(editor.view.dom.querySelector(".wikilink-shown")?.textContent).toBe("Bookshelf");
+    expect(editor.view.dom.querySelector(".wikilink-shown")?.classList.contains("tag")).toBe(true);
+    expect(editor.view.dom.querySelector(".wikilink-bracket.tag")?.textContent).toBe("#");
+  });
+
+  it("rewrites a plain #tag as #[[...]] when your cursor enters it after its page gained a space", () => {
+    const { doc, editor } = setup([["see #", ["books", BOOKS], " here"]], { titles: fakeTitles({ [BOOKS]: { title: "Reading list" } }) });
+    caret(editor, 7);
+    expect(text(doc)).toEqual(["see #[[Reading list]] here"]);
+    expect(links(doc)).toEqual([BOOKS]);
+  });
+
+  it("copies a plain #tag to a page now titled with spaces as #[[...]]", () => {
+    const { editor } = setup([["see #", ["books", BOOKS], " here"]], { titles: fakeTitles({ [BOOKS]: { title: "Reading list" } }) });
+    expect(clipboardText(editor.state.doc.slice(0, editor.state.doc.content.size), fakeTitles({ [BOOKS]: { title: "Reading list" } }))).toBe("see #[[Reading list]] here");
+  });
+
+  it("counts as a link to its page in the index (so it shows in linked references)", () => {
+    const { doc } = setup([["see #", ["books", BOOKS], " and #[[", ["Reading list", NOVELS], "]]"]]);
+    expect(links(doc)).toEqual([BOOKS, NOVELS]);
+    expect(parseNote(linesFromYjs(doc.getXmlFragment("default"))).tags.map((t) => t.name)).toEqual(["books", "Reading list"]);
+  });
+
+  describe("pasted", () => {
+    beforeEach(() => vi.stubGlobal("ClipboardEvent", class extends Event {}));
+    afterEach(() => vi.unstubAllGlobals());
+
+    it("links pasted #tags and #[[tags]] at once, by the same rules as [[links]]", async () => {
+      const { doc, editor, linkPage } = setup([["x"]]);
+      caret(editor, 2);
+      editor.view.pasteText(" #garden and #[[Reading list]] and #[[oct 28th, 2026]]");
+      await settle();
+      expect(linkPage.mock.calls.map((c) => c[0]).sort()).toEqual(["Reading list", "garden"]);
+      expect(linkSpans(editor.state.doc).map((s) => [s.kind, s.pageId])).toEqual([
+        ["tag", "newpage1"],
+        ["tag", "newpage1"],
+        ["tag", "journal-2026-10-28"],
+      ]);
+      expect(text(doc)).toEqual(["x #garden and #[[Reading list]] and #[[oct 28th, 2026]]"]);
+    });
   });
 });

@@ -104,6 +104,12 @@ A link is a `wikilink` mark on text in the page's Yjs document, with a `pageId` 
 - On 4001, `useYjsEditor` stops PartySocket reconnecting and sets `outdated`. `ConnectionStatus` then shows "Updated: reload" and the editor turns read-only.
 - Any new mark or node needs a version bump.
 
+## Tags
+
+- A tag (PRD F45) is `#name` or `#[[multi word name]]` in the text; its name carries the same `wikilink` mark (`pageId`) as a link's title, so the index counts it as a link (linked references, backlink counts) and a rename never edits tagging pages. There is no new mark, so no format change.
+- Where tags are is decided once, by `tagsInLine` in the shared parser (invariant 7): after whitespace or at the line start, `#` then letters, digits, `_`, `-` or `/` (not only digits), or `#[[...]]`; not in inline code or inside a `[[link]]`'s text. `isPlainTagName` says whether a title can be written `#name`.
+- In the editor (`wikilink-editing.ts`) tags are spans like links (`kind: "tag"`): a plain `#tag` counts as being edited from after the `#` to its end, so typing on keeps it open and a space settles it. A span the current edit just created starts empty, so suggestions show from its first letter. Choosing a suggestion writes `#name` or `#[[name]]` and a space. A plain tag whose page gains a space is rewritten as `#[[...]]` when your cursor enters it, and copies as `#[[...]]`.
+
 ## Shared Note Parser
 
 One module, used by both the workspace index (server) and the editor (client), so links, tags and tasks are extracted one way (AGENTS.md invariant 7).

@@ -7,12 +7,14 @@ import { WIKILINK_MARK, isWikilinkAttrs, wikilinkMarkSpec } from "./wikilink";
 import { linkHref, linkPageForTitle, searchPages, targetOf, type LinkPage, type LinkTarget } from "./page-titles";
 import { journalDateFromTitle, journalId, journalTitle } from "./note-ids";
 import { titleKey } from "./page-title";
+import { isPlainTagName, tagsInLine } from "./note-parser";
 import { SuggestionList, type Suggestion } from "./link-suggestions";
 
 /**
  * Links in the editor (PRD 6.1, chunks 2.5a to 2.5c), Logseq style.
  *
- * A link is text: `[[`, the title, `]]`. The title carries a `wikilink` mark
+ * A link is text: `[[`, the title, `]]`; a tag (F45) is `#title` or
+ * `#[[title]]`, found by the shared parser, and works the same way. The title carries a `wikilink` mark
  * with the target's page ID. With the cursor elsewhere it reads as a link
  * (faint brackets, underlined current title). With the cursor between the
  * brackets it is plain text you edit, with title suggestions; when the
@@ -61,8 +63,11 @@ function openLink(href: string, pageId: string, view: EditorView, side: boolean)
   if (view.dom.dispatchEvent(event)) window.location.assign(href);
 }
 
-/** One `[[...]]` in the text. pageId is set when one link mark covers the whole title. */
+/** One `[[...]]`, `#tag` or `#[[tag]]` in the text. pageId is set when one link mark covers the whole title. */
 export interface LinkSpan {
+  kind: "link" | "tag";
+  /** `[[...]]` or `#[[...]]`, rather than a plain `#tag`. */
+  bracketed: boolean;
   from: number;
   to: number;
   innerFrom: number;
@@ -90,25 +95,42 @@ function linkIdCovering(doc: ProseMirrorNode, from: number, to: number): string 
   return id ?? null;
 }
 
-/** Every `[[...]]` in the document, in order. */
+/** Every link and tag in the document, in order. */
 export function linkSpans(doc: ProseMirrorNode): LinkSpan[] {
   const spans: LinkSpan[] = [];
   doc.forEach((block, offset) => {
     if (!block.isTextblock) return;
     const start = offset + 1;
-    for (const m of block.textContent.matchAll(BRACKETS_RE)) {
+    const text = block.textContent;
+    const tags = tagsInLine(text);
+    for (const tag of tags) {
+      const innerFrom = start + tag.innerFrom;
+      const innerTo = start + tag.innerTo;
+      spans.push({ kind: "tag", bracketed: tag.bracketed, from: start + tag.from, to: start + tag.to, innerFrom, innerTo, inner: tag.name, pageId: linkIdCovering(doc, innerFrom, innerTo) });
+    }
+    for (const m of text.matchAll(BRACKETS_RE)) {
+      // The brackets of a #[[tag]] are part of the tag
+      if (tags.some((t) => t.bracketed && t.from + 1 === m.index)) continue;
       const from = start + m.index;
       const innerFrom = from + 2;
       const innerTo = innerFrom + m[1].length;
-      spans.push({ from, to: innerTo + 2, innerFrom, innerTo, inner: m[1], pageId: linkIdCovering(doc, innerFrom, innerTo) });
+      spans.push({ kind: "link", bracketed: true, from, to: innerTo + 2, innerFrom, innerTo, inner: m[1], pageId: linkIdCovering(doc, innerFrom, innerTo) });
     }
   });
-  return spans;
+  return spans.sort((a, b) => a.from - b.from);
 }
 
-/** The link whose brackets the cursor is between (from just inside `[[` to just inside `]]`). */
+/**
+ * The link or tag the cursor is in: between a link's brackets, or for a
+ * plain `#tag` anywhere after the `#` up to its end (where you keep typing it).
+ */
 export function spanAt(spans: LinkSpan[], pos: number): LinkSpan | undefined {
-  return spans.find((s) => s.from < pos && pos < s.to);
+  return spans.find((s) => s.from < pos && (pos < s.to || (!s.bracketed && pos === s.to)));
+}
+
+/** How a tag to `title` is written: `#title`, or `#[[title]]` when the title isn't a plain tag name. */
+export function tagText(title: string): { open: string; close: string } {
+  return isPlainTagName(title) ? { open: "#", close: "" } : { open: "#[[", close: "]]" };
 }
 
 /** Marked text outside any `[[...]]` (a bracket was deleted): no longer a link. */
@@ -153,14 +175,15 @@ function buildDecorations(doc: ProseMirrorNode, spans: LinkSpan[], titles: Title
       continue;
     }
     const linkAttrs = span.pageId ? { "data-page-id": span.pageId } : {};
-    decorations.push(Decoration.inline(span.from, span.innerFrom, { class: "wikilink-bracket", ...linkAttrs }));
-    decorations.push(Decoration.inline(span.innerTo, span.to, { class: "wikilink-bracket", ...linkAttrs }));
+    const tag = span.kind === "tag" ? " tag" : "";
+    decorations.push(Decoration.inline(span.from, span.innerFrom, { class: `wikilink-bracket${tag}`, ...linkAttrs }));
+    if (span.innerTo < span.to) decorations.push(Decoration.inline(span.innerTo, span.to, { class: `wikilink-bracket${tag}`, ...linkAttrs }));
     if (!span.pageId) {
-      if (span.inner.trim()) decorations.push(Decoration.inline(span.innerFrom, span.innerTo, { class: "wikilink-pending", title: "Not linked yet" }));
+      if (span.inner.trim()) decorations.push(Decoration.inline(span.innerFrom, span.innerTo, { class: `wikilink-pending${tag}`, title: "Not linked yet" }));
       continue;
     }
     const target = titles?.get(span.pageId);
-    const classes = targetClasses(target);
+    const classes = [targetClasses(target), tag.trim()].filter(Boolean).join(" ");
     const title = shownTitle(span.inner, target);
     if (title === span.inner) {
       if (classes) decorations.push(Decoration.inline(span.innerFrom, span.innerTo, { class: classes }));
@@ -205,7 +228,17 @@ function inlineText(content: Fragment, titles: TitleSource | null): string {
     if (pageId && last?.pageId === pageId) last.text += child.text ?? "";
     else runs.push({ pageId, text: child.text ?? "" });
   });
-  return runs.map(({ pageId, text }) => (pageId ? shownTitle(text, titles?.get(pageId)) : text)).join("");
+  let out = "";
+  for (const { pageId, text } of runs) {
+    if (!pageId) {
+      out += text;
+      continue;
+    }
+    const title = shownTitle(text, titles?.get(pageId));
+    // A plain #tag whose page is now called something with spaces is written #[[...]]
+    out += out.endsWith("#") && !isPlainTagName(title) ? `[[${title}]]` : title;
+  }
+  return out;
 }
 
 /** Where pasted or dropped content landed, in the final document of these transactions. */
@@ -372,6 +405,12 @@ export const Wikilink = Mark.create<WikilinkOptions>({
       if (!target || target.missing || target.title === span.inner) return false;
       const marks = state.doc.resolve(span.innerFrom + 1).marks();
       const head = state.selection.head;
+      if (span.kind === "tag" && !span.bracketed && !isPlainTagName(target.title)) {
+        // A plain #tag can't hold a title with spaces: write it #[[...]]
+        tr.replaceWith(span.from, span.to, [state.schema.text("#[["), state.schema.text(target.title, marks), state.schema.text("]]")]);
+        tr.setSelection(TextSelection.create(tr.doc, span.from + 3 + target.title.length));
+        return true;
+      }
       tr.replaceWith(span.innerFrom, span.innerTo, state.schema.text(target.title, marks));
       const at = head >= span.innerTo ? span.innerFrom + target.title.length + (head - span.innerTo) : span.innerFrom + Math.min(Math.max(head - span.innerFrom, 0), target.title.length);
       tr.setSelection(TextSelection.create(tr.doc, at));
@@ -390,6 +429,22 @@ export const Wikilink = Mark.create<WikilinkOptions>({
       const span = spanAt(linkSpans(state.doc), state.selection.head);
       if (!span) return;
       const tr = state.tr;
+      if (span.kind === "tag") {
+        // A tag is written whole (#name or #[[name]]), then a space to step out of it
+        const title = item.kind === "page" ? item.page.title : item.title;
+        const { open, close } = tagText(title);
+        const marks = item.kind === "page" ? [markType(state).create({ pageId: item.page.pageId })] : [];
+        if (item.kind === "page") titles?.prime?.(item.page.pageId, targetOf(item.page));
+        const after = state.doc.textBetween(span.to, Math.min(span.to + 1, state.doc.resolve(span.to).end()));
+        const nodes = [state.schema.text(open), state.schema.text(title, marks)];
+        if (close) nodes.push(state.schema.text(close));
+        if (after !== " ") nodes.push(state.schema.text(" "));
+        tr.replaceWith(span.from, span.to, nodes);
+        const end = span.from + open.length + title.length + close.length;
+        tr.setSelection(TextSelection.create(tr.doc, end + 1));
+        view.dispatch(tr.scrollIntoView());
+        return;
+      }
       if (item.kind === "page") {
         titles?.prime?.(item.page.pageId, targetOf(item.page));
         tr.replaceWith(span.innerFrom, span.innerTo, state.schema.text(item.page.title, [markType(state).create({ pageId: item.page.pageId })]));
@@ -462,14 +517,19 @@ export const Wikilink = Mark.create<WikilinkOptions>({
         key: linkKey,
         state: {
           init: (_, state) => ({ decorations: buildDecorations(state.doc, linkSpans(state.doc), titles, null), focused: false, entry: null }),
-          apply: (tr, prev, _old, state) => {
+          apply: (tr, prev, old, state) => {
             const focusMeta = tr.getMeta(FOCUS) as boolean | undefined;
             const focused = focusMeta ?? prev.focused;
             const spans = linkSpans(state.doc);
             const active = focused ? spanAt(spans, state.selection.head) : undefined;
             let entry = prev.entry ? { from: tr.mapping.map(prev.entry.from), inner: prev.entry.inner } : null;
             if (!active) entry = null;
-            else if (!entry || entry.from !== active.from || tr.getMeta(REWRITTEN)) entry = { from: active.from, inner: active.inner };
+            else if (!entry || entry.from !== active.from || tr.getMeta(REWRITTEN)) {
+              // A link or tag this edit just made (typing #g) starts empty, so it is suggested for and linked
+              const before = tr.docChanged && !isRemote(tr) ? tr.mapping.invert().map(active.from) : null;
+              const isNew = before !== null && !linkSpans(old.doc).some((s) => s.from === before && s.kind === active.kind);
+              entry = { from: active.from, inner: isNew ? "" : active.inner };
+            }
             const redraw = tr.docChanged || tr.selectionSet || focusMeta !== undefined || tr.getMeta(TITLES_CHANGED);
             const decorations = redraw ? buildDecorations(state.doc, spans, titles, active?.from ?? null) : prev.decorations.map(tr.mapping, tr.doc);
             return { decorations, focused, entry };

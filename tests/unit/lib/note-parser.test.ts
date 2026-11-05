@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseLine, parseNote, PARSER_VERSION, type DocLine, type LineMark } from "~/lib/note-parser";
+import { parseLine, parseNote, tagsInLine, isPlainTagName, PARSER_VERSION, type DocLine, type LineMark } from "~/lib/note-parser";
 import { WIKILINK_MARK } from "~/lib/wikilink";
 
 function line(text: string, marks: LineMark[] = []): DocLine {
@@ -213,5 +213,30 @@ describe("parseNote: text", () => {
 
   it("handles an empty document", () => {
     expect(parseNote([])).toEqual({ links: [], tags: [], tasks: [], text: "" });
+  });
+});
+
+describe("tagsInLine (shared with the editor, F45)", () => {
+  it("finds #name and #[[multi word]] tags with their ranges", () => {
+    expect(tagsInLine("see #books and #[[Reading list]]")).toEqual([
+      { from: 4, to: 10, innerFrom: 5, innerTo: 10, name: "books", bracketed: false },
+      { from: 15, to: 32, innerFrom: 18, innerTo: 30, name: "Reading list", bracketed: true },
+    ]);
+  });
+
+  it("finds no tags in code, link text, numbers, mid-word or headings", () => {
+    expect(tagsInLine("`#code` `a #[[in code]]` [[a #b]] #42 a#b # heading ## also #[[  ]]")).toEqual([]);
+  });
+
+  it("knows which titles can be written as a plain #tag", () => {
+    expect(["books", "a/b", "my-tag", "über_x"].map(isPlainTagName)).toEqual([true, true, true, true]);
+    expect(["Reading list", "42", "", "a,b", "#x"].map(isPlainTagName)).toEqual([false, false, false, false, false]);
+  });
+
+  it("puts multi-word tags in the parsed tags too", () => {
+    expect(parseNote([line("#[[Reading list]] and #books")]).tags.map((t) => [t.name, t.key])).toEqual([
+      ["Reading list", "reading list"],
+      ["books", "books"],
+    ]);
   });
 });

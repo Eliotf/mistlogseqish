@@ -13,6 +13,7 @@
   --color-coral: #e8564a;
   --color-chartreuse: #b5e636;
   --color-canary: #ffe014;
+  --color-tag: #3d7a5a;
 }
 
 html {
@@ -539,6 +540,7 @@ body {
   --color-paper: #111111;
   --color-muted: #777;
   --color-border: #2a2a2a;
+  --color-tag: #7cc49c;
   color-scheme: dark;
 }
 
@@ -560,6 +562,7 @@ body {
     --color-paper: #111111;
     --color-muted: #777;
     --color-border: #2a2a2a;
+    --color-tag: #7cc49c;
     color-scheme: dark;
   }
 
@@ -620,6 +623,17 @@ body {
 .tiptap .wikilink-journal { font-family: var(--font-mono); font-size: 0.86em; }
 .tiptap .wikilink-stale { font-size: 0; }
 .tiptap .wikilink:has(.wikilink-editing) { text-decoration: none; cursor: text; background: none; }
+
+/* Tags (F45): #name or #[[name]], links styled as tags: the name in the
+   tag colour with no underline, the # faint. Pending and missing tags keep
+   the dashed underline links have. */
+.tiptap .wikilink:has(> .tag:not(.wikilink-missing)),
+.tiptap .tag:not(.wikilink-bracket):not(.wikilink-missing):not(.wikilink-pending) {
+  text-decoration: none;
+  color: var(--color-tag);
+}
+.tiptap .tag .wikilink:not(.wikilink-missing) { text-decoration: none; }
+.tiptap .wikilink-bracket.tag { color: var(--color-tag); opacity: 0.55; }
 
 .link-suggest {
   position: absolute;
