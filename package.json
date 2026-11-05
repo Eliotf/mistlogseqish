@@ -38,6 +38,7 @@
 		"react-dom": "^19.1.1",
 		"react-router": "^7.10.0",
 		"sugar-high": "^1.1.0",
+		"y-indexeddb": "^9.0.12",
 		"y-protocols": "^1.0.7",
 		"yaml": "^2.8.2",
 		"yjs": "^13.6.29"

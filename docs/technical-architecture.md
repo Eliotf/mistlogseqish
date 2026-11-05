@@ -219,6 +219,13 @@ Tests in `tests/unit/lib/note-*.test.ts` include a round trip through Yjs using 
 - Deleting (`POST /api/pages/delete` → `DocumentAgent.deletePage`, under the index lock): the document records a `deleted` marker (so `exists()` is false: no indexing, `GET` says it doesn't exist, new WebSockets are closed with `CLOSE_DELETED_PAGE` 4002), then the index's `deletePage` removes the page's entry, everything derived from it, its slugs and its registry entry, and records it in `deleted_pages` (schema 4). If the index call fails, the marker is removed again. Open tabs are closed with 4002; `useYjsEditor` reports `deleted`, the editor turns read-only and the status says "Deleted".
 - The index ignores `updatePage` and `registerPage` for a page in `deleted_pages`, so a late update from an open tab, or a rebuild, can never bring it back. Links to it from other pages stay in their rows and show as missing. Its Yjs state stays in its Durable Object for a later Trash. Journal days can't be deleted yet.
 
+## Browser Copy (first part of offline)
+
+- `useYjsEditor` keeps each page's Y.Doc in IndexedDB through `y-indexeddb` (`app/lib/local-cache.ts`, database `mistlog:v<DOC_FORMAT_VERSION>:<page ID>`). The saved copy loads into the doc while the WebSocket connects, and the two merge like any Yjs replicas: the provider sends every update not from the server, so edits saved while offline reach the server on reconnect.
+- The name carries the document format version, so a copy written by older code is never loaded after a format change. A page closed with `CLOSE_DELETED_PAGE` has its copy cleared; an outdated tab's copy is kept.
+- Lines loaded from the saved copy arrive as remote (y-sync) changes, so the browser never labels them with block IDs; the server's rule (F41) still holds.
+- Not yet: the app shell offline (a service worker), and saying on screen that a page shows a saved copy. Copies stay in this browser; nothing clears them on sign-out (there are no accounts yet).
+
 ## Durable Object Usage
 
 Durable Objects are billed for every second they are awake; they hibernate after about 10 idle seconds (WebSocket hibernation, on by default in the Agents SDK). The free plan allows about 28 hours of awake time a day.

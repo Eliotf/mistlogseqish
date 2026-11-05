@@ -6,6 +6,7 @@ import { YjsProvider } from "./yjs-provider";
 import { USER_COLOURS, DOC_FORMAT_VERSION, FORMAT_PARAM, CLOSE_OUTDATED_CLIENT, CLOSE_DELETED_PAGE } from "~/shared/constants";
 import type { UserInfo, DocMode } from "~/shared/types";
 import { useDisconnectWhenHidden } from "./connection-budget";
+import { openLocalCache } from "./local-cache";
 
 function randomUserInfo(): UserInfo {
   const idx = Math.floor(Math.random() * USER_COLOURS.length);
@@ -38,13 +39,27 @@ export function useYjsEditor(docId: string) {
     query: FORMAT_QUERY,
   });
 
+  // Keep a copy of this page in the browser (local-cache.ts): it shows at once, and unsent edits survive a reload
+  const cacheRef = useRef<ReturnType<typeof openLocalCache>>(null);
+  useEffect(() => {
+    const cache = openLocalCache(docId, doc);
+    cacheRef.current = cache;
+    return () => {
+      cacheRef.current = null;
+      void cache?.destroy();
+    };
+  }, [docId, doc]);
+
   // Refused as outdated (the page asks for a reload) or deleted: stop reconnecting
   useEffect(() => {
     if (!socket) return;
     const onClose = (event: CloseEvent) => {
       if (event.code === CLOSE_OUTDATED_CLIENT) setOutdated(true);
-      else if (event.code === CLOSE_DELETED_PAGE) setDeleted(true);
-      else return;
+      else if (event.code === CLOSE_DELETED_PAGE) {
+        setDeleted(true);
+        // A deleted page's saved copy goes too, so it can't come back from this browser
+        void cacheRef.current?.clearData();
+      } else return;
       socket.close();
     };
     socket.addEventListener("close", onClose);
