@@ -8,7 +8,7 @@ Everything runs on Cloudflare. No other hosting, no external databases, no separ
 
 - **Cloudflare Workers** — single worker serving the entire application.
 - **Durable Objects** — each page and each journal day is a `DocumentAgent` Durable Object holding a Yjs document in its built-in SQLite. A single `WorkspaceAgent` Durable Object (instance `default`) holds the workspace index (see below).
-- **Cloudflare Access** — gates the whole `workers.dev` address; visitors sign in with a Cloudflare account. The Worker does not verify the Access token itself yet (planned for M4).
+- **Cloudflare Access** — gates the whole `workers.dev` address; an email whitelist in the Access policy decides who gets in, signing in with a one-time PIN or a Cloudflare account. The Worker does not verify the Access token itself yet (planned for M4).
 
 ## Framework Stack
 
