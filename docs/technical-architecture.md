@@ -226,6 +226,12 @@ Tests in `tests/unit/lib/note-*.test.ts` include a round trip through Yjs using 
 - Lines loaded from the saved copy arrive as remote (y-sync) changes, so the browser never labels them with block IDs; the server's rule (F41) still holds.
 - Not yet: the app shell offline (a service worker), and saying on screen that a page shows a saved copy. Copies stay in this browser; nothing clears them on sign-out (there are no accounts yet).
 
+## Logseq Import
+
+- `app/lib/logseq-import.ts` is pure: `convertGraph(files)` turns a picked graph folder (paths and texts) into an `ImportPlan` of pages with Mistlog lines (text, block ID, fold), the titles linked but missing, skipped files with reasons, renamed and combined pages, and counts. Rules are in the module comment and PRD F31. Files are processed in code-point order, so the same folder always gives the same plan. The folder is found by the nearest `pages`, `journals`, `assets` or `logseq` above each file (the graph's own folder may be called "Logseq").
+- Links and tags in imported text are found with `writtenLinks` from the shared parser, which the editor's `linkSpans` also uses (invariant 7).
+- `/import` (`ImportView`) reads the folder in the browser (`webkitdirectory`), converts it, and asks `POST /api/import/check` which titles are pages already and which days have notes (`WorkspaceIndex.importCheck`, read-only, batched under the 100-parameter limit). `summarise` gives the report's numbers. Step 2 (writing, and undo) is not built yet.
+
 ## Durable Object Usage
 
 Durable Objects are billed for every second they are awake; they hibernate after about 10 idle seconds (WebSocket hibernation, on by default in the Agents SDK). The free plan allows about 28 hours of awake time a day.

@@ -77,7 +77,12 @@ export default function AllPagesView({ pages, loadFailed, deletePage = deletePag
 
   return (
     <div className="mx-6 mb-10 mt-8 max-w-[65rem]">
-      <h1 className="text-[1.75rem] font-semibold leading-tight text-ink">All pages</h1>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h1 className="text-[1.75rem] font-semibold leading-tight text-ink">All pages</h1>
+        <Link to="/import" className="text-sm text-muted underline hover:text-ink">
+          Import from Logseq
+        </Link>
+      </div>
       <div className="mt-4 flex flex-wrap items-center gap-4">
         <input
           type="search"

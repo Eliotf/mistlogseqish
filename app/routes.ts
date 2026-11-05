@@ -8,6 +8,7 @@ export default [
   route("journal/:date", "routes/journal.$date.tsx"),
   route("tasks", "routes/tasks.tsx"),
   route("pages", "routes/pages.tsx"),
+  route("import", "routes/import.tsx"),
   route("api/rename", "routes/api.rename.ts"),
   route("api/journals", "routes/api.journals.ts"),
   route("api/pages", "routes/api.pages.ts"),
@@ -15,4 +16,5 @@ export default [
   route("api/pages/search", "routes/api.pages.search.ts"),
   route("api/pages/backlinks", "routes/api.pages.backlinks.ts"),
   route("api/pages/delete", "routes/api.pages.delete.ts"),
+  route("api/import/check", "routes/api.import.check.ts"),
 ] satisfies RouteConfig;

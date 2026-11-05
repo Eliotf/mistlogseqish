@@ -595,6 +595,26 @@ export class WorkspaceIndex {
       }));
   }
 
+  /**
+   * For a Logseq import's dry run: which of these title keys are pages
+   * already, and which of these days (YYYY-MM-DD) already have notes.
+   */
+  importCheck(keys: string[], dates: string[]): { pages: string[]; days: string[] } {
+    const pages: string[] = [];
+    const days: string[] = [];
+    for (let i = 0; i < keys.length; i += MAX_BOUND_PARAMS) {
+      const chunk = keys.slice(i, i + MAX_BOUND_PARAMS);
+      const rows = this.db.exec(`SELECT title_key FROM pages WHERE kind = 'page' AND title_key IN (${chunk.map(() => "?").join(", ")})`, ...chunk);
+      for (const row of rows) pages.push(row.title_key as string);
+    }
+    for (let i = 0; i < dates.length; i += MAX_BOUND_PARAMS) {
+      const chunk = dates.slice(i, i + MAX_BOUND_PARAMS);
+      const rows = this.db.exec(`SELECT journal_date FROM pages WHERE kind = 'journal' AND has_content = 1 AND journal_date IN (${chunk.map(() => "?").join(", ")})`, ...chunk);
+      for (const row of rows) days.push(row.journal_date as string);
+    }
+    return { pages, days };
+  }
+
   /** Registered page IDs in ID order, for walking the registry in batches. */
   registeredPages(limit = 100, after = ""): string[] {
     return this.db

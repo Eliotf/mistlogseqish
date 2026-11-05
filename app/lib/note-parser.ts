@@ -174,6 +174,37 @@ export function tagsInLine(text: string): TagMatch[] {
   return tags.sort((a, b) => a.from - b.from);
 }
 
+/** A `[[link]]`, `#tag` or `#[[tag]]` written in a line, found from its text alone. */
+export interface WrittenLink {
+  kind: "link" | "tag";
+  /** `[[...]]` or `#[[...]]`, rather than a plain `#tag`. */
+  bracketed: boolean;
+  from: number;
+  to: number;
+  innerFrom: number;
+  innerTo: number;
+  /** The title as written (not trimmed). */
+  name: string;
+}
+
+const LINK_RE = /\[\[([^[\]\n]*)\]\]/g;
+
+/**
+ * Every link and tag written in a line, in order, from the text alone: the
+ * editor uses it to find what to show and link, and the Logseq import to
+ * find titles to link (invariant 7). The brackets of a `#[[tag]]` belong to
+ * the tag, not a separate link.
+ */
+export function writtenLinks(text: string): WrittenLink[] {
+  const tags = tagsInLine(text);
+  const found: WrittenLink[] = tags.map((t) => ({ kind: "tag", bracketed: t.bracketed, from: t.from, to: t.to, innerFrom: t.innerFrom, innerTo: t.innerTo, name: t.name }));
+  for (const m of text.matchAll(LINK_RE)) {
+    if (tags.some((t) => t.bracketed && t.from + 1 === m.index)) continue;
+    found.push({ kind: "link", bracketed: true, from: m.index, to: m.index + m[0].length, innerFrom: m.index + 2, innerTo: m.index + 2 + m[1].length, name: m[1] });
+  }
+  return found.sort((a, b) => a.from - b.from);
+}
+
 function extractTags(text: string, line: number): ParsedTag[] {
   const tags: ParsedTag[] = [];
   for (const { name } of tagsInLine(text)) {

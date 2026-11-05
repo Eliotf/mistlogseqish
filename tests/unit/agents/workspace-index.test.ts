@@ -676,6 +676,16 @@ describe("WorkspaceIndex", () => {
     });
   });
 
+  describe("importCheck (Logseq import dry run)", () => {
+    it("says which title keys are pages and which days already have notes, in batches", () => {
+      index.updatePage(page(MIST, "Mistlog", [line("x")]));
+      index.updatePage(page(TODAY, "", [line("today")]));
+      index.updatePage(page("journal-2026-10-21", "", [line("")]));
+      const many = Array.from({ length: 150 }, (_, i) => `title ${i}`);
+      expect(index.importCheck([...many, "mistlog", "unknown"], ["2026-10-22", "2026-10-21", "2026-10-20"])).toEqual({ pages: ["mistlog"], days: ["2026-10-22"] });
+    });
+  });
+
   describe("rebuild bookkeeping", () => {
     it("lists registered pages never indexed or indexed by an older parser, in ID order after a cursor", () => {
       index.updatePage(page(MIST, "Mistlog", [line("x")]));

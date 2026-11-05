@@ -198,6 +198,10 @@ class WorkspaceAgent extends Agent<Env> {
     return this.index.deletePage(pageId, at);
   }
 
+  async importCheck(keys: string[], dates: string[]) {
+    return this.index.importCheck(keys, dates);
+  }
+
   async allPages() {
     return this.index.allPages();
   }

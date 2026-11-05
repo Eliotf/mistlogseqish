@@ -7,7 +7,7 @@ import { WIKILINK_MARK, isWikilinkAttrs, wikilinkMarkSpec } from "./wikilink";
 import { linkHref, linkPageForTitle, searchPages, targetOf, type LinkPage, type LinkTarget } from "./page-titles";
 import { journalDateFromTitle, journalId, journalTitle } from "./note-ids";
 import { titleKey } from "./page-title";
-import { isPlainTagName, tagsInLine } from "./note-parser";
+import { isPlainTagName, writtenLinks } from "./note-parser";
 import { SuggestionList, type Suggestion } from "./link-suggestions";
 
 /**
@@ -76,7 +76,6 @@ export interface LinkSpan {
   pageId: string | null;
 }
 
-const BRACKETS_RE = /\[\[([^[\]\n]*)\]\]/g;
 
 function linkIdOf(node: ProseMirrorNode): string | null {
   const mark = node.marks.find((m) => m.type.name === WIKILINK_MARK);
@@ -101,20 +100,10 @@ export function linkSpans(doc: ProseMirrorNode): LinkSpan[] {
   doc.forEach((block, offset) => {
     if (!block.isTextblock) return;
     const start = offset + 1;
-    const text = block.textContent;
-    const tags = tagsInLine(text);
-    for (const tag of tags) {
-      const innerFrom = start + tag.innerFrom;
-      const innerTo = start + tag.innerTo;
-      spans.push({ kind: "tag", bracketed: tag.bracketed, from: start + tag.from, to: start + tag.to, innerFrom, innerTo, inner: tag.name, pageId: linkIdCovering(doc, innerFrom, innerTo) });
-    }
-    for (const m of text.matchAll(BRACKETS_RE)) {
-      // The brackets of a #[[tag]] are part of the tag
-      if (tags.some((t) => t.bracketed && t.from + 1 === m.index)) continue;
-      const from = start + m.index;
-      const innerFrom = from + 2;
-      const innerTo = innerFrom + m[1].length;
-      spans.push({ kind: "link", bracketed: true, from, to: innerTo + 2, innerFrom, innerTo, inner: m[1], pageId: linkIdCovering(doc, innerFrom, innerTo) });
+    for (const w of writtenLinks(block.textContent)) {
+      const innerFrom = start + w.innerFrom;
+      const innerTo = start + w.innerTo;
+      spans.push({ kind: w.kind, bracketed: w.bracketed, from: start + w.from, to: start + w.to, innerFrom, innerTo, inner: w.name, pageId: linkIdCovering(doc, innerFrom, innerTo) });
     }
   });
   return spans.sort((a, b) => a.from - b.from);
