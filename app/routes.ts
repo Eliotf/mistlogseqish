@@ -17,4 +17,5 @@ export default [
   route("api/pages/backlinks", "routes/api.pages.backlinks.ts"),
   route("api/pages/delete", "routes/api.pages.delete.ts"),
   route("api/import/check", "routes/api.import.check.ts"),
+  route("api/import/:step", "routes/api.import.$step.ts"),
 ] satisfies RouteConfig;

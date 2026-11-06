@@ -11,6 +11,7 @@ import { BLOCK_ID_ATTR, assignBlockIds, newBlockId } from "../app/lib/block-ids"
 import { PARSER_VERSION } from "../app/lib/note-parser";
 import { isJournalId, isPageId } from "../app/lib/note-ids";
 import { normalizeTitle, type DocumentRenameResult, type CreateWithTitleResult, type DeletePageResult } from "../app/lib/page-title";
+import { appendImportedLines, isImportedLines, removeImportedLines, type ImportedLine, type ImportLinesResult } from "../app/lib/import-lines";
 import { WORKSPACE_NAME } from "./workspace";
 
 /**
@@ -466,6 +467,77 @@ class DocumentAgent extends Agent {
         console.error("Could not delete the page from the index", err);
         return { ok: false, code: "failed" };
       }
+    });
+  }
+
+  /* ---------- Logseq import (F31) ---------- */
+
+  /** Block IDs each import added here, by import ID: what its undo removes. */
+  private readImports(): Record<string, string[]> {
+    const rows = this.sql<{ value: ArrayBuffer }>`SELECT value FROM doc_state WHERE key = 'imports'`;
+    if (!rows.length) return {};
+    try {
+      return JSON.parse(new TextDecoder().decode(rows[0].value)) as Record<string, string[]>;
+    } catch {
+      return {};
+    }
+  }
+
+  private writeImports(records: Record<string, string[]>): void {
+    const value = new TextEncoder().encode(JSON.stringify(records));
+    this.sql`
+      INSERT INTO doc_state (key, value) VALUES ('imports', ${sqlBlob(value)})
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    `;
+  }
+
+  /**
+   * Add a Logseq import's lines below this document's content (decision
+   * 2026-11-05), through Yjs so open tabs merge them. Called by POST
+   * /api/import/write. A page must exist (the import creates it first); a
+   * journal day is created by the lines, as by typing. Writing the same
+   * import again adds nothing, so a retried or resumed import is safe. The
+   * added lines' block IDs are recorded in the same step, for undoImport.
+   */
+  async importLines(importId: string, lines: ImportedLine[]): Promise<ImportLinesResult> {
+    if (typeof importId !== "string" || !importId || !isImportedLines(lines)) return { ok: false, code: "invalid" };
+    const { doc } = this.ensureInitialised();
+    return this.withIndexLock(async (): Promise<ImportLinesResult> => {
+      if (this.isDeleted() || (!isJournalId(this.name) && !this.exists())) return { ok: false, code: "missing" };
+      const records = this.readImports();
+      if (records[importId]) return { ok: true, added: 0 };
+      // An unwritten day with nothing to say stays unwritten
+      if (this.isUncreatedJournal() && lines.every((line) => line.text.replace(/^\t*(- ?)?/, "").trim() === "")) return { ok: true, added: 0 };
+      let added: string[] = [];
+      doc.transact(() => {
+        added = appendImportedLines(doc.getXmlFragment("default"), lines);
+      }, SERVER_ORIGIN);
+      // No await since the change: both are stored together
+      this.writeImports({ ...records, [importId]: added });
+      return { ok: true, added: added.length };
+    });
+  }
+
+  /**
+   * Undo an import here: remove exactly the lines it added, by block ID, even
+   * if they were edited or moved since; lines written since stay. Undoing
+   * again does nothing. Deleting a page the import created is the caller's
+   * next step (deletePage).
+   */
+  async undoImport(importId: string): Promise<{ removed: number }> {
+    const { doc } = this.ensureInitialised();
+    return this.withIndexLock(async (): Promise<{ removed: number }> => {
+      const records = this.readImports();
+      const ids = records[importId];
+      if (!ids) return { removed: 0 };
+      let removed = 0;
+      doc.transact(() => {
+        removed = removeImportedLines(doc.getXmlFragment("default"), ids);
+      }, SERVER_ORIGIN);
+      const rest = { ...records };
+      delete rest[importId];
+      this.writeImports(rest);
+      return { removed };
     });
   }
 

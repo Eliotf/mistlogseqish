@@ -1,6 +1,7 @@
 import { isBlockId } from "./block-ids";
 import { writtenLinks } from "./note-parser";
-import { journalDateFromTitle, journalTitle, parseJournalDate } from "./note-ids";
+import { journalDateFromTitle, journalId, journalTitle, parseJournalDate } from "./note-ids";
+import type { ImportedLine } from "./import-lines";
 import { normalizeTitle, titleKey } from "./page-title";
 
 /**
@@ -313,4 +314,43 @@ export function summarise(plan: ImportPlan, existing: ExistingInMistlog): Import
     addedToDays,
     emptyPages: plan.missingTitles.filter((t) => !pages.has(titleKey(t))).length,
   };
+}
+
+/** Titles the import needs a page ID for: the graph's pages, then linked titles with no page. Journal days have fixed IDs. */
+export function titlesToResolve(plan: ImportPlan): string[] {
+  return [...plan.pages.filter((p) => p.kind === "page").map((p) => p.title), ...plan.missingTitles];
+}
+
+/** Page IDs by title key, from POST /api/import/pages; null where a title couldn't be had. */
+export type ResolvedTitles = Record<string, string | null>;
+
+/** The page a written title points at: a journal day by its date, otherwise as resolved. */
+export function pageIdFor(name: string, resolved: ResolvedTitles): string | null {
+  const date = journalDateFromTitle(name.trim());
+  if (date) return journalId(date);
+  return resolved[titleKey(name)] ?? null;
+}
+
+/** The document an imported page is written to. */
+export function targetOf(page: ImportPage, resolved: ResolvedTitles): string | null {
+  return page.date ? journalId(page.date) : (resolved[page.key] ?? null);
+}
+
+/**
+ * An imported page's lines as they are written: each `[[Title]]` and tag
+ * linked by page ID (invariant 1), the mark on the title or tag name as the
+ * editor puts it. A title that couldn't be had stays as text, unlinked, like
+ * a pasted link that couldn't be linked.
+ */
+export function linkedLines(page: ImportPage, resolved: ResolvedTitles): ImportedLine[] {
+  // writtenLinks gives links in order and never overlapping (a tag inside a link's title isn't a tag)
+  return page.lines.map((line) => ({
+    text: line.text,
+    blockId: line.blockId,
+    collapsed: line.collapsed,
+    links: writtenLinks(line.text).flatMap((w) => {
+      const pageId = w.name.trim() ? pageIdFor(w.name, resolved) : null;
+      return pageId ? [{ from: w.innerFrom, to: w.innerTo, pageId }] : [];
+    }),
+  }));
 }

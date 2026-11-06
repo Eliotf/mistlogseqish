@@ -12,7 +12,7 @@ const coverageThresholds = {
   lines: 85,
   branches: 79,
   functions: 83,
-  statements: 83,
+  statements: 84,
 };
 
 export default defineConfig({

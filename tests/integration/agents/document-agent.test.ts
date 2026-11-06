@@ -18,6 +18,8 @@ import { YjsProvider } from "~/lib/yjs-provider";
 import { PARSER_VERSION } from "~/lib/note-parser";
 import { WorkspaceIndex, type PageUpdate, type PageUpdateAck, type ClaimResult } from "../../../agents/workspace-index";
 import { memoryDb } from "../../helpers/sqlite";
+import { linesFromYjs } from "~/lib/note-lines";
+import type { ImportedLine } from "~/lib/import-lines";
 
 /* ------------------------------------------------------------------ */
 /*  Mock Agent base class                                              */
@@ -1417,6 +1419,81 @@ describe("DocumentAgent", () => {
         expect(await agent.deletePage()).toEqual({ ok: false, code: "failed" });
         expect(await exists()).toBe(true);
         vi.restoreAllMocks();
+      });
+    });
+
+    describe("Logseq import (F31)", () => {
+      const ID_A = "6550c4d2-1111-4abc-8def-0123456789ab";
+      const texts = (doc: Y.Doc) => linesFromYjs(doc.getXmlFragment("default")).map((l) => l.text);
+      const imported = (text: string, extra: Partial<ImportedLine> = {}): ImportedLine => ({ text, blockId: null, collapsed: false, links: [], ...extra });
+
+      it("adds the lines below the content, for every open tab, and only once per import", async () => {
+        await create("- mine");
+        const tab = connectYjsClient();
+        const lines = [imported("- see [[Books]]", { blockId: ID_A, links: [{ from: 8, to: 13, pageId: "bookpage" }] }), imported("\t- child")];
+        expect(await agent.importLines("imp1", lines)).toEqual({ ok: true, added: 2 });
+        expect(texts(tab.doc)).toEqual(["- mine", "- see [[Books]]", "\t- child"]);
+        const added = linesFromYjs(tab.doc.getXmlFragment("default"))[1];
+        expect(added.id).toBe(ID_A);
+        expect(added.marks).toEqual([{ type: "wikilink", from: 8, to: 13, attrs: { pageId: "bookpage" } }]);
+        // A retried or continued import writes nothing more
+        expect(await agent.importLines("imp1", lines)).toEqual({ ok: true, added: 0 });
+        expect(texts(tab.doc)).toHaveLength(3);
+        // And the page is indexed with its links
+        await agent.reindex();
+        expect(index.backlinks("bookpage").map((b) => b.sourceId)).toEqual([PAGE_ID]);
+        cleanup(tab);
+      });
+
+      it("undo removes exactly the lines it added, even edited or moved, and keeps the rest", async () => {
+        await create("- mine");
+        await agent.importLines("imp1", [imported("- one"), imported("- two")]);
+        const tab = connectYjsClient();
+        const frag = tab.doc.getXmlFragment("default");
+        // Edit an imported line, write a new one, and move the first imported line to the top
+        ((frag.get(2) as Y.XmlElement).get(0) as Y.XmlText).insert(7, " (edited)");
+        addLine(tab, "- written since");
+        tab.doc.transact(() => {
+          const one = frag.get(1) as Y.XmlElement;
+          const copy = one.clone();
+          frag.delete(1, 1);
+          frag.insert(0, [copy]);
+        });
+        expect(texts(tab.doc)).toEqual(["- one", "- mine", "- two (edited)", "- written since"]);
+        expect(await agent.undoImport("imp1")).toEqual({ removed: 2 });
+        expect(texts(tab.doc)).toEqual(["- mine", "- written since"]);
+        expect(await agent.undoImport("imp1")).toEqual({ removed: 0 });
+        cleanup(tab);
+      });
+
+      it("remembers what it added after the object restarts", async () => {
+        await create("- mine");
+        await agent.importLines("imp1", [imported("- one")]);
+        const fresh = new DocumentAgent({} as never, {} as never);
+        (fresh as unknown as { name: string }).name = PAGE_ID;
+        expect(await fresh.importLines("imp1", [imported("- one")])).toEqual({ ok: true, added: 0 });
+        expect(await fresh.undoImport("imp1")).toEqual({ removed: 1 });
+        const tab = connectYjsClient(fresh);
+        expect(texts(tab.doc)).toEqual(["- mine"]);
+        cleanup(tab);
+      });
+
+      it("refuses bad lines, and pages that don't exist or were deleted", async () => {
+        expect(await agent.importLines("imp1", [imported("- x")])).toEqual({ ok: false, code: "missing" });
+        await create("- mine");
+        expect(await agent.importLines("imp1", [imported("a\nb")])).toEqual({ ok: false, code: "invalid" });
+        expect(await agent.importLines("", [imported("- x")])).toEqual({ ok: false, code: "invalid" });
+        await agent.deletePage();
+        expect(await agent.importLines("imp1", [imported("- x")])).toEqual({ ok: false, code: "missing" });
+      });
+
+      it("creates an unwritten journal day with its lines, but not with empty bullets", async () => {
+        (agent as unknown as { name: string }).name = "journal-2026-11-04";
+        expect(await agent.importLines("imp1", [imported("- "), imported("\t-")])).toEqual({ ok: true, added: 0 });
+        expect(mockSqlStore.has("state")).toBe(false);
+        expect(await agent.importLines("imp1", [imported("- went for a walk")])).toEqual({ ok: true, added: 1 });
+        await vi.waitFor(() => expect(index.registeredPages()).toEqual(["journal-2026-11-04"]));
+        expect(mockSqlStore.has("state")).toBe(true);
       });
     });
 

@@ -142,3 +142,39 @@ describe("summarise", () => {
     });
   });
 });
+
+describe("linking an imported page's lines", () => {
+  it("links each [[title]] and tag by page ID, the mark on the title or tag name", async () => {
+    const { linkedLines, targetOf, titlesToResolve } = await import("~/lib/logseq-import");
+    const plan = convertGraph([
+      { path: "g/pages/Books.md", text: `- read [[Novels]] and #reading on [[Nov 3rd, 2026]]\n  id:: ${ID_A}\n  collapsed:: true\n- #[[big ideas]] [[Lost]]` },
+      { path: "g/journals/2026_11_04.md", text: "- went to [[books]]" },
+    ]);
+    // The graph's pages first, then linked titles with no page (in display order)
+    const titles = titlesToResolve(plan);
+    expect(titles[0]).toBe("Books");
+    expect(titles.slice(1).sort()).toEqual(["Lost", "Novels", "big ideas", "reading"]);
+    const resolved = { books: "pagebook", novels: "pagenovl", reading: "pageread", "big ideas": "pagebigi", lost: null };
+    const [day, books] = plan.pages;
+    expect(targetOf(day, resolved)).toBe("journal-2026-11-04");
+    expect(targetOf(books, resolved)).toBe("pagebook");
+
+    const lines = linkedLines(books, resolved);
+    const text = lines[0].text;
+    expect(lines[0]).toMatchObject({ blockId: ID_A, collapsed: true });
+    expect(lines[0].links.map((l) => [text.slice(l.from, l.to), l.pageId])).toEqual([
+      ["Novels", "pagenovl"],
+      ["reading", "pageread"],
+      ["Nov 3rd, 2026", "journal-2026-11-03"],
+    ]);
+    // A title that couldn't be had stays as text
+    expect(lines[1].links.map((l) => [lines[1].text.slice(l.from, l.to), l.pageId])).toEqual([["big ideas", "pagebigi"]]);
+    expect(linkedLines(day, resolved)[0].links).toEqual([{ from: 12, to: 17, pageId: "pagebook" }]);
+  });
+
+  it("leaves empty links alone", async () => {
+    const { linkedLines } = await import("~/lib/logseq-import");
+    const plan = convertGraph([{ path: "g/pages/A.md", text: "- [[]] and [[ ]]" }]);
+    expect(linkedLines(plan.pages[0], {})[0].links).toEqual([]);
+  });
+});

@@ -115,6 +115,8 @@ PRD.md        Product spec and roadmap
 - The Workers runtime has a `navigator` without `platform` (and other browser-only properties). Never read them at module load, or the server build throws and every page fails; use `app/lib/mod-key.ts` for Cmd/Ctrl labels. Node has `navigator.platform`, so unit tests will not catch this.
 - A deleted page (F21) is in the index's `deleted_pages` and has a `deleted` marker in its document; the index ignores updates and registrations for it. Anything that creates or re-indexes pages (import, rebuild) must go through those paths, never write index rows directly.
 - Workspace index schema changes are migrations: append to `MIGRATIONS` in `agents/workspace-index.ts` and bump `SCHEMA_VERSION`. Never edit `SCHEMA_V1` or a shipped migration, and test the upgrade from the previous version.
+- Writing Yjs text on the server: `Y.XmlText.insert` without attributes takes the formatting of the text before it, so a plain run after a link becomes part of the link. Pass the mark as `null` for plain runs (see `app/lib/import-lines.ts`), and check server-written content by opening it in the real editor in a test.
+- `getAgentByName` makes a fetch of its own before you call anything, so each Durable Object reached costs one subrequest more than its calls. Batch work across requests (the import does) to stay under the free plan's 50 per request.
 - Workspace index tests run real SQL on Node's built-in SQLite through `tests/helpers/sqlite.ts`; Node prints an experimental-feature warning, which is expected.
 
 ## Cloudflare notes

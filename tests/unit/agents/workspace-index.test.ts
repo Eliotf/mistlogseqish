@@ -426,10 +426,23 @@ describe("WorkspaceIndex", () => {
       old.exec(`DROP TABLE deleted_pages`);
       old.exec(`UPDATE meta SET value = '3' WHERE key = 'schema_version'`);
       const upgraded = new WorkspaceIndex(old);
-      expect(upgraded.schemaVersion()).toBe(4);
+      expect(upgraded.schemaVersion()).toBe(SCHEMA_VERSION);
       expect(upgraded.isDeleted("aaaa1111")).toBe(false);
       upgraded.deletePage("aaaa1111", 1);
       expect(upgraded.isDeleted("aaaa1111")).toBe(true);
+    });
+
+    it("upgrades a version 4 index with import records, keeping its pages", () => {
+      const old = versionOneDb();
+      new WorkspaceIndex(old);
+      old.exec(`DROP TABLE import_pages`);
+      old.exec(`DROP TABLE imports`);
+      old.exec(`UPDATE meta SET value = '4' WHERE key = 'schema_version'`);
+      const upgraded = new WorkspaceIndex(old);
+      expect(upgraded.schemaVersion()).toBe(SCHEMA_VERSION);
+      expect(upgraded.currentImport()).toBeNull();
+      expect(upgraded.startImport("imp1", 1)).toEqual({ ok: true });
+      expect(upgraded.getPage("aaaa1111")?.title).toBe("Meeting notes!");
     });
 
     it("migrates only once", () => {
@@ -453,6 +466,70 @@ describe("WorkspaceIndex", () => {
       for (const stmt of SCHEMA_V1) future.exec(stmt);
       future.exec(`INSERT INTO meta (key, value) VALUES ('schema_version', '99')`);
       expect(() => new WorkspaceIndex(future)).toThrow("newer than this code");
+    });
+  });
+
+  describe("Logseq import records (F31)", () => {
+    it("allows one import at a time, until it is undone", () => {
+      expect(index.currentImport()).toBeNull();
+      expect(index.startImport("imp1", 100)).toEqual({ ok: true });
+      expect(index.isRunningImport("imp1")).toBe(true);
+      const refused = index.startImport("imp2", 200);
+      expect(refused).toEqual({ ok: false, current: expect.objectContaining({ importId: "imp1", state: "running" }) });
+      expect(index.isRunningImport("imp2")).toBe(false);
+
+      expect(index.finishImport("imp1", 150)).toBe(true);
+      expect(index.isRunningImport("imp1")).toBe(false);
+      expect(index.startImport("imp2", 200).ok).toBe(false);
+
+      expect(index.startUndo("imp1")).toBe(true);
+      expect(index.finishUndo("imp1")).toBe(true);
+      expect(index.currentImport()).toBeNull();
+      expect(index.startImport("imp2", 200)).toEqual({ ok: true });
+    });
+
+    it("counts the documents written and pages created; a page once created stays so", () => {
+      index.startImport("imp1", 100);
+      index.recordImportPage("imp1", MIST, true);
+      index.recordImportPage("imp1", MIST, false); // found again when the import is continued
+      index.recordImportPage("imp1", TODAY, false);
+      index.recordImportPage("imp1", ACCESS, true);
+      index.forgetImportPage("imp1", ACCESS); // it was created by someone else first
+      expect(index.currentImport()).toMatchObject({ pages: 2, created: 1 });
+      expect(() => index.recordImportPage("imp1", "../nope", false)).toThrow("Invalid page ID");
+    });
+
+    it("undoes a few documents at a time and is not finished until all are", () => {
+      index.startImport("imp1", 100);
+      index.recordImportPage("imp1", MIST, true);
+      index.recordImportPage("imp1", TODAY, false);
+      index.recordImportPage("imp1", READING, false);
+      // Undo is refused for an import that doesn't exist, and once started, writes stop
+      expect(index.startUndo("nope")).toBe(false);
+      expect(index.startUndo("imp1")).toBe(true);
+      expect(index.isRunningImport("imp1")).toBe(false);
+      expect(index.finishImport("imp1", 1)).toBe(false);
+      expect(index.importPagesToUndo("imp1", 2)).toEqual([
+        { pageId: TODAY, created: false },
+        { pageId: MIST, created: true },
+      ]);
+      index.forgetImportPage("imp1", TODAY);
+      index.forgetImportPage("imp1", MIST);
+      expect(index.finishUndo("imp1")).toBe(false);
+      expect(index.currentImport()).toMatchObject({ state: "undoing", pages: 1 });
+      // Undoing again after a cut-off undo continues it
+      expect(index.startUndo("imp1")).toBe(true);
+      index.forgetImportPage("imp1", READING);
+      expect(index.finishUndo("imp1")).toBe(true);
+      expect(index.startUndo("imp1")).toBe(false);
+      expect(index.finishUndo("nope")).toBe(false);
+    });
+
+    it("survives a rebuild: import records are not derived", () => {
+      index.startImport("imp1", 100);
+      index.recordImportPage("imp1", MIST, true);
+      index.clearDerived();
+      expect(index.currentImport()).toMatchObject({ importId: "imp1", pages: 1 });
     });
   });
 
@@ -642,6 +719,12 @@ describe("WorkspaceIndex", () => {
         // Linked twice from Reading and once from Mistlog; its own self-link doesn't count
         { pageId: ACCESS, kind: "page", title: "Access", slug: "access", hasContent: true, updatedAt: 1000, backlinks: 2 },
       ]);
+    });
+
+    it("leaves out journal days with no text, but keeps empty pages", () => {
+      index.updatePage(page(YESTERDAY, "", [line("  ")], 5000));
+      index.updatePage(page(READING, "Reading", [line("")], 6000));
+      expect(index.allPages().map((p) => p.pageId)).toEqual([READING, TODAY, MIST, ACCESS]);
     });
 
     it("deleting a page removes it and what it says, frees its title and addresses, and keeps links to it", () => {

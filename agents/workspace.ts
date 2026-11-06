@@ -202,6 +202,42 @@ class WorkspaceAgent extends Agent<Env> {
     return this.index.importCheck(keys, dates);
   }
 
+  async currentImport() {
+    return this.index.currentImport();
+  }
+
+  async startImport(importId: string, at: number) {
+    return this.index.startImport(importId, at);
+  }
+
+  async isRunningImport(importId: string) {
+    return this.index.isRunningImport(importId);
+  }
+
+  async recordImportPage(importId: string, pageId: string, created: boolean) {
+    this.index.recordImportPage(importId, pageId, created);
+  }
+
+  async forgetImportPage(importId: string, pageId: string) {
+    this.index.forgetImportPage(importId, pageId);
+  }
+
+  async finishImport(importId: string, at: number) {
+    return this.index.finishImport(importId, at);
+  }
+
+  async startUndo(importId: string) {
+    return this.index.startUndo(importId);
+  }
+
+  async importPagesToUndo(importId: string, limit?: number) {
+    return this.index.importPagesToUndo(importId, limit);
+  }
+
+  async finishUndo(importId: string) {
+    return this.index.finishUndo(importId);
+  }
+
   async allPages() {
     return this.index.allPages();
   }
