@@ -10,7 +10,7 @@ import tsconfigPaths from "vite-tsconfig-paths";
  */
 const coverageThresholds = {
   lines: 85,
-  branches: 79,
+  branches: 80,
   functions: 83,
   statements: 84,
 };

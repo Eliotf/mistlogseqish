@@ -1,19 +1,19 @@
 import { useState, useSyncExternalStore, type ChangeEvent } from "react";
 import { Link } from "react-router";
 import { convertGraph, summarise, titlesToResolve, type ImportFile, type ImportPlan, type ImportSummary, type ExistingInMistlog } from "~/lib/logseq-import";
-import type { ImportRecord } from "~/lib/import-lines";
+import { importLabel, type ImportRecord } from "~/lib/import-lines";
 import { importApi, runImport, runUndo, type ImportApi, type ImportOutcome, type ImportProgress } from "~/lib/import-run";
 
 type Stage =
   | { kind: "idle" }
   | { kind: "reading"; done: number; total: number }
   | { kind: "checking" }
-  | { kind: "ready"; plan: ImportPlan; summary: ImportSummary }
+  | { kind: "ready"; plan: ImportPlan; summary: ImportSummary; label: string | null }
   | { kind: "importing"; progress: ImportProgress | null }
   | { kind: "imported"; outcome: ImportOutcome }
-  | { kind: "confirm-undo" }
+  | { kind: "confirm-undo"; record: ImportRecord }
   | { kind: "undoing"; left: number | null }
-  | { kind: "undone" }
+  | { kind: "undone"; record: ImportRecord }
   | { kind: "failed"; message: string };
 
 export async function checkExisting(plan: ImportPlan): Promise<ExistingInMistlog> {
@@ -30,27 +30,40 @@ const NEEDS_TEXT = /\.(md|org)$/i;
 const n = (count: number, one: string, many = `${one}s`) => `${count.toLocaleString()} ${count === 1 ? one : many}`;
 
 interface ImportViewProps {
-  /** The import not yet undone, if any (from the route's loader). */
-  current: ImportRecord | null;
+  /** The imports not yet undone, newest first (from the route's loader). */
+  imports: ImportRecord[];
   check?: typeof checkExisting;
   api?: ImportApi;
   wait?: (ms: number) => Promise<unknown>;
 }
 
+/** The folder's name, from the path the browser gives each file inside it. */
+export function folderName(files: File[]): string | null {
+  const path = files[0]?.webkitRelativePath ?? "";
+  return path.includes("/") ? importLabel(path.split("/")[0]) : null;
+}
+
+const nameOf = (record: ImportRecord) => `“${record.label ?? "Logseq graph"}”`;
+
+/** Put a record first in the list, replacing its older copy. */
+const withRecord = (imports: ImportRecord[], record: ImportRecord) => [record, ...imports.filter((i) => i.importId !== record.importId)];
+
 /**
  * Import from Logseq (PRD F31). Pick a graph folder; its files are read and
  * converted in this browser (logseq-import.ts), and only titles and dates
  * are sent to see what already exists. The report says what an import would
- * do; nothing is written until Import. One import at a time: it can be
- * undone (exactly the lines it added, and the pages it created), and one cut
- * short can be continued by choosing the folder again.
+ * do; nothing is written until Import. Several folders can be imported, one
+ * at a time; each is listed and can be undone (exactly the lines it added,
+ * and the pages it created that no other import uses). One cut short is
+ * continued by choosing its folder again.
  */
-export default function ImportView({ current: initial, check = checkExisting, api = importApi, wait }: ImportViewProps) {
-  const [current, setCurrent] = useState(initial);
+export default function ImportView({ imports: initial, check = checkExisting, api = importApi, wait }: ImportViewProps) {
+  const [imports, setImports] = useState(initial);
   const [stage, setStage] = useState<Stage>({ kind: "idle" });
   const busy = stage.kind === "importing" || stage.kind === "undoing" || stage.kind === "reading" || stage.kind === "checking";
-  // A finished import blocks another until undone; an unfinished one is continued with its folder
-  const canPick = !busy && (!current || current.state === "running");
+  // Running or being undone: until it is finished or undone, no other import starts or is undone
+  const unfinished = imports.find((i) => i.state !== "done") ?? null;
+  const canPick = !busy && stage.kind !== "confirm-undo" && unfinished?.state !== "undoing";
 
   const pick = async (event: ChangeEvent<HTMLInputElement>) => {
     const list = [...(event.target.files ?? [])];
@@ -66,29 +79,33 @@ export default function ImportView({ current: initial, check = checkExisting, ap
       const plan = convertGraph(files);
       setStage({ kind: "checking" });
       const existing = await check(plan);
-      setStage({ kind: "ready", plan, summary: summarise(plan, existing) });
+      setStage({ kind: "ready", plan, summary: summarise(plan, existing), label: folderName(list) });
     } catch (err) {
       console.error("Import dry run failed", err);
       setStage({ kind: "failed", message: "Couldn't read the folder or reach Mistlog. Try again in a moment." });
     }
   };
 
-  const start = async (plan: ImportPlan) => {
+  const start = async (plan: ImportPlan, label: string | null, continuing: ImportRecord | null) => {
     setStage({ kind: "importing", progress: null });
+    let importId = continuing?.importId ?? null;
     try {
-      let importId = current?.state === "running" ? current.importId : null;
       if (!importId) {
-        const started = await api.start();
+        const started = await api.start(label);
         if (!started.ok) {
-          setCurrent(started.current);
-          setStage({ kind: "failed", message: "An import exists already. Undo it to import again." });
+          setImports((list) => withRecord(list, started.current));
+          setStage({ kind: "failed", message: `The import of ${nameOf(started.current)} isn't finished. Continue or undo it first.` });
           return;
         }
         importId = started.importId;
-        setCurrent({ importId, state: "running", startedAt: Date.now(), finishedAt: null, pages: 0, created: 0 });
+        setImports((list) => withRecord(list, { importId: importId!, label, state: "running", startedAt: Date.now(), finishedAt: null, pages: 0, created: 0 }));
       }
       const outcome = await runImport(importId, plan, (progress) => setStage({ kind: "importing", progress }), { api, wait });
-      setCurrent((c) => outcome.record ?? (c ? { ...c, state: "done", finishedAt: Date.now() } : c));
+      const id = importId;
+      setImports((list) => {
+        const record = outcome.record ?? list.find((i) => i.importId === id);
+        return record ? withRecord(list, { ...record, state: "done", finishedAt: record.finishedAt ?? Date.now() }) : list;
+      });
       setStage({ kind: "imported", outcome });
     } catch (err) {
       console.error("Import failed", err);
@@ -96,16 +113,17 @@ export default function ImportView({ current: initial, check = checkExisting, ap
     }
   };
 
-  const undo = async () => {
-    if (!current) return;
+  const undo = async (record: ImportRecord) => {
     setStage({ kind: "undoing", left: null });
     try {
-      await runUndo(current.importId, (left) => setStage({ kind: "undoing", left }), { api, wait });
-      setCurrent(null);
-      setStage({ kind: "undone" });
+      await runUndo(record.importId, (left) => setStage({ kind: "undoing", left }), { api, wait });
+      setImports((list) => list.filter((i) => i.importId !== record.importId));
+      setStage({ kind: "undone", record });
+      // Pages another import took over change its counts: fetch them afresh
+      api.list().then(setImports, (err: unknown) => console.error("Reloading the imports failed", err));
     } catch (err) {
       console.error("Undoing the import failed", err);
-      setCurrent((c) => (c ? { ...c, state: "undoing" } : c));
+      setImports((list) => list.map((i) => (i.importId === record.importId ? { ...i, state: "undoing" } : i)));
       setStage({ kind: "failed", message: "Undoing stopped before it finished. Try again in a moment." });
     }
   };
@@ -117,11 +135,11 @@ export default function ImportView({ current: initial, check = checkExisting, ap
         Choose your Logseq graph's folder (the one with <code>pages</code> and <code>journals</code> in it). It is read in this browser; only page titles and dates are sent, to see
         what Mistlog has already. You see what an import would do before anything is written.
       </p>
-      {current && !busy && stage.kind !== "imported" && <CurrentImport current={current} onUndo={() => setStage({ kind: "confirm-undo" })} />}
-      {stage.kind === "confirm-undo" && current && <ConfirmUndo current={current} onConfirm={() => void undo()} onCancel={() => setStage({ kind: "idle" })} />}
-      {canPick && stage.kind !== "confirm-undo" && (
+      {imports.length > 0 && !busy && <ImportList imports={imports} unfinished={unfinished} onUndo={(record) => setStage({ kind: "confirm-undo", record })} />}
+      {stage.kind === "confirm-undo" && <ConfirmUndo record={stage.record} onConfirm={() => void undo(stage.record)} onCancel={() => setStage({ kind: "idle" })} />}
+      {canPick && (
         <label className="mt-4 inline-block cursor-pointer border border-border px-3 py-1.5 text-sm uppercase tracking-wider hover:bg-border focus-within:outline focus-within:outline-2">
-          Choose folder
+          {imports.length > 0 ? "Choose another folder" : "Choose folder"}
           <input type="file" multiple className="sr-only" onChange={(e) => void pick(e)} {...{ webkitdirectory: "", directory: "" }} />
         </label>
       )}
@@ -152,7 +170,7 @@ export default function ImportView({ current: initial, check = checkExisting, ap
       )}
       {stage.kind === "undone" && (
         <p role="status" className="mt-4 text-sm text-ink">
-          The import is undone. You can import again.
+          The import of {nameOf(stage.record)} is undone.
         </p>
       )}
       {stage.kind === "failed" && (
@@ -160,41 +178,65 @@ export default function ImportView({ current: initial, check = checkExisting, ap
           {stage.message}
         </p>
       )}
-      {stage.kind === "ready" && <Report plan={stage.plan} summary={stage.summary} continuing={current?.state === "running"} onImport={() => void start(stage.plan)} />}
-      {stage.kind === "imported" && <Imported outcome={stage.outcome} onUndo={() => setStage({ kind: "confirm-undo" })} />}
+      {stage.kind === "ready" && (
+        <Report plan={stage.plan} summary={stage.summary} label={stage.label} imports={imports} unfinished={unfinished} onImport={(continuing) => void start(stage.plan, stage.label, continuing)} />
+      )}
+      {stage.kind === "imported" && <Imported outcome={stage.outcome} />}
     </div>
   );
 }
 
 const noSubscription = () => () => {};
 
-function CurrentImport({ current, onUndo }: { current: ImportRecord; onUndo: () => void }) {
-  // In the browser's own locale and time zone; blank on the server, so hydration matches
+/** A date in the browser's own locale and time zone; blank on the server, so hydration matches. */
+function useBrowserDate(at: number): string {
   const inBrowser = useSyncExternalStore(noSubscription, () => true, () => false);
-  const date = new Date(current.finishedAt ?? current.startedAt).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
-  const when = inBrowser ? ` on ${date}` : "";
-  const message =
-    current.state === "done"
-      ? `You imported a Logseq graph${when} (${n(current.pages, "page or day", "pages and days")}). Undo it to import again.`
-      : current.state === "running"
-        ? `An import started${when} didn't finish. Choose the folder again to continue it, or undo it.`
-        : "Undoing an import didn't finish.";
+  return inBrowser ? ` on ${new Date(at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}` : "";
+}
+
+function ImportList({ imports, unfinished, onUndo }: { imports: ImportRecord[]; unfinished: ImportRecord | null; onUndo: (record: ImportRecord) => void }) {
   return (
-    <section aria-label="Your import" className="mt-4 border border-border p-3 text-sm">
-      <p className="text-ink">{message}</p>
-      <button type="button" onClick={onUndo} className="mt-2 text-coral underline">
-        {current.state === "undoing" ? "Continue undoing" : "Undo this import"}
-      </button>
+    <section aria-label="Your imports" className="mt-4 text-sm">
+      <h2 className="text-sm uppercase tracking-wider text-muted">Your imports</h2>
+      <ul className="mt-2 divide-y divide-border border border-border">
+        {imports.map((record) => (
+          <ImportRow key={record.importId} record={record} blocked={unfinished !== null && unfinished.importId !== record.importId} onUndo={() => onUndo(record)} />
+        ))}
+      </ul>
+      {unfinished && imports.length > 1 && (
+        <p className="mt-2 text-xs text-muted">Until {nameOf(unfinished)} is finished or undone, the others can't be undone.</p>
+      )}
     </section>
   );
 }
 
-function ConfirmUndo({ current, onConfirm, onCancel }: { current: ImportRecord; onConfirm: () => void; onCancel: () => void }) {
+function ImportRow({ record, blocked, onUndo }: { record: ImportRecord; blocked: boolean; onUndo: () => void }) {
+  const when = useBrowserDate(record.finishedAt ?? record.startedAt);
+  const others = record.pages - record.created;
+  const message =
+    record.state === "done"
+      ? `Imported${when}: ${n(record.created, "new page")} and ${n(others, "other page or day", "other pages and days")}.`
+      : record.state === "running"
+        ? `Started${when}, didn't finish. Choose its folder again to continue it, or undo it.`
+        : "Undoing it didn't finish.";
+  return (
+    <li className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 p-3">
+      <p className="text-ink">
+        <span className="font-semibold">{nameOf(record)}</span> {message}
+      </p>
+      <button type="button" onClick={onUndo} disabled={blocked} aria-label={`${record.state === "undoing" ? "Continue undoing" : "Undo"} the import of ${nameOf(record)}`} className="text-coral underline disabled:text-muted disabled:no-underline">
+        {record.state === "undoing" ? "Continue undoing" : "Undo"}
+      </button>
+    </li>
+  );
+}
+
+function ConfirmUndo({ record, onConfirm, onCancel }: { record: ImportRecord; onConfirm: () => void; onCancel: () => void }) {
   return (
     <section aria-label="Undo the import" className="mt-4 border border-coral p-3 text-sm">
       <p className="text-ink">
-        Undo this import? It removes every line it added, even ones you have edited since, and deletes the {n(current.created, "page")} it created (with anything written on them since).
-        Lines you wrote yourself on other pages and days stay.
+        Undo the import of {nameOf(record)}? It removes every line it added, even ones you have edited since, and deletes the {n(record.created, "page")} it created (with anything
+        written on them since), except pages another import uses too. Lines you wrote yourself on other pages and days stay.
       </p>
       <div className="mt-2 flex gap-4">
         <button type="button" onClick={onConfirm} className="text-coral underline">
@@ -208,7 +250,7 @@ function ConfirmUndo({ current, onConfirm, onCancel }: { current: ImportRecord; 
   );
 }
 
-function Imported({ outcome, onUndo }: { outcome: ImportOutcome; onUndo: () => void }) {
+function Imported({ outcome }: { outcome: ImportOutcome }) {
   return (
     <section aria-label="Import finished" className="mt-6 text-sm">
       <p role="status" className="text-ink">
@@ -228,16 +270,28 @@ function Imported({ outcome, onUndo }: { outcome: ImportOutcome; onUndo: () => v
         <Link to="/pages" className="underline">
           All pages
         </Link>
-        <button type="button" onClick={onUndo} className="text-coral underline">
-          Undo this import
-        </button>
       </div>
     </section>
   );
 }
 
-function Report({ plan, summary, continuing, onImport }: { plan: ImportPlan; summary: ImportSummary; continuing: boolean; onImport: () => void }) {
+interface ReportProps {
+  plan: ImportPlan;
+  summary: ImportSummary;
+  /** The picked folder's name. */
+  label: string | null;
+  imports: ImportRecord[];
+  unfinished: ImportRecord | null;
+  /** Import, continuing the given unfinished import or starting a new one (null). */
+  onImport: (continuing: ImportRecord | null) => void;
+}
+
+function Report({ plan, summary, label, imports, unfinished, onImport }: ReportProps) {
   const { stats } = plan;
+  // An unfinished import is continued with its own folder (older imports have no name, so any folder)
+  const continuing = unfinished?.state === "running" && (unfinished.label === null || unfinished.label === label) ? unfinished : null;
+  const blockedBy = unfinished && !continuing ? unfinished : null;
+  const sameFolder = !continuing && label !== null ? imports.find((i) => i.state === "done" && i.label === label) : undefined;
   return (
     <section aria-label="What an import would do" className="mt-6">
       <h2 className="text-sm uppercase tracking-wider text-muted">What an import would do</h2>
@@ -285,10 +339,23 @@ function Report({ plan, summary, continuing, onImport }: { plan: ImportPlan; sum
           ))}
         </Details>
       )}
-      <button type="button" onClick={onImport} className="mt-6 border border-ink px-3 py-1.5 text-sm uppercase tracking-wider text-ink hover:bg-border">
-        {continuing ? "Continue import" : "Import"}
-      </button>
-      <p className="mt-2 text-xs text-muted">You can undo the import afterwards: it removes exactly what it added.</p>
+      {sameFolder && (
+        <p role="note" className="mt-4 text-sm text-coral">
+          You have imported a folder called {nameOf(sameFolder)} already. Importing it again adds its lines a second time; undo the earlier import first if you want them once.
+        </p>
+      )}
+      {blockedBy ? (
+        <p role="alert" className="mt-6 text-sm text-coral">
+          The import of {nameOf(blockedBy)} isn't finished. Choose that folder to continue it, or undo it, before importing another.
+        </p>
+      ) : (
+        <>
+          <button type="button" onClick={() => onImport(continuing)} className="mt-6 border border-ink px-3 py-1.5 text-sm uppercase tracking-wider text-ink hover:bg-border">
+            {continuing ? "Continue import" : "Import"}
+          </button>
+          <p className="mt-2 text-xs text-muted">You can undo the import afterwards: it removes exactly what it added.</p>
+        </>
+      )}
     </section>
   );
 }

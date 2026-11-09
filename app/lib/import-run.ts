@@ -13,7 +13,10 @@ const LINES_PER_WRITE = 4000;
 const RETRY_DELAYS_MS = [1000, 3000, 8000];
 
 export interface ImportApi {
-  start(): Promise<{ ok: true; importId: string } | { ok: false; current: ImportRecord }>;
+  /** The imports not undone, newest first. */
+  list(): Promise<ImportRecord[]>;
+  /** Start importing the folder named label; refused while another import is running or being undone. */
+  start(label: string | null): Promise<{ ok: true; importId: string } | { ok: false; current: ImportRecord }>;
   pages(importId: string, titles: string[]): Promise<ResolvedTitles>;
   write(importId: string, pages: Array<{ pageId: string; lines: ImportedLine[] }>): Promise<{ written: string[]; failed: string[] }>;
   /** The finished import's record (what undo will remove), or null if the index no longer has it. */
@@ -44,8 +47,11 @@ async function post<T>(step: string, body: unknown): Promise<T> {
 }
 
 export const importApi: ImportApi = {
-  async start() {
-    const answer = await post<{ importId?: string; current?: ImportRecord }>("start", {});
+  async list() {
+    return (await post<{ imports: ImportRecord[] }>("list", {})).imports;
+  },
+  async start(label) {
+    const answer = await post<{ importId?: string; current?: ImportRecord }>("start", { label });
     return answer.importId ? { ok: true, importId: answer.importId } : { ok: false, current: answer.current! };
   },
   async pages(importId, titles) {
@@ -55,7 +61,7 @@ export const importApi: ImportApi = {
     return post("write", { importId, pages });
   },
   async finish(importId) {
-    return (await post<{ current?: ImportRecord | null }>("finish", { importId })).current ?? null;
+    return (await post<{ record?: ImportRecord | null }>("finish", { importId })).record ?? null;
   },
   undo(importId) {
     return post("undo", { importId });

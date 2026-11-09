@@ -34,6 +34,8 @@ export interface ImportedLine {
 /** An import that has not been undone: running (not finished), done, or being undone. */
 export interface ImportRecord {
   importId: string;
+  /** The name of the folder imported (null for imports from before names were kept). */
+  label: string | null;
   state: "running" | "done" | "undoing";
   startedAt: number;
   finishedAt: number | null;
@@ -43,7 +45,20 @@ export interface ImportRecord {
   created: number;
 }
 
+/** Refused while another import is running or being undone; the result names it. */
 export type StartImportResult = { ok: true } | { ok: false; current: ImportRecord };
+
+/** "busy": another import is running or being undone, so this one can't be undone yet. */
+export type StartUndoResult = "ok" | "missing" | "busy";
+
+/** The longest folder name kept for an import. */
+export const MAX_IMPORT_LABEL = 200;
+
+/** An import's folder name as stored: trimmed and capped, or null if there is none. */
+export function importLabel(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  return raw.trim().slice(0, MAX_IMPORT_LABEL) || null;
+}
 
 export type ImportLinesResult = { ok: true; added: number } | { ok: false; code: "invalid" | "missing" };
 

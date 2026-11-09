@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { createElement, type ReactNode } from "react";
-import { render, cleanup, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, cleanup, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
-import ImportView from "~/components/ImportView";
+import ImportView, { folderName } from "~/components/ImportView";
 import type { ImportApi } from "~/lib/import-run";
 import type { ImportRecord } from "~/lib/import-lines";
 
@@ -22,7 +22,7 @@ function choose(files: File[]) {
 }
 
 function show(props: Partial<Parameters<typeof ImportView>[0]> = {}) {
-  return render(createElement(MemoryRouter, null, createElement(ImportView, { current: null, ...props })) as ReactNode as never);
+  return render(createElement(MemoryRouter, null, createElement(ImportView, { imports: [], ...props })) as ReactNode as never);
 }
 
 describe("ImportView (dry run)", () => {
@@ -67,15 +67,17 @@ describe("ImportView (dry run)", () => {
   });
 });
 
-const RUNNING: ImportRecord = { importId: "imp1", state: "running", startedAt: 1, finishedAt: null, pages: 3, created: 2 };
+const RUNNING: ImportRecord = { importId: "imp1", label: "g", state: "running", startedAt: 1, finishedAt: null, pages: 3, created: 2 };
 const DONE: ImportRecord = { ...RUNNING, state: "done", finishedAt: 2 };
+const OTHER: ImportRecord = { ...DONE, importId: "imp0", label: "Work", pages: 5, created: 1 };
 
 function fakeApi(overrides: Partial<ImportApi> = {}): ImportApi {
   return {
+    list: vi.fn(async () => []),
     start: vi.fn(async () => ({ ok: true as const, importId: "imp9" })),
     pages: vi.fn(async (_id: string, titles: string[]) => Object.fromEntries(titles.map((t) => [t.toLowerCase(), `p${t.toLowerCase().padEnd(7, "x")}`]))),
     write: vi.fn(async (_id: string, pages: Array<{ pageId: string }>) => ({ written: pages.map((p) => p.pageId), failed: [] })),
-    finish: vi.fn(async () => ({ ...DONE, importId: "imp9", created: 4 })),
+    finish: vi.fn(async (importId: string) => ({ ...DONE, importId, created: 4 })),
     undo: vi.fn(async () => ({ done: true, left: 0 })),
     ...overrides,
   };
@@ -83,78 +85,136 @@ function fakeApi(overrides: Partial<ImportApi> = {}): ImportApi {
 
 const check = async () => ({ pages: [], days: [] });
 const noWait = async () => {};
+const list = () => screen.getByRole("region", { name: "Your imports" });
+const rows = () => within(list()).getAllByRole("listitem");
+
+describe("folderName", () => {
+  it("is the picked folder's name, from the files' paths inside it", () => {
+    expect(folderName([picked("My graph/pages/A.md", "")])).toBe("My graph");
+    expect(folderName([new File([""], "loose.md")])).toBeNull();
+    expect(folderName([])).toBeNull();
+  });
+});
 
 describe("ImportView (import and undo)", () => {
   afterEach(cleanup);
 
-  it("imports after the report, then offers undo", async () => {
+  it("imports after the report, lists it, and allows another folder", async () => {
     const api = fakeApi();
     show({ check, api, wait: noWait });
     choose([picked("g/pages/Books.md", "- read [[Novels]]"), picked("g/journals/2026_11_04.md", "- today")]);
     fireEvent.click(await screen.findByRole("button", { name: "Import" }));
     const done = await screen.findByRole("region", { name: "Import finished" });
     expect(done.textContent).toContain("Imported: 2 pages and days written.");
-    expect(api.start).toHaveBeenCalledTimes(1);
+    expect(api.start).toHaveBeenCalledWith("g");
     expect(api.write).toHaveBeenCalledWith("imp9", expect.any(Array));
     expect(api.finish).toHaveBeenCalledWith("imp9");
-    // No second import while this one exists
-    expect(document.querySelector('input[type="file"]')).toBeNull();
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0].textContent).toContain("“g” Imported");
+    expect(rows()[0].textContent).toContain("4 new pages");
+    // Another folder can be imported straight away
+    expect(screen.getByText("Choose another folder")).toBeTruthy();
     // Undo knows what the import created
-    fireEvent.click(screen.getByRole("button", { name: "Undo this import" }));
+    fireEvent.click(screen.getByRole("button", { name: "Undo the import of “g”" }));
     expect(screen.getByRole("region", { name: "Undo the import" }).textContent).toContain("deletes the 4 pages it created");
   });
 
-  it("continues an import that didn't finish, under the same import", async () => {
+  it("imports a second folder alongside the first, and warns before importing the same folder twice", async () => {
+    const api = fakeApi({ start: vi.fn(async () => ({ ok: true as const, importId: "imp9" })), finish: vi.fn(async () => ({ ...DONE, importId: "imp9", label: "Home" })) });
+    show({ imports: [DONE], check, api, wait: noWait });
+    choose([picked("g/pages/Books.md", "- a")]);
+    expect((await screen.findByRole("note")).textContent).toContain("You have imported a folder called “g” already");
+    cleanup();
+
+    show({ imports: [DONE], check, api, wait: noWait });
+    choose([picked("Home/pages/Books.md", "- a")]);
+    await screen.findByRole("region", { name: "What an import would do" });
+    expect(screen.queryByRole("note")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Import" }));
+    await screen.findByRole("region", { name: "Import finished" });
+    expect(api.start).toHaveBeenCalledWith("Home");
+    expect(rows().map((r) => r.textContent?.split(" ")[0])).toEqual(["“Home”", "“g”"]);
+  });
+
+  it("continues an import that didn't finish with its own folder, under the same import", async () => {
     const api = fakeApi();
-    show({ current: RUNNING, check, api, wait: noWait });
-    expect(screen.getByRole("region", { name: "Your import" }).textContent).toContain("didn't finish");
+    show({ imports: [RUNNING, OTHER], check, api, wait: noWait });
+    expect(rows()[0].textContent).toContain("didn't finish");
+    // While it is unfinished, the others can't be undone
+    expect((screen.getByRole("button", { name: "Undo the import of “Work”" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Undo the import of “g”" }) as HTMLButtonElement).disabled).toBe(false);
     choose([picked("g/pages/Books.md", "- a")]);
     fireEvent.click(await screen.findByRole("button", { name: "Continue import" }));
     await screen.findByRole("region", { name: "Import finished" });
     expect(api.start).not.toHaveBeenCalled();
     expect(api.pages).toHaveBeenCalledWith("imp1", ["Books"]);
+    expect((screen.getByRole("button", { name: "Undo the import of “Work”" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it("says so when another import exists, and when an import stops part way", async () => {
+  it("won't import another folder until an unfinished import is continued or undone", async () => {
+    const api = fakeApi();
+    show({ imports: [RUNNING], check, api, wait: noWait });
+    choose([picked("Other/pages/Books.md", "- a")]);
+    expect((await screen.findByRole("alert")).textContent).toContain("The import of “g” isn't finished");
+    expect(screen.queryByRole("button", { name: /^(Import|Continue import)$/ })).toBeNull();
+    cleanup();
+    // An import from before folder names were kept is continued with any folder
+    show({ imports: [{ ...RUNNING, label: null }], check, api, wait: noWait });
+    choose([picked("Other/pages/Books.md", "- a")]);
+    expect(await screen.findByRole("button", { name: "Continue import" })).toBeTruthy();
+  });
+
+  it("says so when the server refuses to start, and when an import stops part way", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
-    show({ check, api: fakeApi({ start: async () => ({ ok: false, current: DONE }) }), wait: noWait });
+    show({ check, api: fakeApi({ start: async () => ({ ok: false, current: { ...RUNNING, label: "Elsewhere" } }) }), wait: noWait });
     choose([picked("g/pages/Books.md", "- a")]);
     fireEvent.click(await screen.findByRole("button", { name: "Import" }));
-    expect((await screen.findByRole("alert")).textContent).toContain("An import exists already");
+    expect((await screen.findByRole("alert")).textContent).toContain("The import of “Elsewhere” isn't finished");
+    expect(rows()[0].textContent).toContain("“Elsewhere”");
     cleanup();
 
     show({ check, api: fakeApi({ write: async () => Promise.reject(new Error("refused")) }), wait: noWait });
     choose([picked("g/pages/Books.md", "- a")]);
     fireEvent.click(await screen.findByRole("button", { name: "Import" }));
     expect((await screen.findByRole("alert")).textContent).toContain("stopped before it finished");
-    expect(screen.getByRole("button", { name: "Undo this import" })).toBeTruthy();
+    expect(rows()[0].textContent).toContain("didn't finish");
+    expect(screen.getByRole("button", { name: "Undo the import of “g”" })).toBeTruthy();
     vi.restoreAllMocks();
   });
 
-  it("undoes a finished import after asking, and then allows another", async () => {
-    const api = fakeApi({ undo: vi.fn().mockResolvedValueOnce({ done: false, left: 1 }).mockResolvedValue({ done: true, left: 0 }) });
-    show({ current: DONE, api, wait: noWait });
-    expect(screen.getByRole("region", { name: "Your import" }).textContent).toContain("Undo it to import again");
-    expect(document.querySelector('input[type="file"]')).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Undo this import" }));
+  it("undoes one import of several after asking, leaving the others with their counts fetched afresh", async () => {
+    const api = fakeApi({
+      undo: vi.fn().mockResolvedValueOnce({ done: false, left: 1 }).mockResolvedValue({ done: true, left: 0 }),
+      // The page "Work" created and "g" also used is now g's
+      list: vi.fn(async () => [{ ...DONE, created: 3 }]),
+    });
+    show({ imports: [DONE, OTHER], api, wait: noWait });
+    fireEvent.click(screen.getByRole("button", { name: "Undo the import of “Work”" }));
     const confirm = screen.getByRole("region", { name: "Undo the import" });
-    expect(confirm.textContent).toContain("deletes the 2 pages it created");
+    expect(confirm.textContent).toContain("Undo the import of “Work”?");
+    expect(confirm.textContent).toContain("deletes the 1 page it created");
+    expect(confirm.textContent).toContain("except pages another import uses too");
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(api.undo).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Undo this import" }));
+    fireEvent.click(screen.getByRole("button", { name: "Undo the import of “Work”" }));
     fireEvent.click(screen.getByRole("button", { name: "Undo the import" }));
-    expect((await screen.findByText(/The import is undone/)).textContent).toContain("You can import again");
+    expect((await screen.findByText(/is undone/)).textContent).toBe("The import of “Work” is undone.");
     expect(api.undo).toHaveBeenCalledTimes(2);
-    expect(document.querySelector('input[type="file"]')).toBeTruthy();
+    expect(api.undo).toHaveBeenCalledWith("imp0");
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0].textContent).toContain("“g”");
+    await waitFor(() => expect(rows()[0].textContent).toContain("3 new pages"));
   });
 
-  it("offers to continue an undo that stopped", async () => {
+  it("offers to continue an undo that stopped, and no new import until it is done", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
-    show({ current: DONE, api: fakeApi({ undo: async () => Promise.reject(new Error("refused")) }), wait: noWait });
-    fireEvent.click(screen.getByRole("button", { name: "Undo this import" }));
+    show({ imports: [DONE, OTHER], api: fakeApi({ undo: async () => Promise.reject(new Error("refused")) }), wait: noWait });
+    fireEvent.click(screen.getByRole("button", { name: "Undo the import of “g”" }));
     fireEvent.click(screen.getByRole("button", { name: "Undo the import" }));
     expect((await screen.findByRole("alert")).textContent).toContain("Undoing stopped");
-    expect(screen.getByRole("button", { name: "Continue undoing" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Continue undoing the import of “g”" })).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Undo the import of “Work”" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(document.querySelector('input[type="file"]')).toBeNull();
     vi.restoreAllMocks();
   });
 });

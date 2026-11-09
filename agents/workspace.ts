@@ -202,12 +202,16 @@ class WorkspaceAgent extends Agent<Env> {
     return this.index.importCheck(keys, dates);
   }
 
-  async currentImport() {
-    return this.index.currentImport();
+  async listImports() {
+    return this.index.listImports();
   }
 
-  async startImport(importId: string, at: number) {
-    return this.index.startImport(importId, at);
+  async getImport(importId: string) {
+    return this.index.getImport(importId);
+  }
+
+  async startImport(importId: string, label: string | null, at: number) {
+    return this.index.startImport(importId, label, at);
   }
 
   async isRunningImport(importId: string) {
@@ -228,6 +232,10 @@ class WorkspaceAgent extends Agent<Env> {
 
   async startUndo(importId: string) {
     return this.index.startUndo(importId);
+  }
+
+  async handOverImportPage(importId: string, pageId: string) {
+    return this.index.handOverImportPage(importId, pageId);
   }
 
   async importPagesToUndo(importId: string, limit?: number) {

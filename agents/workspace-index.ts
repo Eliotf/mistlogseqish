@@ -3,7 +3,7 @@ import type { AllPagesRow } from "../app/lib/all-pages";
 import { parseNote, PARSER_VERSION, type DocLine, type TaskPriority, type TaskState } from "../app/lib/note-parser";
 import { isJournalId, isJournalTitle, isPageId, journalTitle, parseJournalDate } from "../app/lib/note-ids";
 import { slugify } from "../app/lib/slug";
-import type { ImportRecord, StartImportResult } from "../app/lib/import-lines";
+import type { ImportRecord, StartImportResult, StartUndoResult } from "../app/lib/import-lines";
 
 /**
  * The workspace index: everything cross-page features query (backlinks,
@@ -28,7 +28,7 @@ export interface SqlDb {
   transaction<T>(fn: () => T): T;
 }
 
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 /** Durable Object SQLite's limit on bound parameters in one query. */
 const MAX_BOUND_PARAMS = 100;
@@ -106,6 +106,11 @@ const MIGRATIONS: Array<(db: SqlDb) => void> = [
   (db) => {
     db.exec(`CREATE TABLE IF NOT EXISTS imports (import_id TEXT PRIMARY KEY, state TEXT NOT NULL, started_at INTEGER NOT NULL, finished_at INTEGER)`);
     db.exec(`CREATE TABLE IF NOT EXISTS import_pages (import_id TEXT NOT NULL, page_id TEXT NOT NULL, created INTEGER NOT NULL, PRIMARY KEY (import_id, page_id))`);
+  },
+  // 5 -> 6: more than one import (F31). Each keeps the name of its folder, so
+  // the list of imports can tell them apart. Older imports have none.
+  (db) => {
+    db.exec(`ALTER TABLE imports ADD COLUMN label TEXT`);
   },
 ];
 
@@ -626,16 +631,14 @@ export class WorkspaceIndex {
     return { pages, days };
   }
 
-  /* ---------- Logseq import (F31): one at a time, undoable ---------- */
+  /* ---------- Logseq import (F31): several, each undoable, one in progress at a time ---------- */
 
-  /** The import that has not been undone, if any. */
-  currentImport(): ImportRecord | null {
-    const row = this.db.exec(`SELECT * FROM imports WHERE state != 'undone' ORDER BY started_at DESC LIMIT 1`)[0];
-    if (!row) return null;
+  private importRecord(row: SqlRow): ImportRecord {
     const importId = row.import_id as string;
     const counts = this.db.exec(`SELECT COUNT(*) AS n, COALESCE(SUM(created), 0) AS created FROM import_pages WHERE import_id = ?`, importId)[0];
     return {
       importId,
+      label: (row.label as string | null) ?? null,
       state: row.state as ImportRecord["state"],
       startedAt: row.started_at as number,
       finishedAt: (row.finished_at as number | null) ?? null,
@@ -644,12 +647,32 @@ export class WorkspaceIndex {
     };
   }
 
-  /** Start an import, unless one exists that has not been undone (no second import while one exists). */
-  startImport(importId: string, at: number): StartImportResult {
+  /** Every import not undone, newest first. */
+  listImports(): ImportRecord[] {
+    return this.db.exec(`SELECT * FROM imports WHERE state != 'undone' ORDER BY started_at DESC, import_id`).map((row) => this.importRecord(row));
+  }
+
+  /** One import, unless it is undone (or never was). */
+  getImport(importId: string): ImportRecord | null {
+    const row = this.db.exec(`SELECT * FROM imports WHERE import_id = ? AND state != 'undone'`, importId)[0];
+    return row ? this.importRecord(row) : null;
+  }
+
+  /** The import running or being undone, if any; while there is one, no other may start or be undone. */
+  private unfinishedImport(): ImportRecord | null {
+    const row = this.db.exec(`SELECT * FROM imports WHERE state IN ('running', 'undoing') ORDER BY started_at DESC LIMIT 1`)[0];
+    return row ? this.importRecord(row) : null;
+  }
+
+  /**
+   * Start an import, unless another is running or being undone (finish or
+   * undo that first). Finished imports don't stop another.
+   */
+  startImport(importId: string, label: string | null, at: number): StartImportResult {
     return this.db.transaction((): StartImportResult => {
-      const current = this.currentImport();
+      const current = this.unfinishedImport();
       if (current) return { ok: false, current };
-      this.db.exec(`INSERT INTO imports (import_id, state, started_at) VALUES (?, 'running', ?)`, importId, at);
+      this.db.exec(`INSERT INTO imports (import_id, label, state, started_at) VALUES (?, ?, 'running', ?)`, importId, label, at);
       return { ok: true };
     });
   }
@@ -685,11 +708,36 @@ export class WorkspaceIndex {
 
   /**
    * Start (or continue) undoing an import: from now on it writes nothing.
-   * Returns false if there is no such import left to undo.
+   * "missing" if there is no such import left to undo; "busy" while another
+   * is running or being undone (an undo could delete a page that one is
+   * linking to).
    */
-  startUndo(importId: string): boolean {
-    this.db.exec(`UPDATE imports SET state = 'undoing' WHERE import_id = ? AND state IN ('running', 'done')`, importId);
-    return this.db.exec(`SELECT 1 FROM imports WHERE import_id = ? AND state = 'undoing'`, importId).length > 0;
+  startUndo(importId: string): StartUndoResult {
+    return this.db.transaction((): StartUndoResult => {
+      const other = this.unfinishedImport();
+      if (other && other.importId !== importId) return this.getImport(importId) ? "busy" : "missing";
+      this.db.exec(`UPDATE imports SET state = 'undoing' WHERE import_id = ? AND state IN ('running', 'done')`, importId);
+      return this.db.exec(`SELECT 1 FROM imports WHERE import_id = ? AND state = 'undoing'`, importId).length > 0 ? "ok" : "missing";
+    });
+  }
+
+  /**
+   * A page this import created, being undone: if another import not undone
+   * uses it too (wrote to it or links to it), that one takes it over, so the
+   * page stays until the last of them is undone. Returns whether it did.
+   */
+  handOverImportPage(importId: string, pageId: string): boolean {
+    return this.db.transaction((): boolean => {
+      const other = this.db.exec(
+        `SELECT ip.import_id FROM import_pages ip JOIN imports i ON i.import_id = ip.import_id
+         WHERE ip.page_id = ? AND ip.import_id != ? AND i.state IN ('running', 'done')
+         ORDER BY i.started_at DESC, ip.import_id LIMIT 1`,
+        pageId, importId,
+      )[0];
+      if (!other) return false;
+      this.db.exec(`UPDATE import_pages SET created = 1 WHERE import_id = ? AND page_id = ?`, other.import_id as string, pageId);
+      return true;
+    });
   }
 
   /** The next documents to undo, each with whether the import created it. */
@@ -699,7 +747,7 @@ export class WorkspaceIndex {
       .map((row) => ({ pageId: row.page_id as string, created: row.created === 1 }));
   }
 
-  /** Mark an import undone once every document is; another import may then start. Returns whether it is undone. */
+  /** Mark an import undone once every document is; it leaves the list. Returns whether it is undone. */
   finishUndo(importId: string): boolean {
     return this.db.transaction((): boolean => {
       const left = Number(this.db.exec(`SELECT COUNT(*) AS n FROM import_pages WHERE import_id = ?`, importId)[0].n);

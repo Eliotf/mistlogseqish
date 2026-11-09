@@ -393,6 +393,12 @@ describe("WorkspaceIndex", () => {
       return old;
     }
 
+    /** Import records came with version 5: an older index has none of their tables. */
+    function dropImportTables(db: ReturnType<typeof memoryDb>) {
+      db.exec(`DROP TABLE import_pages`);
+      db.exec(`DROP TABLE imports`);
+    }
+
     it("upgrades a version 1 index and gives every titled page a slug", () => {
       const old = versionOneDb();
       const upgraded = new WorkspaceIndex(old);
@@ -412,6 +418,7 @@ describe("WorkspaceIndex", () => {
       old.exec(`DROP TABLE tasks`);
       old.exec(`CREATE TABLE tasks (page_id TEXT NOT NULL, line INTEGER NOT NULL, state TEXT NOT NULL, indent INTEGER NOT NULL, text TEXT NOT NULL, PRIMARY KEY (page_id, line))`);
       old.exec(`INSERT INTO tasks (page_id, line, state, indent, text) VALUES ('aaaa1111', 0, 'TODO', 0, 'old task')`);
+      dropImportTables(old); // added in version 5
       old.exec(`UPDATE meta SET value = '2' WHERE key = 'schema_version'`);
       const upgraded = new WorkspaceIndex(old);
       expect(upgraded.schemaVersion()).toBe(SCHEMA_VERSION);
@@ -424,6 +431,7 @@ describe("WorkspaceIndex", () => {
       const old = versionOneDb();
       new WorkspaceIndex(old);
       old.exec(`DROP TABLE deleted_pages`);
+      dropImportTables(old); // added in version 5
       old.exec(`UPDATE meta SET value = '3' WHERE key = 'schema_version'`);
       const upgraded = new WorkspaceIndex(old);
       expect(upgraded.schemaVersion()).toBe(SCHEMA_VERSION);
@@ -435,14 +443,28 @@ describe("WorkspaceIndex", () => {
     it("upgrades a version 4 index with import records, keeping its pages", () => {
       const old = versionOneDb();
       new WorkspaceIndex(old);
-      old.exec(`DROP TABLE import_pages`);
-      old.exec(`DROP TABLE imports`);
+      dropImportTables(old);
       old.exec(`UPDATE meta SET value = '4' WHERE key = 'schema_version'`);
       const upgraded = new WorkspaceIndex(old);
       expect(upgraded.schemaVersion()).toBe(SCHEMA_VERSION);
-      expect(upgraded.currentImport()).toBeNull();
-      expect(upgraded.startImport("imp1", 1)).toEqual({ ok: true });
+      expect(upgraded.listImports()).toEqual([]);
+      expect(upgraded.startImport("imp1", "Logseq", 1)).toEqual({ ok: true });
       expect(upgraded.getPage("aaaa1111")?.title).toBe("Meeting notes!");
+    });
+
+    it("upgrades a version 5 index, keeping its import (with no folder name)", () => {
+      const old = versionOneDb();
+      new WorkspaceIndex(old);
+      old.exec(`DROP TABLE imports`);
+      old.exec(`CREATE TABLE imports (import_id TEXT PRIMARY KEY, state TEXT NOT NULL, started_at INTEGER NOT NULL, finished_at INTEGER)`);
+      old.exec(`INSERT INTO imports (import_id, state, started_at, finished_at) VALUES ('imp1', 'done', 1, 2)`);
+      old.exec(`INSERT INTO import_pages (import_id, page_id, created) VALUES ('imp1', 'aaaa1111', 1)`);
+      old.exec(`UPDATE meta SET value = '5' WHERE key = 'schema_version'`);
+      const upgraded = new WorkspaceIndex(old);
+      expect(upgraded.schemaVersion()).toBe(SCHEMA_VERSION);
+      expect(upgraded.listImports()).toEqual([{ importId: "imp1", label: null, state: "done", startedAt: 1, finishedAt: 2, pages: 1, created: 1 }]);
+      // A finished import no longer stops another
+      expect(upgraded.startImport("imp2", "Work", 3)).toEqual({ ok: true });
     });
 
     it("migrates only once", () => {
@@ -470,43 +492,70 @@ describe("WorkspaceIndex", () => {
   });
 
   describe("Logseq import records (F31)", () => {
-    it("allows one import at a time, until it is undone", () => {
-      expect(index.currentImport()).toBeNull();
-      expect(index.startImport("imp1", 100)).toEqual({ ok: true });
+    it("lists every import not undone, newest first, with its folder name", () => {
+      expect(index.listImports()).toEqual([]);
+      index.startImport("imp1", "Logseq", 100);
+      index.finishImport("imp1", 150);
+      index.startImport("imp2", null, 200);
+      expect(index.listImports()).toEqual([
+        { importId: "imp2", label: null, state: "running", startedAt: 200, finishedAt: null, pages: 0, created: 0 },
+        { importId: "imp1", label: "Logseq", state: "done", startedAt: 100, finishedAt: 150, pages: 0, created: 0 },
+      ]);
+      expect(index.getImport("imp1")).toMatchObject({ label: "Logseq", state: "done" });
+      expect(index.getImport("nope")).toBeNull();
+    });
+
+    it("runs one import at a time; a finished one doesn't stop another", () => {
+      expect(index.startImport("imp1", "A", 100)).toEqual({ ok: true });
       expect(index.isRunningImport("imp1")).toBe(true);
-      const refused = index.startImport("imp2", 200);
-      expect(refused).toEqual({ ok: false, current: expect.objectContaining({ importId: "imp1", state: "running" }) });
+      const refused = index.startImport("imp2", "B", 200);
+      expect(refused).toEqual({ ok: false, current: expect.objectContaining({ importId: "imp1", label: "A", state: "running" }) });
       expect(index.isRunningImport("imp2")).toBe(false);
 
       expect(index.finishImport("imp1", 150)).toBe(true);
       expect(index.isRunningImport("imp1")).toBe(false);
-      expect(index.startImport("imp2", 200).ok).toBe(false);
+      expect(index.startImport("imp2", "B", 200)).toEqual({ ok: true });
+      expect(index.finishImport("imp2", 250)).toBe(true);
+      expect(index.listImports().map((i) => i.importId)).toEqual(["imp2", "imp1"]);
+    });
 
-      expect(index.startUndo("imp1")).toBe(true);
+    it("refuses to start an import while another is being undone, or to undo one while another is unfinished", () => {
+      index.startImport("imp1", "A", 100);
+      index.finishImport("imp1", 150);
+      index.startImport("imp2", "B", 200);
+      // imp2 is running: imp1 can't be undone yet (its pages may be what imp2 links to)
+      expect(index.startUndo("imp1")).toBe("busy");
+      expect(index.getImport("imp1")?.state).toBe("done");
+      expect(index.startUndo("nope")).toBe("missing");
+      index.finishImport("imp2", 250);
+      expect(index.startUndo("imp1")).toBe("ok");
+      expect(index.startUndo("imp2")).toBe("busy");
+      expect(index.startImport("imp3", "C", 300)).toEqual({ ok: false, current: expect.objectContaining({ importId: "imp1", state: "undoing" }) });
+      // Continuing the undo of the unfinished one is allowed
+      expect(index.startUndo("imp1")).toBe("ok");
       expect(index.finishUndo("imp1")).toBe(true);
-      expect(index.currentImport()).toBeNull();
-      expect(index.startImport("imp2", 200)).toEqual({ ok: true });
+      expect(index.startUndo("imp2")).toBe("ok");
     });
 
     it("counts the documents written and pages created; a page once created stays so", () => {
-      index.startImport("imp1", 100);
+      index.startImport("imp1", "A", 100);
       index.recordImportPage("imp1", MIST, true);
       index.recordImportPage("imp1", MIST, false); // found again when the import is continued
       index.recordImportPage("imp1", TODAY, false);
       index.recordImportPage("imp1", ACCESS, true);
       index.forgetImportPage("imp1", ACCESS); // it was created by someone else first
-      expect(index.currentImport()).toMatchObject({ pages: 2, created: 1 });
+      expect(index.getImport("imp1")).toMatchObject({ pages: 2, created: 1 });
       expect(() => index.recordImportPage("imp1", "../nope", false)).toThrow("Invalid page ID");
     });
 
     it("undoes a few documents at a time and is not finished until all are", () => {
-      index.startImport("imp1", 100);
+      index.startImport("imp1", "A", 100);
       index.recordImportPage("imp1", MIST, true);
       index.recordImportPage("imp1", TODAY, false);
       index.recordImportPage("imp1", READING, false);
       // Undo is refused for an import that doesn't exist, and once started, writes stop
-      expect(index.startUndo("nope")).toBe(false);
-      expect(index.startUndo("imp1")).toBe(true);
+      expect(index.startUndo("nope")).toBe("missing");
+      expect(index.startUndo("imp1")).toBe("ok");
       expect(index.isRunningImport("imp1")).toBe(false);
       expect(index.finishImport("imp1", 1)).toBe(false);
       expect(index.importPagesToUndo("imp1", 2)).toEqual([
@@ -516,20 +565,45 @@ describe("WorkspaceIndex", () => {
       index.forgetImportPage("imp1", TODAY);
       index.forgetImportPage("imp1", MIST);
       expect(index.finishUndo("imp1")).toBe(false);
-      expect(index.currentImport()).toMatchObject({ state: "undoing", pages: 1 });
+      expect(index.getImport("imp1")).toMatchObject({ state: "undoing", pages: 1 });
       // Undoing again after a cut-off undo continues it
-      expect(index.startUndo("imp1")).toBe(true);
+      expect(index.startUndo("imp1")).toBe("ok");
       index.forgetImportPage("imp1", READING);
       expect(index.finishUndo("imp1")).toBe(true);
-      expect(index.startUndo("imp1")).toBe(false);
+      expect(index.getImport("imp1")).toBeNull();
+      expect(index.listImports()).toEqual([]);
+      expect(index.startUndo("imp1")).toBe("missing");
       expect(index.finishUndo("nope")).toBe(false);
     });
 
+    it("hands a created page over to the newest other import still using it", () => {
+      index.startImport("imp1", "A", 100);
+      index.recordImportPage("imp1", MIST, true);
+      index.recordImportPage("imp1", ACCESS, true);
+      index.finishImport("imp1", 150);
+      index.startImport("imp2", "B", 200);
+      index.recordImportPage("imp2", MIST, false);
+      index.finishImport("imp2", 250);
+      index.startImport("imp3", "C", 300);
+      index.recordImportPage("imp3", MIST, false);
+      index.finishImport("imp3", 350);
+      // imp3, being undone, doesn't take anything over
+      index.startUndo("imp3");
+      expect(index.handOverImportPage("imp1", MIST)).toBe(true);
+      expect(index.getImport("imp2")).toMatchObject({ created: 1 });
+      expect(index.getImport("imp3")).toMatchObject({ created: 0 });
+      // Nobody else uses ACCESS: it is deleted with imp1
+      expect(index.handOverImportPage("imp1", ACCESS)).toBe(false);
+      // A repeat (an undo cut short) hands it over again, harmlessly
+      expect(index.handOverImportPage("imp1", MIST)).toBe(true);
+      expect(index.getImport("imp2")).toMatchObject({ pages: 1, created: 1 });
+    });
+
     it("survives a rebuild: import records are not derived", () => {
-      index.startImport("imp1", 100);
+      index.startImport("imp1", "A", 100);
       index.recordImportPage("imp1", MIST, true);
       index.clearDerived();
-      expect(index.currentImport()).toMatchObject({ importId: "imp1", pages: 1 });
+      expect(index.getImport("imp1")).toMatchObject({ importId: "imp1", label: "A", pages: 1 });
     });
   });
 

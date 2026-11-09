@@ -4,14 +4,14 @@ import { workspaceIndex } from "~/lib/document-loader.server";
 import AppHeader from "~/components/AppHeader";
 import ImportView from "~/components/ImportView";
 
-/** The import not yet undone, if any. If the index can't be reached, the page says so and the server still refuses a second import. */
+/** The imports not yet undone. If the index can't be reached, the page says so and the server still checks every step. */
 export async function loader({ context }: Route.LoaderArgs) {
   try {
     const index = await workspaceIndex(context);
-    return { current: await index.currentImport(), loadFailed: false };
+    return { imports: await index.listImports(), loadFailed: false };
   } catch (err) {
-    console.error("Loading the current import failed", err);
-    return { current: null, loadFailed: true };
+    console.error("Loading the imports failed", err);
+    return { imports: [], loadFailed: true };
   }
 }
 
@@ -27,10 +27,10 @@ export default function Import({ loaderData }: Route.ComponentProps) {
       <main className="flex-1 overflow-y-auto">
         {loaderData.loadFailed && (
           <p role="alert" className="mx-6 mt-4 text-sm text-coral">
-            Couldn't check for an earlier import. Try again in a moment.
+            Couldn't load your earlier imports. Try again in a moment.
           </p>
         )}
-        <ImportView current={loaderData.current} />
+        <ImportView imports={loaderData.imports} />
       </main>
     </div>
   );

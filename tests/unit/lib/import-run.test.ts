@@ -10,6 +10,7 @@ function fakeApi(overrides: Partial<ImportApi> = {}): ImportApi & { writes: Arra
   const writes: Array<Array<{ pageId: string; lines: unknown[] }>> = [];
   return {
     writes,
+    list: async () => [],
     start: async () => ({ ok: true, importId: "imp1" }),
     pages: async (_id, titles) => Object.fromEntries(titles.map((t) => [t.toLowerCase(), `p-${t.toLowerCase()}`])),
     write: async (_id, pages) => {

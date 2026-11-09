@@ -1,6 +1,6 @@
 import type { Route } from "./+types/api.import.$step";
 import { documentAgent, workspaceIndex } from "~/lib/document-loader.server";
-import { IMPORT_BATCH, isImportedLines, type ImportedLine } from "~/lib/import-lines";
+import { IMPORT_BATCH, importLabel, isImportedLines, type ImportedLine } from "~/lib/import-lines";
 import { journalDateFromTitle, journalId, isPageId } from "~/lib/note-ids";
 import { normalizeTitle, titleKey } from "~/lib/page-title";
 import { generateDocumentId } from "~/shared/constants";
@@ -11,15 +11,20 @@ import { generateDocumentId } from "~/shared/constants";
  * Workers' per-request limits and an interrupted import can be continued or
  * undone. All are JSON POSTs (a form on another site cannot start them).
  *
- * - start: begin an import; refused while another exists (409, with it).
+ * - list: the imports not undone, newest first.
+ * - start { label }: begin an import of the folder named label; refused
+ *   while another is running or being undone (409, with it).
  * - pages { importId, titles }: the page for each title (an existing page or
  *   journal, or a new empty page). A new page is recorded in the import
- *   before it is created, so undo always finds it.
+ *   before it is created, so undo always finds it; an existing page is
+ *   recorded too, so undoing another import that created it keeps it.
  * - write { importId, pages: [{ pageId, lines }] }: add lines below each
  *   document's content. Writing the same document twice adds nothing.
  * - finish { importId }: the import is complete; answers with its record.
  * - undo { importId }: undo the next few documents (remove the lines the
- *   import added; delete pages it created). Repeat until done.
+ *   import added; delete pages it created, unless another import uses them).
+ *   Repeat until done. Refused while another import is running or being
+ *   undone (409, busy).
  *
  * Permission checks go here with M4.
  */
@@ -43,10 +48,11 @@ export async function action({ request, context, params }: Route.ActionArgs) {
 
   try {
     const index = await workspaceIndex(context);
+    if (params.step === "list") return json({ imports: await index.listImports() });
     if (params.step === "start") {
       const importId = crypto.randomUUID();
-      const started = await index.startImport(importId, Date.now());
-      return started.ok ? json({ importId }, 201) : json({ error: "An import exists already", current: started.current }, 409);
+      const started = await index.startImport(importId, importLabel(body.label), Date.now());
+      return started.ok ? json({ importId }, 201) : json({ error: "Another import is in progress", current: started.current }, 409);
     }
     const importId = typeof body.importId === "string" ? body.importId : "";
     if (!importId) return json({ error: "No importId" }, 400);
@@ -56,7 +62,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
       case "write":
         return await writePages(context, index, importId, body.pages);
       case "finish":
-        return (await index.finishImport(importId, Date.now())) ? json({ current: await index.currentImport() }) : json({ error: "No such running import" }, 409);
+        return (await index.finishImport(importId, Date.now())) ? json({ record: await index.getImport(importId) }) : json({ error: "No such running import" }, 409);
       case "undo":
         return await undoSome(context, index, importId);
       default:
@@ -85,7 +91,10 @@ async function pageForTitle(context: Context, index: Index, importId: string, ra
   const date = journalDateFromTitle(normal.title);
   if (date) return journalId(date);
   const existing = await index.findByTitle(normal.title);
-  if (existing) return existing.pageId;
+  if (existing) {
+    await index.recordImportPage(importId, existing.pageId, false);
+    return existing.pageId;
+  }
   const pageId = generateDocumentId();
   await index.recordImportPage(importId, pageId, true);
   const outcome = await (await documentAgent(context, pageId)).createWithTitle(normal.title);
@@ -114,11 +123,14 @@ async function writePages(context: Context, index: Index, importId: string, page
 }
 
 async function undoSome(context: Context, index: Index, importId: string): Promise<Response> {
-  if (!(await index.startUndo(importId))) return json({ error: "No such import to undo" }, 409);
+  const started = await index.startUndo(importId);
+  if (started === "busy") return json({ error: "Another import is in progress", busy: true }, 409);
+  if (started === "missing") return json({ error: "No such import to undo" }, 409);
   for (const { pageId, created } of await index.importPagesToUndo(importId, IMPORT_BATCH)) {
     const doc = await documentAgent(context, pageId);
     await doc.undoImport(importId);
-    if (created) {
+    // Handed over before it is forgotten, so a repeat finds it kept again
+    if (created && !(await index.handOverImportPage(importId, pageId))) {
       const deleted = await doc.deletePage();
       // "missing": never created, or deleted since; either way it is gone
       if (!deleted.ok && deleted.code === "failed") throw new Error(`Could not delete ${pageId}`);
@@ -126,6 +138,6 @@ async function undoSome(context: Context, index: Index, importId: string): Promi
     await index.forgetImportPage(importId, pageId);
   }
   const done = await index.finishUndo(importId);
-  const left = done ? 0 : ((await index.currentImport())?.pages ?? 0);
+  const left = done ? 0 : ((await index.getImport(importId))?.pages ?? 0);
   return json({ done, left });
 }

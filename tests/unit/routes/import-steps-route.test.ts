@@ -85,8 +85,8 @@ function post(step: string, body: unknown, init: { method?: string; contentType?
 
 const line = (text: string): ImportedLine => ({ text, blockId: null, collapsed: false, links: [] });
 
-async function start(): Promise<string> {
-  const res = await post("start", {});
+async function start(label = "Logseq"): Promise<string> {
+  const res = await post("start", { label });
   expect(res.status).toBe(201);
   return ((await res.json()) as { importId: string }).importId;
 }
@@ -108,11 +108,18 @@ describe("POST /api/import/:step", () => {
     expect((await post("nope", { importId: "x" })).status).toBe(404);
   });
 
-  it("starts one import at a time", async () => {
-    const importId = await start();
-    const again = await post("start", {});
+  it("runs one import at a time, keeping each folder's name; a finished one doesn't stop another", async () => {
+    const importId = await start("  Work notes ");
+    const again = await post("start", { label: "Home" });
     expect(again.status).toBe(409);
-    expect(await again.json()).toMatchObject({ current: { importId, state: "running" } });
+    expect(await again.json()).toMatchObject({ current: { importId, label: "Work notes", state: "running" } });
+    await post("finish", { importId });
+    const second = await start("Home");
+    await post("finish", { importId: second });
+    // A missing or odd name is kept as none
+    const third = await post("start", { label: 42 });
+    expect(third.status).toBe(201);
+    expect(index.listImports().map((i) => i.label)).toEqual([null, "Home", "Work notes"]);
   });
 
   it("finds existing pages and journal days, and creates the rest, recorded as the import's", async () => {
@@ -124,11 +131,12 @@ describe("POST /api/import/:step", () => {
     expect(resolved["nov 3rd, 2026"]).toBe("journal-2026-11-03");
     expect(resolved["bad [[title"]).toBeNull();
     expect(docs.get(resolved.novels!)?.title).toBe("Novels");
-    expect(index.currentImport()).toMatchObject({ pages: 1, created: 1 });
+    // The existing page is recorded too (not as created), so undoing another import keeps it for this one
+    expect(index.getImport(importId)).toMatchObject({ pages: 2, created: 1 });
     // Asked again (a continued import): the page it created is found, not made twice
     const again = (await (await post("pages", { importId, titles: ["Novels"] })).json()) as { resolved: Record<string, string> };
     expect(again.resolved.novels).toBe(resolved.novels);
-    expect(index.currentImport()).toMatchObject({ pages: 1, created: 1 });
+    expect(index.getImport(importId)).toMatchObject({ pages: 2, created: 1 });
   });
 
   it("links to a page someone else created a moment before, and forgets the one it meant to make", async () => {
@@ -146,7 +154,7 @@ describe("POST /api/import/:step", () => {
     });
     const { resolved } = (await (await post("pages", { importId, titles: ["Garden"] })).json()) as { resolved: Record<string, string> };
     expect(resolved.garden).toBe("theirs01");
-    expect(index.currentImport()).toMatchObject({ pages: 0 });
+    expect(index.getImport(importId)).toMatchObject({ pages: 0 });
   });
 
   it("refuses too many titles or pages in one request, bad lines, and imports that aren't running", async () => {
@@ -176,8 +184,8 @@ describe("POST /api/import/:step", () => {
       ],
     });
     expect(await res.json()).toEqual({ written: [resolved.books, "journal-2026-11-04"], failed: ["gone0001"] });
-    expect(index.currentImport()).toMatchObject({ pages: 3, created: 1 });
-    expect(await (await post("finish", { importId })).json()).toEqual({ current: expect.objectContaining({ importId, state: "done", pages: 3, created: 1 }) });
+    expect(index.getImport(importId)).toMatchObject({ pages: 3, created: 1 });
+    expect(await (await post("finish", { importId })).json()).toEqual({ record: expect.objectContaining({ importId, state: "done", pages: 3, created: 1 }) });
     // Finished: no more writes
     expect((await post("write", { importId, pages: [] })).status).toBe(409);
   });
@@ -197,10 +205,44 @@ describe("POST /api/import/:step", () => {
     // A page that was there before keeps existing; only the import's lines go
     expect(docs.get("mine0001")).toMatchObject({ deleted: false, lines: {} });
     expect(docs.get("mine0001")!.calls).toEqual(["import", "undo"]);
-    expect(index.currentImport()).toBeNull();
-    // Nothing left to undo; a new import may start
+    expect(index.listImports()).toEqual([]);
+    // Nothing left to undo
     expect((await post("undo", { importId })).status).toBe(409);
-    await start();
+  });
+
+  it("refuses to undo one import while another is running", async () => {
+    const first = await start("A");
+    await post("finish", { importId: first });
+    const second = await start("B");
+    const refused = await post("undo", { importId: first });
+    expect(refused.status).toBe(409);
+    expect(await refused.json()).toMatchObject({ busy: true });
+    expect(index.getImport(first)?.state).toBe("done");
+    // The running one itself can be undone
+    expect(await (await post("undo", { importId: second })).json()).toEqual({ done: true, left: 0 });
+    expect(await (await post("undo", { importId: first })).json()).toEqual({ done: true, left: 0 });
+  });
+
+  it("keeps a page another import uses when the import that created it is undone", async () => {
+    const first = await start("A");
+    const { resolved } = (await (await post("pages", { importId: first, titles: ["Novels", "Alone"] })).json()) as { resolved: Record<string, string> };
+    await post("write", { importId: first, pages: [{ pageId: resolved.novels, lines: [line("- from A")] }] });
+    await post("finish", { importId: first });
+    // B only links to Novels (found, not created)
+    const second = await start("B");
+    const again = (await (await post("pages", { importId: second, titles: ["Novels"] })).json()) as { resolved: Record<string, string> };
+    expect(again.resolved.novels).toBe(resolved.novels);
+    await post("finish", { importId: second });
+
+    expect(await (await post("undo", { importId: first })).json()).toEqual({ done: true, left: 0 });
+    // A's lines are gone, and the page it alone used; Novels stays for B, which now owns it
+    expect(docs.get(resolved.novels)).toMatchObject({ deleted: false, lines: {} });
+    expect(docs.get(resolved.alone)).toMatchObject({ deleted: true });
+    expect(index.getImport(second)).toMatchObject({ pages: 1, created: 1 });
+    expect(await (await post("list", {})).json()).toEqual({ imports: [expect.objectContaining({ importId: second, label: "B", pages: 1, created: 1 })] });
+
+    expect(await (await post("undo", { importId: second })).json()).toEqual({ done: true, left: 0 });
+    expect(docs.get(resolved.novels)).toMatchObject({ deleted: true });
   });
 
   it("keeps the import's record if deleting a created page fails, so undoing can continue", async () => {
@@ -209,7 +251,7 @@ describe("POST /api/import/:step", () => {
     const { resolved } = (await (await post("pages", { importId, titles: ["Books"] })).json()) as { resolved: Record<string, string> };
     mockGetAgentByName.mockImplementation(async (ns: string, name: string) => (ns === "workspace" ? indexStub : { ...fakeDoc(name), deletePage: async () => ({ ok: false, code: "failed" }) }));
     expect((await post("undo", { importId })).status).toBe(503);
-    expect(index.currentImport()).toMatchObject({ state: "undoing", pages: 1 });
+    expect(index.getImport(importId)).toMatchObject({ state: "undoing", pages: 1 });
     mockGetAgentByName.mockImplementation(async (ns: string, name: string) => (ns === "workspace" ? indexStub : fakeDoc(name)));
     expect(await (await post("undo", { importId })).json()).toEqual({ done: true, left: 0 });
     expect(docs.get(resolved.books)?.deleted).toBe(true);
