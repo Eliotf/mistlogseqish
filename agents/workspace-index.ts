@@ -647,9 +647,9 @@ export class WorkspaceIndex {
     };
   }
 
-  /** Every import not undone, newest first. */
+  /** Every import not undone, newest first (started in the same millisecond: the later recorded first). */
   listImports(): ImportRecord[] {
-    return this.db.exec(`SELECT * FROM imports WHERE state != 'undone' ORDER BY started_at DESC, import_id`).map((row) => this.importRecord(row));
+    return this.db.exec(`SELECT * FROM imports WHERE state != 'undone' ORDER BY started_at DESC, rowid DESC`).map((row) => this.importRecord(row));
   }
 
   /** One import, unless it is undone (or never was). */
@@ -731,7 +731,7 @@ export class WorkspaceIndex {
       const other = this.db.exec(
         `SELECT ip.import_id FROM import_pages ip JOIN imports i ON i.import_id = ip.import_id
          WHERE ip.page_id = ? AND ip.import_id != ? AND i.state IN ('running', 'done')
-         ORDER BY i.started_at DESC, ip.import_id LIMIT 1`,
+         ORDER BY i.started_at DESC, i.rowid DESC LIMIT 1`,
         pageId, importId,
       )[0];
       if (!other) return false;

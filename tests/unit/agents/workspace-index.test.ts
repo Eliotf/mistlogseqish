@@ -505,6 +505,23 @@ describe("WorkspaceIndex", () => {
       expect(index.getImport("nope")).toBeNull();
     });
 
+    it("lists imports started in the same millisecond in the order they were started", () => {
+      // Import IDs are random, so they must not decide the order
+      for (const id of ["imp-c", "imp-a", "imp-b"]) {
+        index.startImport(id, id, 100);
+        index.finishImport(id, 100);
+      }
+      expect(index.listImports().map((i) => i.importId)).toEqual(["imp-b", "imp-a", "imp-c"]);
+      // The hand-over, too, goes to the latest
+      index.recordImportPage("imp-c", MIST, true);
+      index.recordImportPage("imp-a", MIST, false);
+      index.recordImportPage("imp-b", MIST, false);
+      index.startUndo("imp-c");
+      expect(index.handOverImportPage("imp-c", MIST)).toBe(true);
+      expect(index.getImport("imp-b")).toMatchObject({ created: 1 });
+      expect(index.getImport("imp-a")).toMatchObject({ created: 0 });
+    });
+
     it("runs one import at a time; a finished one doesn't stop another", () => {
       expect(index.startImport("imp1", "A", 100)).toEqual({ ok: true });
       expect(index.isRunningImport("imp1")).toBe(true);
