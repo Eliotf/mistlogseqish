@@ -57,7 +57,7 @@ describe("PhoneToolbar", () => {
     activeEditor.set({ editor, suggesting: () => false });
     render(createElement(PhoneToolbar));
     const buttons = screen.getAllByRole("button");
-    expect(buttons.map((b) => b.getAttribute("aria-label"))).toEqual(["Outdent", "Indent", "Task", "Link", "Up", "Down", "Fold", "Done"]);
+    expect(buttons.map((b) => b.getAttribute("aria-label"))).toEqual(["Outdent", "Indent", "Task", "Link", "Date", "Up", "Down", "Fold", "Done"]);
     expect(buttons.every((b) => b.tabIndex === -1)).toBe(true);
     const down = fireEvent.pointerDown(screen.getByRole("button", { name: "Indent" }));
     expect(down).toBe(false); // default prevented: focus stays in the editor

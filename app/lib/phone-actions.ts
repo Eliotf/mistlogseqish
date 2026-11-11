@@ -10,7 +10,7 @@ import { foldingKey, setFolded } from "./folding-editing";
  * zoom, read-only). Each returns whether it did anything.
  */
 
-export type PhoneAction = "outdent" | "indent" | "task" | "link" | "up" | "down" | "fold" | "done";
+export type PhoneAction = "outdent" | "indent" | "task" | "link" | "date" | "up" | "down" | "fold" | "done";
 
 /** Actions that change the outline: off in suggest mode, as their keys are. */
 export const OUTLINE_ACTIONS: ReadonlySet<PhoneAction> = new Set(["outdent", "indent", "task", "up", "down", "fold"]);
@@ -56,6 +56,13 @@ export function runPhoneAction(editor: TiptapEditor, action: PhoneAction, sugges
     case "link":
       typeText(editor, "[[");
       return true;
+    case "date": {
+      // `@` opens the date list only after a space or at the start of a line (F20)
+      const { $head } = state.selection;
+      const before = $head.parent.textBetween(Math.max($head.parentOffset - 1, 0), $head.parentOffset);
+      typeText(editor, before && !/\s/.test(before) ? " @" : "@");
+      return true;
+    }
     case "done":
       editor.view.dom.blur();
       return true;

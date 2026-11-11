@@ -650,3 +650,6 @@ body {
 .link-suggest-item[aria-selected="true"] { background-color: var(--color-chartreuse); color: #1a1a1a; }
 .link-suggest-create { color: var(--color-muted); font-style: italic; }
 .link-suggest-item[aria-selected="true"].link-suggest-create { color: #1a1a1a; }
+.link-suggest-sub { margin-left: 0.75em; color: var(--color-muted); font-size: 0.85em; }
+.link-suggest-item[aria-selected="true"] .link-suggest-sub { color: #1a1a1a; }
+.link-suggest-none { color: var(--color-muted); cursor: default; white-space: normal; }

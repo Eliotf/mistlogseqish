@@ -226,6 +226,12 @@ Tests in `tests/unit/lib/note-*.test.ts` include a round trip through Yjs using 
 - Lines loaded from the saved copy arrive as remote (y-sync) changes, so the browser never labels them with block IDs; the server's rule (F41) still holds.
 - Not yet: the app shell offline (a service worker), and saying on screen that a page shows a saved copy. Copies stay in this browser; nothing clears them on sign-out (there are no accounts yet).
 
+## Fuzzy Dates
+
+- `app/lib/fuzzy-dates.ts` is pure: `resolvePhrase(phrase, today)` and `dateSuggestions(query, today)` work on YYYY-MM-DD strings with UTC arithmetic, so daylight-saving changes never move a day. "Today" always comes from the browser (`localDate(new Date())`), never the server.
+- `app/lib/date-trigger.ts` (`DateTrigger`, priority 200 so its keys come before the link extension's) opens the list on `@` typed at the start of a line or after a space, outside links and not in suggest mode. Choosing replaces `@phrase` with `[[Title]]`, the title carrying a `wikilink` mark with the journal ID; the link extension then asks for its title as for any link.
+- `[[` suggestions (`wikilink-editing.ts`) add up to three `kind: "date"` items for links (not tags), skipping days already listed as pages. Both lists use `SuggestionList`, which shows a day with its phrase, and an optional "no match" note.
+
 ## Logseq Import
 
 - `app/lib/logseq-import.ts` is pure: `convertGraph(files)` turns a picked graph folder (paths and texts) into an `ImportPlan` of pages with Mistlog lines (text, block ID, fold), the titles linked but missing, skipped files with reasons, renamed and combined pages, and counts. Rules are in the module comment and PRD F31. Files are processed in code-point order, so the same folder always gives the same plan. The folder is found by the nearest `pages`, `journals`, `assets` or `logseq` above each file (the graph's own folder may be called "Logseq").

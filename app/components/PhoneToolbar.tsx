@@ -7,6 +7,7 @@ const BUTTONS: Array<{ action: PhoneAction; glyph: string; label: string }> = [
   { action: "indent", glyph: "⇥", label: "Indent" },
   { action: "task", glyph: "☐", label: "Task" },
   { action: "link", glyph: "[[", label: "Link" },
+  { action: "date", glyph: "@", label: "Date" },
   { action: "up", glyph: "↑", label: "Up" },
   { action: "down", glyph: "↓", label: "Down" },
   { action: "fold", glyph: "▾", label: "Fold" },

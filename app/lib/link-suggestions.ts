@@ -1,24 +1,28 @@
 import type { LinkPage } from "./page-titles";
+import { journalTitle } from "./note-ids";
 
 /**
  * The `[[` suggestions list (PRD 6.1). Plain DOM, positioned under the link
  * being typed; the link extension owns it and drives it from the keyboard.
  * Items keep the editor focused (mousedown is cancelled), so choosing one
- * never blurs the editor.
+ * never blurs the editor. The `@` date list (date-trigger.ts) uses it too.
  */
 
-export type Suggestion = { kind: "page"; page: LinkPage } | { kind: "create"; title: string };
+export type Suggestion = { kind: "page"; page: LinkPage } | { kind: "create"; title: string } | { kind: "date"; date: string; phrase: string };
 
 export class SuggestionList {
   private el: HTMLDivElement;
   private items: Suggestion[] = [];
   private selected = 0;
 
-  constructor(private onChoose: (item: Suggestion) => void) {
+  constructor(
+    private onChoose: (item: Suggestion) => void,
+    label = "Link to page",
+  ) {
     this.el = document.createElement("div");
     this.el.className = "link-suggest";
     this.el.setAttribute("role", "listbox");
-    this.el.setAttribute("aria-label", "Link to page");
+    this.el.setAttribute("aria-label", label);
     this.el.hidden = true;
     document.body.appendChild(this.el);
   }
@@ -27,13 +31,14 @@ export class SuggestionList {
     return !this.el.hidden && this.items.length > 0;
   }
 
-  show(items: Suggestion[], at: { left: number; bottom: number }): void {
+  /** Show items under `at`. With none, `empty` is shown instead if given (and nothing can be chosen). */
+  show(items: Suggestion[], at: { left: number; bottom: number }, empty?: string): void {
     this.items = items;
     this.selected = Math.min(this.selected, Math.max(0, items.length - 1));
-    this.render();
+    this.render(empty);
     this.el.style.left = `${Math.round(at.left + window.scrollX)}px`;
     this.el.style.top = `${Math.round(at.bottom + window.scrollY + 4)}px`;
-    this.el.hidden = items.length === 0;
+    this.el.hidden = items.length === 0 && !empty;
   }
 
   hide(): void {
@@ -59,14 +64,30 @@ export class SuggestionList {
     this.el.remove();
   }
 
-  private render(): void {
+  private render(empty?: string): void {
     this.el.textContent = "";
+    if (!this.items.length && empty) {
+      const note = document.createElement("div");
+      note.className = "link-suggest-item link-suggest-none";
+      note.textContent = empty;
+      this.el.appendChild(note);
+      return;
+    }
     this.items.forEach((item, i) => {
       const option = document.createElement("div");
       option.className = "link-suggest-item";
       option.setAttribute("role", "option");
       option.setAttribute("aria-selected", String(i === this.selected));
-      option.textContent = item.kind === "page" ? item.page.title : `New page: ${item.title}`;
+      if (item.kind === "date") {
+        // The day, and the phrase it was found from
+        option.textContent = journalTitle(item.date);
+        const phrase = document.createElement("span");
+        phrase.className = "link-suggest-sub";
+        phrase.textContent = item.phrase;
+        option.appendChild(phrase);
+      } else {
+        option.textContent = item.kind === "page" ? item.page.title : `New page: ${item.title}`;
+      }
       if (item.kind === "create") option.classList.add("link-suggest-create");
       option.addEventListener("mousedown", (event) => {
         event.preventDefault();

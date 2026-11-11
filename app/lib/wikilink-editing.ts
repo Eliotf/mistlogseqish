@@ -5,10 +5,11 @@ import type { DOMOutputSpec, Fragment, MarkType, Node as ProseMirrorNode, Slice 
 import { ySyncPluginKey } from "@tiptap/y-tiptap";
 import { WIKILINK_MARK, isWikilinkAttrs, wikilinkMarkSpec } from "./wikilink";
 import { linkHref, linkPageForTitle, searchPages, targetOf, type LinkPage, type LinkTarget } from "./page-titles";
-import { journalDateFromTitle, journalId, journalTitle } from "./note-ids";
+import { journalDateFromTitle, journalId, journalTitle, localDate } from "./note-ids";
 import { titleKey } from "./page-title";
 import { isPlainTagName, writtenLinks } from "./note-parser";
 import { SuggestionList, type Suggestion } from "./link-suggestions";
+import { dateSuggestions } from "./fuzzy-dates";
 
 /**
  * Links in the editor (PRD 6.1, chunks 2.5a to 2.5c), Logseq style.
@@ -49,7 +50,12 @@ export interface WikilinkOptions {
   search: (query: string) => Promise<LinkPage[]>;
   /** The page a title links to, created if need be; null if it can't be had (offline). */
   linkPage: (title: string) => Promise<LinkPage | null>;
+  /** Today as YYYY-MM-DD in the browser's time zone, for date suggestions (F20). */
+  today: () => string;
 }
+
+/** Dates offered in a link's suggestions, below the pages (F20). */
+const LINK_DATE_SUGGESTIONS = 3;
 
 /** Fired (bubbling, cancelable) on the editor's element to open a link; detail is { href, pageId, side }. */
 export const OPEN_LINK_EVENT = "wikilink-open";
@@ -266,6 +272,7 @@ export const Wikilink = Mark.create<WikilinkOptions>({
       onOpen: openLink,
       search: searchPages,
       linkPage: linkPageForTitle,
+      today: () => localDate(new Date()),
     };
   },
 
@@ -305,7 +312,7 @@ export const Wikilink = Mark.create<WikilinkOptions>({
   },
 
   addProseMirrorPlugins() {
-    const { titles, onOpen, search, linkPage } = this.options;
+    const { titles, onOpen, search, linkPage, today } = this.options;
     const markType = (state: EditorState): MarkType => state.schema.marks[WIKILINK_MARK];
     const editing = (target: EditorView | EditorState): boolean => {
       const editable = "editable" in target ? target.editable : true;
@@ -418,6 +425,15 @@ export const Wikilink = Mark.create<WikilinkOptions>({
       const span = spanAt(linkSpans(state.doc), state.selection.head);
       if (!span) return;
       const tr = state.tr;
+      if (item.kind === "date") {
+        // A day (F20): its journal, which needn't exist yet
+        const pageId = journalId(item.date);
+        tr.replaceWith(span.innerFrom, span.innerTo, state.schema.text(journalTitle(item.date), [markType(state).create({ pageId })]));
+        titles?.request([pageId]);
+        tr.setSelection(TextSelection.create(tr.doc, tr.mapping.map(span.to)));
+        view.dispatch(tr.scrollIntoView());
+        return;
+      }
       if (span.kind === "tag") {
         // A tag is written whole (#name or #[[name]]), then a space to step out of it
         const title = item.kind === "page" ? item.page.title : item.title;
@@ -470,6 +486,13 @@ export const Wikilink = Mark.create<WikilinkOptions>({
             if (!now) return;
             const items: Suggestion[] = pages.map((page) => ({ kind: "page", page }));
             const wanted = query.trim();
+            // Days the text could mean ("next fri"), for links only; not ones already listed
+            if (now.kind === "link" && wanted) {
+              const listed = new Set(pages.map((p) => p.pageId));
+              for (const { date, phrase } of dateSuggestions(wanted, today()).filter((d) => !listed.has(journalId(d.date))).slice(0, LINK_DATE_SUGGESTIONS)) {
+                items.push({ kind: "date", date, phrase });
+              }
+            }
             if (wanted && !pages.some((p) => titleKey(p.title) === titleKey(wanted))) {
               const date = journalDateFromTitle(wanted);
               items.push(
