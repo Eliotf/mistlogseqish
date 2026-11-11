@@ -240,8 +240,25 @@ describe("bullet display", () => {
     const doc = docWith(["- top", "\t- nested", "plain", "```", "- in code", "```"]);
     const editor = makeEditor(doc);
     const dom = editor.view.dom;
-    expect([...dom.querySelectorAll(".md-bullet")].map((n) => n.textContent)).toEqual(["-", "-"]);
+    // The bullet is its "- ", drawn one tab wide
+    expect([...dom.querySelectorAll(".md-bullet")].map((n) => n.textContent)).toEqual(["- ", "- "]);
     expect(dom.querySelectorAll(".md-indent")).toHaveLength(1);
     expect(text(doc)).toEqual(["- top", "\t- nested", "plain", "```", "- in code", "```"]);
+  });
+
+  it("gives each outline line its depth, so wrapped lines hang under its text", () => {
+    const doc = docWith(["- top", "\t\t- deep", "\tcontinued", "plain", "-", "```", "\t- in code", "```"]);
+    const editor = makeEditor(doc);
+    const lines = [...editor.view.dom.querySelectorAll("p")].map((p) => ({ cls: p.className.split(" ").filter((c) => c.startsWith("md-")).join(" "), indent: p.style.getPropertyValue("--indent") }));
+    expect(lines).toEqual([
+      { cls: "md-line md-bulleted", indent: "0" },
+      { cls: "md-line md-bulleted", indent: "2" },
+      { cls: "md-line", indent: "1" },
+      { cls: "", indent: "" },
+      { cls: "md-line md-bulleted", indent: "0" },
+      { cls: "", indent: "" },
+      { cls: "", indent: "" },
+      { cls: "", indent: "" },
+    ]);
   });
 });

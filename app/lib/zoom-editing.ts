@@ -75,7 +75,11 @@ function build(doc: ProseMirrorNode, root: string | null): ZoomState {
   const base = indentOf(texts[range.from]);
   texts.forEach((_text, i) => {
     if (i >= range.from && i < range.to) {
-      if (base > 0) decorations.push(Decoration.inline(starts[i] + 1, starts[i] + 1 + base, { class: "zoom-indent" }));
+      if (base > 0) {
+        decorations.push(Decoration.inline(starts[i] + 1, starts[i] + 1 + base, { class: "zoom-indent" }));
+        // The hanging indent of wrapped lines leaves out the hidden tabs too (app.css, .md-line)
+        decorations.push(Decoration.node(starts[i], starts[i] + doc.child(i).nodeSize, { style: `--zoom-base: ${base}` }));
+      }
       return;
     }
     decorations.push(Decoration.node(starts[i], starts[i] + doc.child(i).nodeSize, { class: "zoom-hidden" }));

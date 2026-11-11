@@ -105,7 +105,10 @@ describe("zooming in the editor", () => {
     expect(editor.view.dom.classList.contains("is-zoomed")).toBe(true);
     // Drawn flush left: the zoomed block's own indent (one tab) takes no space
     expect([...editor.view.dom.querySelectorAll(".zoom-indent")].map((e) => e.textContent)).toEqual(["\t", "\t", "\t"]);
+    // ...and wrapped lines hang that much less (app.css, .md-line)
+    expect([...editor.view.dom.querySelectorAll("p")].map((p) => p.style.getPropertyValue("--zoom-base"))).toEqual(["", "", "", "1", "1", "1", "", ""]);
     editor.view.dispatch(setZoom(editor.state, null));
+    expect([...editor.view.dom.querySelectorAll("p")].some((p) => p.style.getPropertyValue("--zoom-base"))).toBe(false);
     expect(shown(editor)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
   });
 

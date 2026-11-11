@@ -57,8 +57,25 @@ body {
   background-image: linear-gradient(to right, transparent 0.55em, var(--color-border) 0.55em, var(--color-border) calc(0.55em + 1px), transparent calc(0.55em + 1px));
 }
 
+/* A line hangs: its first line starts at the edge (its tabs and bullet take
+   the room), and the lines it wraps onto start under its text. The bullet is
+   exactly one tab wide, because Chrome measures tab stops from the padded
+   edge: any other width would shift the tabs. Zoom hides --zoom-base tabs. */
+.tiptap p.md-line {
+  --hang: calc((var(--indent) - var(--zoom-base, 0)) * 1.5em);
+  padding-left: var(--hang);
+  text-indent: calc(-1 * var(--hang));
+}
+
+.tiptap p.md-bulleted {
+  --hang: calc((var(--indent) - var(--zoom-base, 0) + 1) * 1.5em);
+}
+
 .tiptap .md-bullet {
   position: relative;
+  display: inline-block;
+  width: 1.5em;
+  text-indent: 0;
   color: transparent;
 }
 

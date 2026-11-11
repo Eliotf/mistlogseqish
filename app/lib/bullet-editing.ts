@@ -148,8 +148,9 @@ const FENCE_RE = /^\t*(?:- )?```/;
 
 /**
  * Show indentation and bullets the Logseq way without changing the text:
- * each leading tab is a fixed-width indent with a faint guide, and a
- * bullet's "-" is drawn as a dot. Code fences are left alone.
+ * each leading tab is a fixed-width indent with a faint guide, a bullet's
+ * "-" is drawn as a dot, and a long line wraps under its text, not under
+ * its bullet. Code fences are left alone.
  */
 export function bulletDecorations(): Plugin {
   const key = new PluginKey<DecorationSet>("bulletDecorations");
@@ -168,8 +169,14 @@ export function bulletDecorations(): Plugin {
       for (let i = 0; i < indent; i++) {
         decorations.push(Decoration.inline(start + i, start + i + 1, { class: "md-indent" }));
       }
-      if (bulletContentStart(text) !== null) {
-        decorations.push(Decoration.inline(start + indent, start + indent + 1, { class: "md-bullet" }));
+      const content = bulletContentStart(text);
+      if (content !== null) {
+        // The "- " (or a bare "-") as one fixed-width bullet, so text after it starts at a known place
+        decorations.push(Decoration.inline(start + indent, start + content, { class: "md-bullet" }));
+      }
+      // Wrapped lines hang under the text, not under the bullet (app.css, .md-line)
+      if (indent > 0 || content !== null) {
+        decorations.push(Decoration.node(offset, offset + node.nodeSize, { class: content !== null ? "md-line md-bulleted" : "md-line", style: `--indent: ${indent}` }));
       }
     });
     return DecorationSet.create(doc, decorations);
