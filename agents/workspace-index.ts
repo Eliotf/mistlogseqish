@@ -1,9 +1,10 @@
 import { titleKey } from "../app/lib/page-title";
 import type { AllPagesRow } from "../app/lib/all-pages";
-import { parseNote, PARSER_VERSION, type DocLine, type TaskPriority, type TaskState } from "../app/lib/note-parser";
+import { parseNote, textWithTitles, PARSER_VERSION, type DocLine, type TaskPriority, type TaskState, type TextRun } from "../app/lib/note-parser";
 import { isJournalId, isJournalTitle, isPageId, journalTitle, parseJournalDate } from "../app/lib/note-ids";
 import { slugify } from "../app/lib/slug";
 import type { ImportRecord, StartImportResult, StartUndoResult } from "../app/lib/import-lines";
+import { MAX_SEARCH_RESULTS, SNIPPET_END, SNIPPET_START, type SearchHit, type SearchPage, type SearchResults } from "../app/lib/search";
 
 /**
  * The workspace index: everything cross-page features query (backlinks,
@@ -28,7 +29,7 @@ export interface SqlDb {
   transaction<T>(fn: () => T): T;
 }
 
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 /** Durable Object SQLite's limit on bound parameters in one query. */
 const MAX_BOUND_PARAMS = 100;
@@ -112,12 +113,19 @@ const MIGRATIONS: Array<(db: SqlDb) => void> = [
   (db) => {
     db.exec(`ALTER TABLE imports ADD COLUMN label TEXT`);
   },
+  // 6 -> 7: search finds a link by its page's current title (F13). Each
+  // page's text as runs, links marked by page (TextRun[] as JSON), so its
+  // search text can be written again when a linked page is renamed. Derived:
+  // filled as pages re-index (parser version 4 makes every page do so).
+  (db) => {
+    db.exec(`CREATE TABLE IF NOT EXISTS page_text (page_id TEXT PRIMARY KEY, runs TEXT NOT NULL)`);
+  },
 ];
 
 // Rebuilt from documents. Not listed, so never cleared: registry (how a
 // rebuild finds pages) and slugs (old slugs are not recorded in documents,
 // and old links must keep redirecting).
-const DERIVED_TABLES = ["pages", "links", "tags", "tasks", "pages_fts"];
+const DERIVED_TABLES = ["pages", "links", "tags", "tasks", "pages_fts", "page_text"];
 
 /**
  * Give a page the slug for its title and return it, keeping its old slugs as
@@ -164,9 +172,8 @@ export interface ResolvedSlug {
   currentSlug: string | null;
 }
 
-/** Markers around matched words in search snippets; the UI turns them into highlights. */
-export const SNIPPET_START = "\u0002";
-export const SNIPPET_END = "\u0003";
+// Markers around matched words in search snippets; the UI turns them into highlights
+export { SNIPPET_START, SNIPPET_END };
 
 export interface PageUpdate {
   pageId: string;
@@ -202,12 +209,7 @@ export interface Backlink {
   lines: Array<{ line: number; content: DocLine }>;
 }
 
-export interface SearchHit {
-  pageId: string;
-  title: string;
-  /** Matching text with SNIPPET_START / SNIPPET_END around matched words. */
-  snippet: string;
-}
+export type { SearchHit };
 
 export interface IndexedTask {
   pageId: string;
@@ -239,6 +241,15 @@ function toPage(row: SqlRow): IndexedPage {
 
 // How titles are compared for uniqueness; shared with the editor's links
 export { titleKey };
+
+/** A result count between 1 and MAX_SEARCH_RESULTS. */
+function clampLimit(limit: number): number {
+  return Math.min(MAX_SEARCH_RESULTS, Math.max(1, Math.floor(limit) || 1));
+}
+
+function toSearchPage(row: SqlRow): SearchPage {
+  return { pageId: row.page_id as string, title: row.title as string, kind: row.kind as "page" | "journal", slug: (row.slug as string | null) ?? null };
+}
 
 /** Escape LIKE wildcards; queries use ESCAPE '\'. */
 function likeEscape(s: string): string {
@@ -305,12 +316,13 @@ export class WorkspaceIndex {
     const hasContent = parsed.text.trim() !== "" ? 1 : 0;
 
     return this.db.transaction((): PageUpdateAck => {
-      const held = this.db.exec(`SELECT updated_at FROM pages WHERE page_id = ?`, pageId)[0]?.updated_at as number | undefined;
+      const heldRow = this.db.exec(`SELECT updated_at, title FROM pages WHERE page_id = ?`, pageId)[0];
+      const held = heldRow?.updated_at as number | undefined;
       if (held !== undefined && updatedAt < held) {
         return { pageId, parserVersion: PARSER_VERSION, updatedAt: held, applied: false };
       }
       this.db.exec(`INSERT OR IGNORE INTO registry (page_id, created_at) VALUES (?, ?)`, pageId, updatedAt);
-      for (const table of ["links", "tags", "tasks", "pages_fts"]) {
+      for (const table of ["links", "tags", "tasks", "pages_fts", "page_text"]) {
         const col = table === "links" ? "source_id" : "page_id";
         this.db.exec(`DELETE FROM ${table} WHERE ${col} = ?`, pageId);
       }
@@ -338,8 +350,13 @@ export class WorkspaceIndex {
           pageId, task.line, task.state, task.indent, task.text, task.blockId, task.priority, JSON.stringify(lines[task.line]),
         );
       }
-      this.db.exec(`INSERT INTO pages_fts (page_id, title, body) VALUES (?, ?, ?)`, pageId, title, parsed.text);
-      if (kind === "page") assignSlug(this.db, pageId, title);
+      this.db.exec(`INSERT INTO page_text (page_id, runs) VALUES (?, ?)`, pageId, JSON.stringify(parsed.runs));
+      this.writeSearchText(pageId);
+      if (kind === "page") {
+        assignSlug(this.db, pageId, title);
+        // Pages linking here search by this title. A first index counts too: a rebuild may reach them first
+        if (heldRow?.title !== title) this.rewriteLinkingSearchText(pageId);
+      }
       return { pageId, parserVersion: PARSER_VERSION, updatedAt, applied: true };
     });
   }
@@ -396,6 +413,7 @@ export class WorkspaceIndex {
     return this.db.transaction((): ClaimResult => {
       const holder = this.findByTitle(title, pageId);
       if (holder) return { ok: false, reason: "taken", holder: { pageId: holder.pageId, title: holder.title } };
+      const before = this.db.exec(`SELECT title FROM pages WHERE page_id = ?`, pageId)[0]?.title as string | undefined;
       this.db.exec(`INSERT OR IGNORE INTO registry (page_id, created_at) VALUES (?, ?)`, pageId, at);
       // A page created moments ago may not be indexed yet; updated_at 0 lets its first reindex apply
       this.db.exec(
@@ -404,6 +422,10 @@ export class WorkspaceIndex {
          ON CONFLICT (page_id) DO UPDATE SET title = excluded.title, title_key = excluded.title_key`,
         pageId, title, titleKey(title), PARSER_VERSION,
       );
+      if (before !== title) {
+        this.db.exec(`UPDATE pages_fts SET title = ? WHERE page_id = ?`, title, pageId);
+        this.rewriteLinkingSearchText(pageId);
+      }
       return { ok: true, title, slug: assignSlug(this.db, pageId, title) };
     });
   }
@@ -462,17 +484,100 @@ export class WorkspaceIndex {
       .map(toPage);
   }
 
-  /** Full-text search over titles and text, best matches first. */
+  /**
+   * Full-text search over titles and text, best matches first, each with its
+   * current title and a snippet of its text. Journal days with no text are
+   * left out, as All pages leaves them out. At most MAX_SEARCH_RESULTS.
+   */
   search(query: string, limit = 20): SearchHit[] {
     const match = ftsQuery(query);
     if (!match) return [];
     return this.db
       .exec(
-        `SELECT page_id, title, snippet(pages_fts, 2, ?, ?, '…', 12) AS snippet
-         FROM pages_fts WHERE pages_fts MATCH ? ORDER BY rank LIMIT ?`,
-        SNIPPET_START, SNIPPET_END, match, limit,
+        `SELECT f.page_id, p.title, p.kind, s.slug, snippet(pages_fts, 2, ?, ?, '…', 12) AS snippet
+         FROM pages_fts f JOIN pages p ON p.page_id = f.page_id
+         LEFT JOIN slugs s ON s.page_id = f.page_id AND s.current = 1
+         WHERE pages_fts MATCH ? AND (p.kind = 'page' OR p.has_content = 1)
+         ORDER BY f.rank, f.page_id LIMIT ?`,
+        SNIPPET_START, SNIPPET_END, match, clampLimit(limit),
       )
-      .map((row) => ({ pageId: row.page_id as string, title: row.title as string, snippet: row.snippet as string }));
+      .map((row) => ({ ...toSearchPage(row), snippet: row.snippet as string }));
+  }
+
+  /**
+   * What the search box shows (F13): pages whose title matches (titles
+   * starting with the query first, then containing it), then pages whose text
+   * matches, each with a snippet. A page found only by its title is listed
+   * with the titles. An empty query lists recently edited pages. Untitled
+   * pages are found by their text only; journal days with no text, never.
+   * `pending` is how many pages the index is still catching up on.
+   */
+  searchPages(query: string, titleLimit: number, textLimit: number): SearchResults {
+    const q = titleKey(query);
+    const select = `SELECT p.page_id, p.title, p.kind, s.slug FROM pages p LEFT JOIN slugs s ON s.page_id = p.page_id AND s.current = 1
+                    WHERE p.title != '' AND (p.kind = 'page' OR p.has_content = 1)`;
+    if (!q) {
+      const recent = this.db.exec(`${select} ORDER BY p.updated_at DESC, p.page_id LIMIT ?`, clampLimit(titleLimit)).map(toSearchPage);
+      return { titles: recent, text: [], pending: this.refreshCount() };
+    }
+    const like = likeEscape(q);
+    const titles = this.db
+      .exec(
+        `${select} AND p.title_key LIKE ? ESCAPE '\\'
+         ORDER BY CASE WHEN p.title_key LIKE ? ESCAPE '\\' THEN 0 ELSE 1 END, length(p.title), p.title_key, p.page_id LIMIT ?`,
+        "%" + like + "%", like + "%", clampLimit(titleLimit),
+      )
+      .map(toSearchPage);
+    const text: SearchHit[] = [];
+    const listed = new Set(titles.map((t) => t.pageId));
+    for (const hit of this.search(query, textLimit + titleLimit)) {
+      if (hit.snippet.includes(SNIPPET_START)) {
+        if (text.length < textLimit) text.push(hit);
+      } else if (hit.title && !listed.has(hit.pageId) && titles.length < titleLimit) {
+        // Matched by its title in a way LIKE misses (without an accent, or a word's start)
+        listed.add(hit.pageId);
+        titles.push({ pageId: hit.pageId, title: hit.title, kind: hit.kind, slug: hit.slug });
+      }
+    }
+    return { titles, text, pending: this.refreshCount() };
+  }
+
+  /**
+   * Write a page's search row from its stored runs, each link's text as the
+   * linked page's current title. A page with no runs (indexed before schema
+   * 7) keeps its row until it re-indexes, which the parser version makes it do.
+   */
+  private writeSearchText(pageId: string): void {
+    const row = this.db.exec(`SELECT p.title, t.runs FROM pages p JOIN page_text t ON t.page_id = p.page_id WHERE p.page_id = ?`, pageId)[0];
+    if (!row) return;
+    const runs = JSON.parse(row.runs as string) as TextRun[];
+    const titles = this.currentTitles([...new Set(runs.flatMap((r) => (typeof r === "string" ? [] : [r.pageId])))]);
+    this.db.exec(`DELETE FROM pages_fts WHERE page_id = ?`, pageId);
+    this.db.exec(`INSERT INTO pages_fts (page_id, title, body) VALUES (?, ?, ?)`, pageId, row.title as string, textWithTitles(runs, (id) => titles.get(id)));
+  }
+
+  /** A page's title changed (or it was first indexed, or deleted): rewrite the search rows of the pages linking to it. */
+  private rewriteLinkingSearchText(pageId: string): void {
+    const sources = this.db.exec(`SELECT DISTINCT source_id FROM links WHERE target_id = ? AND source_id != ? ORDER BY source_id`, pageId, pageId);
+    for (const row of sources) this.writeSearchText(row.source_id as string);
+  }
+
+  /** Linked pages' current titles: journals from their date, pages from the index (untitled and unknown pages left out). */
+  private currentTitles(pageIds: string[]): Map<string, string> {
+    const titles = new Map<string, string>();
+    const pages: string[] = [];
+    for (const id of pageIds) {
+      const date = parseJournalDate(id);
+      if (date) titles.set(id, journalTitle(date));
+      else pages.push(id);
+    }
+    // Durable Object SQLite allows at most 100 bound parameters per query
+    for (let i = 0; i < pages.length; i += MAX_BOUND_PARAMS) {
+      const ids = pages.slice(i, i + MAX_BOUND_PARAMS);
+      const rows = this.db.exec(`SELECT page_id, title FROM pages WHERE title != '' AND page_id IN (${ids.map(() => "?").join(", ")})`, ...ids);
+      for (const row of rows) titles.set(row.page_id as string, row.title as string);
+    }
+    return titles;
   }
 
   /** Tasks in the given states: by priority (A first, none last), then journals newest first, then pages by title. */
@@ -577,9 +682,11 @@ export class WorkspaceIndex {
     return this.db.transaction((): string => {
       const title = (this.db.exec(`SELECT title FROM pages WHERE page_id = ?`, pageId)[0]?.title as string | undefined) ?? "";
       this.db.exec(`DELETE FROM links WHERE source_id = ?`, pageId);
-      for (const table of ["pages", "tags", "tasks", "pages_fts", "slugs", "registry"]) {
+      for (const table of ["pages", "tags", "tasks", "pages_fts", "page_text", "slugs", "registry"]) {
         this.db.exec(`DELETE FROM ${table} WHERE page_id = ?`, pageId);
       }
+      // Pages linking to it are searched by the link text they store again
+      this.rewriteLinkingSearchText(pageId);
       this.db.exec(`INSERT INTO deleted_pages (page_id, title, deleted_at) VALUES (?, ?, ?) ON CONFLICT (page_id) DO NOTHING`, pageId, title, at);
       return title;
     });

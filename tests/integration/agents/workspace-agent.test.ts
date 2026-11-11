@@ -206,6 +206,12 @@ describe("WorkspaceAgent", () => {
       ]);
       expect((await agent.searchTitles("oct")).map((p) => p.pageId)).toEqual(["journal-2026-10-22"]);
       expect((await agent.search("read")).map((h) => h.pageId)).toEqual(["journal-2026-10-22"]);
+      // The search box's results in one call (F13); the link is searched by its page's current title
+      const found = await agent.searchPages("read mistlog", 6, 8);
+      expect(found.titles).toEqual([]);
+      expect(found.text.map((h) => h.pageId)).toEqual(["journal-2026-10-22"]);
+      // abcd1234 is registered but not indexed yet
+      expect(found.pending).toBe(1);
       // Serialisable task items, the line reduced like a linked reference
       expect(await agent.tasks()).toEqual([
         {

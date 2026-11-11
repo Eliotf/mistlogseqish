@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { APP_DISPLAY_NAME } from "~/shared/constants";
 import TodayButton from "~/components/TodayButton";
 import NewPageButton from "~/components/NewPageButton";
+import SearchButton from "~/components/SearchButton";
 import ThemeSelector from "~/components/ThemeSelector";
 
 /** The bar across the top of every Mistlog screen. Page-specific items go in children. */
@@ -17,6 +18,9 @@ export default function AppHeader({ children }: { children?: ReactNode }) {
       </Link>
       <div className="shrink-0 border-r border-border">
         <TodayButton />
+      </div>
+      <div className="shrink-0 border-r border-border empty:hidden">
+        <SearchButton />
       </div>
       <Link
         to="/tasks"

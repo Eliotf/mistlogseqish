@@ -3,6 +3,7 @@ import { WorkspaceIndex, SCHEMA_V1, SCHEMA_VERSION, SNIPPET_START, SNIPPET_END, 
 import { PARSER_VERSION, type DocLine } from "~/lib/note-parser";
 import { WIKILINK_MARK } from "~/lib/wikilink";
 import { memoryDb } from "../../helpers/sqlite";
+import { MAX_SEARCH_RESULTS } from "~/lib/search";
 
 /** A line of text, with links given as [start, end, pageId]. */
 function line(text: string, links: Array<[number, number, string]> = []): DocLine {
@@ -88,9 +89,9 @@ describe("WorkspaceIndex", () => {
     it("gives the same rows when the same content is indexed twice", () => {
       const update = page(MIST, "Mistlog", [line("TODO read Access #x", [[10, 16, ACCESS]]), line("more")]);
       index.updatePage(update);
-      const snapshot = ["pages", "links", "tags", "tasks", "pages_fts", "registry"].map((t) => db.exec(`SELECT * FROM ${t}`));
+      const snapshot = ["pages", "links", "tags", "tasks", "pages_fts", "page_text", "registry"].map((t) => db.exec(`SELECT * FROM ${t}`));
       index.updatePage(update);
-      const again = ["pages", "links", "tags", "tasks", "pages_fts", "registry"].map((t) => db.exec(`SELECT * FROM ${t}`));
+      const again = ["pages", "links", "tags", "tasks", "pages_fts", "page_text", "registry"].map((t) => db.exec(`SELECT * FROM ${t}`));
       expect(again).toEqual(snapshot);
     });
 
@@ -151,7 +152,7 @@ describe("WorkspaceIndex", () => {
       index.updatePage(page(MIST, "Mistlog", [line("TODO x #t see Access", [[14, 20, ACCESS]])]));
       index.registerPage(READING, 1);
       index.clearDerived();
-      for (const table of ["pages", "links", "tags", "tasks", "pages_fts"]) expect(count(table)).toBe(0);
+      for (const table of ["pages", "links", "tags", "tasks", "pages_fts", "page_text"]) expect(count(table)).toBe(0);
       expect(index.registeredPages()).toEqual([MIST, READING].sort());
     });
 
@@ -399,6 +400,11 @@ describe("WorkspaceIndex", () => {
       db.exec(`DROP TABLE imports`);
     }
 
+    /** Page text runs came with version 7. */
+    function dropPageText(db: ReturnType<typeof memoryDb>) {
+      db.exec(`DROP TABLE page_text`);
+    }
+
     it("upgrades a version 1 index and gives every titled page a slug", () => {
       const old = versionOneDb();
       const upgraded = new WorkspaceIndex(old);
@@ -419,6 +425,7 @@ describe("WorkspaceIndex", () => {
       old.exec(`CREATE TABLE tasks (page_id TEXT NOT NULL, line INTEGER NOT NULL, state TEXT NOT NULL, indent INTEGER NOT NULL, text TEXT NOT NULL, PRIMARY KEY (page_id, line))`);
       old.exec(`INSERT INTO tasks (page_id, line, state, indent, text) VALUES ('aaaa1111', 0, 'TODO', 0, 'old task')`);
       dropImportTables(old); // added in version 5
+      dropPageText(old); // added in version 7
       old.exec(`UPDATE meta SET value = '2' WHERE key = 'schema_version'`);
       const upgraded = new WorkspaceIndex(old);
       expect(upgraded.schemaVersion()).toBe(SCHEMA_VERSION);
@@ -432,6 +439,7 @@ describe("WorkspaceIndex", () => {
       new WorkspaceIndex(old);
       old.exec(`DROP TABLE deleted_pages`);
       dropImportTables(old); // added in version 5
+      dropPageText(old); // added in version 7
       old.exec(`UPDATE meta SET value = '3' WHERE key = 'schema_version'`);
       const upgraded = new WorkspaceIndex(old);
       expect(upgraded.schemaVersion()).toBe(SCHEMA_VERSION);
@@ -444,6 +452,7 @@ describe("WorkspaceIndex", () => {
       const old = versionOneDb();
       new WorkspaceIndex(old);
       dropImportTables(old);
+      dropPageText(old); // added in version 7
       old.exec(`UPDATE meta SET value = '4' WHERE key = 'schema_version'`);
       const upgraded = new WorkspaceIndex(old);
       expect(upgraded.schemaVersion()).toBe(SCHEMA_VERSION);
@@ -459,12 +468,34 @@ describe("WorkspaceIndex", () => {
       old.exec(`CREATE TABLE imports (import_id TEXT PRIMARY KEY, state TEXT NOT NULL, started_at INTEGER NOT NULL, finished_at INTEGER)`);
       old.exec(`INSERT INTO imports (import_id, state, started_at, finished_at) VALUES ('imp1', 'done', 1, 2)`);
       old.exec(`INSERT INTO import_pages (import_id, page_id, created) VALUES ('imp1', 'aaaa1111', 1)`);
+      dropPageText(old); // added in version 7
       old.exec(`UPDATE meta SET value = '5' WHERE key = 'schema_version'`);
       const upgraded = new WorkspaceIndex(old);
       expect(upgraded.schemaVersion()).toBe(SCHEMA_VERSION);
       expect(upgraded.listImports()).toEqual([{ importId: "imp1", label: null, state: "done", startedAt: 1, finishedAt: 2, pages: 1, created: 1 }]);
       // A finished import no longer stops another
       expect(upgraded.startImport("imp2", "Work", 3)).toEqual({ ok: true });
+    });
+
+    it("upgrades a version 6 index: old search rows keep working until their page re-indexes", () => {
+      const old = memoryDb();
+      const v7 = new WorkspaceIndex(old);
+      v7.updatePage(page(ACCESS, "Access", [line("x")]));
+      v7.updatePage(page(MIST, "Mistlog", [line("see Access", [[4, 10, ACCESS]])]));
+      // As a version 6 index held it: no runs, the stored link text in the search row
+      dropPageText(old);
+      old.exec(`UPDATE meta SET value = '6' WHERE key = 'schema_version'`);
+      const upgraded = new WorkspaceIndex(old);
+      expect(upgraded.schemaVersion()).toBe(SCHEMA_VERSION);
+      expect(Number(old.exec(`SELECT COUNT(*) AS n FROM page_text`)[0].n)).toBe(0);
+      expect(upgraded.search("see").map((h) => h.pageId)).toEqual([MIST]);
+      // A rename before the linking page re-indexes leaves its row as it was
+      upgraded.claimTitle(ACCESS, "Gateway", 2000);
+      expect(upgraded.search("see access").map((h) => h.pageId)).toEqual([MIST]);
+      // Re-indexing (the parser version makes every page do so) fills in its runs
+      upgraded.updatePage(page(MIST, "Mistlog", [line("see Access", [[4, 10, ACCESS]])], 3000));
+      expect(upgraded.search("see gateway").map((h) => h.pageId)).toEqual([MIST]);
+      expect(upgraded.search("see access")).toEqual([]);
     });
 
     it("migrates only once", () => {
@@ -711,6 +742,228 @@ describe("WorkspaceIndex", () => {
 
     it("returns nothing for input with no words", () => {
       expect(index.search("  - * ")).toEqual([]);
+    });
+  });
+
+  describe("search across pages (F13)", () => {
+    const NOTES = "notes001";
+    const fts = () => db.exec(`SELECT page_id, title, body FROM pages_fts ORDER BY page_id`);
+    const derived = () => [fts(), db.exec(`SELECT * FROM page_text ORDER BY page_id`)];
+
+    beforeEach(() => {
+      index.updatePage(page(ACCESS, "Cloudflare Access", [line("Zero trust gateway")], 100));
+      index.updatePage(page(MIST, "Mistlog", [line("- notes on [[Cloudflare Access]] setup", [[13, 30, ACCESS]])], 200));
+      index.updatePage(page(READING, "Reading list", [line("How to Take Smart Notes")], 300));
+      index.updatePage(page(TODAY, "", [line("met about [[Mistlog]]", [[12, 19, MIST]])], 400));
+    });
+
+    it("lists titles first (starting with the query, then containing it), then text matches with a snippet", () => {
+      index.updatePage(page(NOTES, "Notes inbox", [line("empty")], 500));
+      const results = index.searchPages("notes", 6, 8);
+      expect(results.titles.map((p) => p.title)).toEqual(["Notes inbox"]);
+      expect(results.titles[0]).toEqual({ pageId: NOTES, title: "Notes inbox", kind: "page", slug: "notes-inbox" });
+      expect(results.text.map((h) => h.pageId).sort()).toEqual([MIST, READING].sort());
+      const reading = results.text.find((h) => h.pageId === READING)!;
+      expect(reading).toMatchObject({ title: "Reading list", kind: "page", slug: "reading-list" });
+      expect(reading.snippet).toContain(`${SNIPPET_START}Notes${SNIPPET_END}`);
+      expect(results.pending).toBe(0);
+    });
+
+    it("lists a page found only by its title with the titles, not the text matches", () => {
+      const results = index.searchPages("reading", 6, 8);
+      expect(results.titles.map((p) => p.pageId)).toEqual([READING]);
+      expect(results.text).toEqual([]);
+    });
+
+    it("finds a title the LIKE match misses (no accent) through full text, once", () => {
+      index.updatePage(page(NOTES, "Café plans", [line("nothing here")], 500));
+      const results = index.searchPages("cafe", 6, 8);
+      expect(results.titles.map((p) => p.pageId)).toEqual([NOTES]);
+      expect(results.text).toEqual([]);
+    });
+
+    it("titles journal days by their date and finds them by it", () => {
+      const results = index.searchPages("oct 22", 6, 8);
+      expect(results.titles).toEqual([{ pageId: TODAY, title: "Oct 22nd, 2026", kind: "journal", slug: null }]);
+      expect(index.searchPages("met", 6, 8).text).toEqual([expect.objectContaining({ pageId: TODAY, title: "Oct 22nd, 2026", kind: "journal" })]);
+    });
+
+    it("leaves out journal days with no text", () => {
+      index.updatePage(page(YESTERDAY, "", [line("  ")], 500));
+      expect(index.searchPages("oct 21", 6, 8).titles).toEqual([]);
+      expect(index.search("oct 21")).toEqual([]);
+      expect(index.searchPages("", 10, 8).titles.map((p) => p.pageId)).not.toContain(YESTERDAY);
+    });
+
+    it("finds untitled pages by their text only", () => {
+      index.updatePage(page(NOTES, "", [line("loose thought")], 500));
+      expect(index.searchPages("loose", 6, 8).text.map((h) => h.pageId)).toEqual([NOTES]);
+      expect(index.searchPages("", 10, 8).titles.map((p) => p.pageId)).not.toContain(NOTES);
+    });
+
+    it("lists recently edited pages for an empty query, and no text matches", () => {
+      expect(index.searchPages("  ", 2, 8)).toEqual({
+        titles: [
+          { pageId: TODAY, title: "Oct 22nd, 2026", kind: "journal", slug: null },
+          { pageId: READING, title: "Reading list", kind: "page", slug: "reading-list" },
+        ],
+        text: [],
+        pending: 0,
+      });
+    });
+
+    it("never shows a deleted page", () => {
+      index.deletePage(READING, 1000);
+      expect(index.searchPages("reading", 6, 8).titles).toEqual([]);
+      expect(index.searchPages("smart", 6, 8).text).toEqual([]);
+      expect(index.searchPages("", 10, 8).titles.map((p) => p.pageId)).not.toContain(READING);
+      // A late update from an open tab doesn't bring it back
+      index.updatePage(page(READING, "Reading list", [line("Smart again")], 2000));
+      expect(index.searchPages("smart", 6, 8).text).toEqual([]);
+    });
+
+    it("says how many pages the index is still catching up on", () => {
+      index.registerPage(NOTES, 1);
+      expect(index.searchPages("x", 6, 8).pending).toBe(1);
+    });
+
+    describe("links are found by their page's current title, not the stored copy", () => {
+      it("after a rename", () => {
+        expect(index.searchPages("cloudflare setup", 6, 8).text.map((h) => h.pageId)).toEqual([MIST]);
+        expect(index.claimTitle(ACCESS, "Zero Trust", 1000)).toMatchObject({ ok: true });
+        const found = index.searchPages("zero trust setup", 6, 8).text;
+        expect(found.map((h) => h.pageId)).toEqual([MIST]);
+        expect(found[0].snippet).toContain(`[[${SNIPPET_START}Zero${SNIPPET_END} ${SNIPPET_START}Trust${SNIPPET_END}]]`);
+        // The old title no longer finds the linking page (nor the renamed one)
+        expect(index.searchPages("cloudflare", 6, 8)).toMatchObject({ titles: [], text: [] });
+        // Its own title is searched by the new one at once, before it re-indexes
+        expect(index.search("zero").map((h) => h.pageId).sort()).toEqual([ACCESS, MIST].sort());
+      });
+
+      it("after a rename that arrives as an update", () => {
+        index.updatePage(page(ACCESS, "Gateway", [line("Zero trust gateway")], 1000));
+        expect(index.search("notes gateway").map((h) => h.pageId)).toEqual([MIST]);
+        expect(index.search("notes cloudflare")).toEqual([]);
+      });
+
+      it("whichever page a rebuild reaches first", () => {
+        const linkerFirst = memoryDb();
+        const fresh = new WorkspaceIndex(linkerFirst);
+        fresh.updatePage(page(MIST, "Mistlog", [line("- notes on [[Cloudflare Access]] setup", [[13, 30, ACCESS]])], 200));
+        fresh.updatePage(page(ACCESS, "Gateway", [line("Zero trust gateway")], 100));
+        expect(fresh.search("notes gateway").map((h) => h.pageId)).toEqual([MIST]);
+      });
+
+      it("a link to a journal day shows its date", () => {
+        index.updatePage(page(NOTES, "Plans", [line("see [[old copy]]", [[6, 14, YESTERDAY]])], 500));
+        expect(index.search("see oct 21st").map((h) => h.pageId)).toEqual([NOTES]);
+      });
+
+      it("a deleted page's links go back to their stored text", () => {
+        index.claimTitle(ACCESS, "Zero Trust", 1000);
+        index.deletePage(ACCESS, 2000);
+        expect(index.search("notes zero")).toEqual([]);
+        expect(index.search("notes cloudflare").map((h) => h.pageId)).toEqual([MIST]);
+      });
+
+      it("many linked pages in one page (more than one query's bound parameters)", () => {
+        // Durable Object SQLite refuses more than 100 bound parameters; Node's doesn't, so check here
+        const limited = memoryDb();
+        const exec = limited.exec.bind(limited);
+        limited.exec = (query, ...bindings) => {
+          if (bindings.length > 100) throw new Error(`too many SQL variables: ${bindings.length}`);
+          return exec(query, ...bindings);
+        };
+        index = new WorkspaceIndex(limited);
+        const ids = Array.from({ length: 150 }, (_, i) => `t${String(i).padStart(7, "0")}`);
+        for (const [i, id] of ids.entries()) index.updatePage(page(id, `Target ${i}`, [line("x")], 500));
+        index.claimTitle(ids[149], "Renamed last", 600);
+        const text = ids.map((_, i) => `[[old${i}]]`).join(" ");
+        const marks: Array<[number, number, string]> = [];
+        let at = 0;
+        for (const [i, id] of ids.entries()) {
+          marks.push([at + 2, at + 2 + `old${i}`.length, id]);
+          at += `[[old${i}]] `.length;
+        }
+        index.updatePage(page(NOTES, "Hub", [line(text, marks)], 700));
+        expect(index.search("renamed last").map((h) => h.pageId).sort()).toEqual([NOTES, ids[149]].sort());
+        expect(index.search("old0")).toEqual([]);
+      });
+
+      it("re-indexing twice gives the same rows", () => {
+        index.claimTitle(ACCESS, "Zero Trust", 1000);
+        const update = page(MIST, "Mistlog", [line("- notes on [[Cloudflare Access]] setup", [[13, 30, ACCESS]])], 2000);
+        index.updatePage(update);
+        const once = derived();
+        index.updatePage(update);
+        expect(derived()).toEqual(once);
+      });
+
+      it("a rebuild from the documents gives the same rows as renaming did", () => {
+        index.claimTitle(ACCESS, "Zero Trust", 1000);
+        index.updatePage(page(ACCESS, "Zero Trust", [line("Zero trust gateway")], 1001));
+        const incremental = derived();
+        index.clearDerived();
+        // The documents as they now are, in another order
+        index.updatePage(page(TODAY, "", [line("met about [[Mistlog]]", [[12, 19, MIST]])], 400));
+        index.updatePage(page(MIST, "Mistlog", [line("- notes on [[Cloudflare Access]] setup", [[13, 30, ACCESS]])], 200));
+        index.updatePage(page(READING, "Reading list", [line("How to Take Smart Notes")], 300));
+        index.updatePage(page(ACCESS, "Zero Trust", [line("Zero trust gateway")], 1001));
+        expect(derived()).toEqual(incremental);
+      });
+    });
+
+    describe("odd queries", () => {
+      it.each([
+        ["empty", ""],
+        ["only punctuation", "-- ** !?"],
+        ["FTS operators", "NOT AND OR NEAR(x y)"],
+        ["quotes", '"smart'],
+        ["column filters", "title: body:"],
+        ["LIKE wildcards", "%_%"],
+        ["brackets", "[[ ]] ((x))"],
+      ])("%s does not fail", (_name, q) => {
+        expect(() => index.searchPages(q, 6, 8)).not.toThrow();
+      });
+
+      it("searches FTS operators and quotes as words", () => {
+        index.updatePage(page(NOTES, "Logic", [line("this AND that, \"quoted\" NOT here")], 500));
+        expect(index.searchPages("and that", 6, 8).text.map((h) => h.pageId)).toEqual([NOTES]);
+        expect(index.searchPages('"quoted', 6, 8).text.map((h) => h.pageId)).toEqual([NOTES]);
+        expect(index.searchPages("not here", 6, 8).text.map((h) => h.pageId)).toEqual([NOTES]);
+      });
+
+      it("treats LIKE wildcards in titles literally", () => {
+        index.updatePage(page(NOTES, "100% done", [line("x")], 500));
+        expect(index.searchPages("%", 6, 8).titles.map((p) => p.pageId)).toEqual([NOTES]);
+        expect(index.searchPages("_", 6, 8).titles).toEqual([]);
+      });
+
+      it("handles a very long query", () => {
+        const long = "smart ".repeat(400);
+        expect(index.searchPages(long, 6, 8).text.map((h) => h.pageId)).toEqual([READING]);
+        expect(() => index.searchPages("x".repeat(5000), 6, 8)).not.toThrow();
+      });
+    });
+
+    describe("result caps", () => {
+      beforeEach(() => {
+        for (let i = 0; i < 70; i++) index.updatePage(page(`many${String(i).padStart(4, "0")}`, `Common ${i}`, [line(`common words ${i}`)], 1000 + i));
+      });
+
+      it("returns at most the limits asked for", () => {
+        const results = index.searchPages("common", 6, 8);
+        expect(results.titles).toHaveLength(6);
+        expect(results.text).toHaveLength(8);
+      });
+
+      it("never more than MAX_SEARCH_RESULTS, whatever is asked", () => {
+        expect(index.search("common", 1000)).toHaveLength(MAX_SEARCH_RESULTS);
+        expect(index.searchPages("common", 1000, 1000).titles).toHaveLength(MAX_SEARCH_RESULTS);
+        expect(index.searchPages("", 1000, 8).titles).toHaveLength(MAX_SEARCH_RESULTS);
+        expect(index.search("common", 0)).toHaveLength(1);
+        expect(index.search("common", Number.NaN)).toHaveLength(1);
+      });
     });
   });
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseLine, parseNote, tagsInLine, isPlainTagName, PARSER_VERSION, type DocLine, type LineMark } from "~/lib/note-parser";
+import { parseLine, parseNote, tagsInLine, isPlainTagName, textWithTitles, PARSER_VERSION, type DocLine, type LineMark } from "~/lib/note-parser";
 import { WIKILINK_MARK } from "~/lib/wikilink";
 
 function line(text: string, marks: LineMark[] = []): DocLine {
@@ -212,7 +212,39 @@ describe("parseNote: text", () => {
   });
 
   it("handles an empty document", () => {
-    expect(parseNote([])).toEqual({ links: [], tags: [], tasks: [], text: "" });
+    expect(parseNote([])).toEqual({ links: [], tags: [], tasks: [], text: "", runs: [] });
+  });
+});
+
+describe("parseNote: runs, for search by current titles (F13)", () => {
+  const A = "aaaa1111";
+  const B = "bbbb2222";
+
+  it("marks each link's text with its page, and joins back to the text", () => {
+    const lines = [line("see [[Old]] and #tag", [link(6, 9, A), link(17, 20, B)]), line("\t- plain")];
+    const note = parseNote(lines);
+    expect(note.runs).toEqual(["see [[", { pageId: A, text: "Old" }, "]] and #", { pageId: B, text: "tag" }, "\n\t- plain"]);
+    expect(textWithTitles(note.runs, () => undefined)).toBe(note.text);
+  });
+
+  it("treats a link split into runs by another mark as one link", () => {
+    const bold: LineMark = { type: "bold", from: 4, to: 6 };
+    const note = parseNote([line("[[Long name]]", [link(2, 6, A), bold, link(6, 11, A)])]);
+    expect(note.runs).toEqual(["[[", { pageId: A, text: "Long name" }, "]]"]);
+  });
+
+  it("drops a range overlapping a different link, and ranges outside the text", () => {
+    const note = parseNote([line("abcdef", [link(0, 4, A), link(2, 6, B), link(5, 99, A), link(3, 3, B)])]);
+    expect(note.runs).toEqual([{ pageId: A, text: "abcd" }, "e", { pageId: A, text: "f" }]);
+  });
+
+  it("keeps lines with no text as newlines", () => {
+    expect(parseNote([line(""), line("x"), line("")]).runs).toEqual(["\nx\n"]);
+  });
+
+  it("replaces link text with the current title, keeping the stored text when there is none", () => {
+    const note = parseNote([line("[[Old]] [[Gone]]", [link(2, 5, A), link(10, 14, B)])]);
+    expect(textWithTitles(note.runs, (id) => (id === A ? "New title" : undefined))).toBe("[[New title]] [[Gone]]");
   });
 });
 

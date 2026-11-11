@@ -166,6 +166,11 @@ class WorkspaceAgent extends Agent<Env> {
     return this.index.search(query, limit);
   }
 
+  /** The search box's results (F13), in one call. */
+  async searchPages(query: string, titleLimit: number, textLimit: number) {
+    return this.index.searchPages(query, titleLimit, textLimit);
+  }
+
   /** Tasks as the Tasks view shows them; lines reduced like linked references, so the result is serialisable. */
   async tasks(states?: TaskState[]): Promise<TaskItem[]> {
     return this.index.tasks(states).map((t) => ({

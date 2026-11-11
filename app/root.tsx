@@ -12,6 +12,8 @@ import type { Route } from "./+types/root";
 import Fathom from "~/components/Fathom";
 import PhoneToolbar from "~/components/PhoneToolbar";
 import SidePanel from "~/components/SidePanel";
+import SearchBox from "~/components/SearchBox";
+import { SearchBoxProvider } from "~/lib/search-box";
 import { SidePanelProvider, useSidePanel, useToggleShortcut } from "~/lib/side-panel";
 import "./app.css";
 
@@ -53,12 +55,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <SidePanelProvider>
-      <Shell />
+      <SearchBoxProvider>
+        <Shell />
+      </SearchBoxProvider>
     </SidePanelProvider>
   );
 }
 
-/** Every screen, with the side panel (PRD F18) beside it. */
+/** Every screen, with the side panel (PRD F18) beside it and the search box (F13) over it. */
 function Shell() {
   const panel = useSidePanel();
   useToggleShortcut(panel.toggle);
@@ -69,6 +73,7 @@ function Shell() {
       </div>
       <SidePanel />
       <PhoneToolbar />
+      <SearchBox />
     </div>
   );
 }

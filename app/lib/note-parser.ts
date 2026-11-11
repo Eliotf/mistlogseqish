@@ -9,7 +9,7 @@ import { WIKILINK_MARK, isWikilinkAttrs } from "./wikilink";
  * Bump PARSER_VERSION whenever the output for the same input changes; the
  * index rebuilds when it does (docs/technical-architecture.md).
  */
-export const PARSER_VERSION = 3;
+export const PARSER_VERSION = 4;
 
 /** Task keywords (PRD F6, F42): TODO -> DOING -> DONE, and Logseq's LATER -> NOW -> DONE. */
 export type TaskState = "TODO" | "DOING" | "DONE" | "LATER" | "NOW";
@@ -70,9 +70,18 @@ export interface ParsedNote {
   links: ParsedLink[];
   tags: ParsedTag[];
   tasks: ParsedTask[];
-  /** All lines joined with newlines, for full-text search. */
+  /** All lines joined with newlines, as stored. */
   text: string;
+  /**
+   * The same text in runs, each link's text marked with the page it links
+   * to, so search can index the linked page's current title instead of the
+   * stored copy (PRD F13). Joining the runs' text gives `text`.
+   */
+  runs: TextRun[];
 }
+
+/** A piece of a note's text: plain text, or the text of a link to a page. */
+export type TextRun = string | { pageId: string; text: string };
 
 const TASK_RE = /^(TODO|DOING|DONE|LATER|NOW)(?= |$)/;
 const PRIORITY_RE = /\[#([ABC])\]/;
@@ -245,5 +254,54 @@ export function parseNote(lines: DocLine[]): ParsedNote {
     tags.push(...extractTags(text, line));
   });
 
-  return { links, tags, tasks, text: lines.map((l) => l.text).join("\n") };
+  const runs: TextRun[] = [];
+  const pushPlain = (text: string) => {
+    if (!text) return;
+    const last = runs.length - 1;
+    if (typeof runs[last] === "string") runs[last] += text;
+    else runs.push(text);
+  };
+  lines.forEach((line, i) => {
+    if (i > 0) pushPlain("\n");
+    let at = 0;
+    for (const link of linkRanges(line)) {
+      pushPlain(line.text.slice(at, link.from));
+      runs.push({ pageId: link.pageId, text: line.text.slice(link.from, link.to) });
+      at = link.to;
+    }
+    pushPlain(line.text.slice(at));
+  });
+
+  return { links, tags, tasks, text: lines.map((l) => l.text).join("\n"), runs };
+}
+
+/**
+ * A line's links as whole ranges, in order. A link split into several runs
+ * (another mark starting or stopping inside it) is one range; ranges that
+ * overlap a different link, or fall outside the text, are dropped.
+ */
+function linkRanges({ text, marks }: DocLine): Array<{ from: number; to: number; pageId: string }> {
+  const found = marks
+    .flatMap((m) => (m.type === WIKILINK_MARK && isWikilinkAttrs(m.attrs) ? [{ from: Math.max(0, m.from), to: Math.min(text.length, m.to), pageId: m.attrs.pageId }] : []))
+    .filter((r) => r.from < r.to)
+    .sort((a, b) => a.from - b.from || a.to - b.to);
+  const ranges: Array<{ from: number; to: number; pageId: string }> = [];
+  for (const r of found) {
+    const last = ranges[ranges.length - 1];
+    if (last && r.from <= last.to) {
+      if (r.pageId === last.pageId) last.to = Math.max(last.to, r.to);
+      continue;
+    }
+    ranges.push({ ...r });
+  }
+  return ranges;
+}
+
+/**
+ * A note's text for search: each link's text replaced by the current title
+ * of the page it links to, or kept as stored when `titleOf` has none (a
+ * deleted page, or one not indexed yet).
+ */
+export function textWithTitles(runs: TextRun[], titleOf: (pageId: string) => string | undefined): string {
+  return runs.map((run) => (typeof run === "string" ? run : (titleOf(run.pageId) ?? run.text))).join("");
 }

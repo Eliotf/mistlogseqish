@@ -118,7 +118,8 @@ PRD.md        Product spec and roadmap
 - Writing Yjs text on the server: `Y.XmlText.insert` without attributes takes the formatting of the text before it, so a plain run after a link becomes part of the link. Pass the mark as `null` for plain runs (see `app/lib/import-lines.ts`), and check server-written content by opening it in the real editor in a test.
 - `getAgentByName` makes a fetch of its own before you call anything, so each Durable Object reached costs one subrequest more than its calls. Batch work across requests (the import does) to stay under the free plan's 50 per request.
 - In browser walkthroughs, `GET /new` redirects to the journal feed (only POST creates a page), so text typed there lands in today's journal. Make test pages through a link instead, and clean up after.
-- Workspace index tests run real SQL on Node's built-in SQLite through `tests/helpers/sqlite.ts`; Node prints an experimental-feature warning, which is expected.
+- Workspace index tests run real SQL on Node's built-in SQLite through `tests/helpers/sqlite.ts`; Node prints an experimental-feature warning, which is expected. Node's SQLite has no 100-parameter limit, so a test of chunking must wrap the db to refuse more (see the F13 "many linked pages" test).
+- Search indexes each link as its page's current title (`page_text`, F13). Anything that changes a page's title or deletes it in the index must rewrite the linking pages' search rows (`rewriteLinkingSearchText`).
 
 ## Cloudflare notes
 
