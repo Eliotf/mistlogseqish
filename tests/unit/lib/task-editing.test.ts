@@ -71,11 +71,11 @@ describe("tasks in the editor", () => {
     const editor = makeEditor(doc);
     select(editor, 0, 6);
     const seen: string[] = [];
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 6; i++) {
       expect(press(editor, "Enter", mod)).toBe(true);
       seen.push(texts(doc)[0]);
     }
-    expect(seen).toEqual(["- TODO buy milk", "- DOING buy milk", "- DONE buy milk", "- buy milk"]);
+    expect(seen).toEqual(["- TODO buy milk", "- DOING buy milk", "- LATER buy milk", "- NOW buy milk", "- DONE buy milk", "- buy milk"]);
     expect(editor.state.selection.$head.parentOffset).toBe(6);
   });
 

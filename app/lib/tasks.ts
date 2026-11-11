@@ -10,8 +10,8 @@ import type { BacklinkLine } from "./backlink-lines";
  */
 
 /**
- * Cmd/Ctrl+Enter: a plain line becomes TODO; TODO -> DOING -> DONE and
- * LATER -> NOW -> DONE; DONE goes back to a plain line.
+ * Cmd/Ctrl+Enter, one cycle through every state (owner's choice,
+ * 2026-11-11): plain -> TODO -> DOING -> LATER -> NOW -> DONE -> plain.
  */
 export function nextTaskState(current: TaskState | null): TaskState | null {
   switch (current) {
@@ -19,9 +19,10 @@ export function nextTaskState(current: TaskState | null): TaskState | null {
       return "TODO";
     case "TODO":
       return "DOING";
+    case "DOING":
+      return "LATER";
     case "LATER":
       return "NOW";
-    case "DOING":
     case "NOW":
       return "DONE";
     case "DONE":

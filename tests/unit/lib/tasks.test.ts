@@ -10,8 +10,8 @@ function apply(lines: string[], edits: PrefixEdit[]): string[] {
 const cycle = (text: string) => apply([text], cyclePlan([text], [0]))[0];
 
 describe("nextTaskState", () => {
-  it("starts with TODO, and cycles TODO -> DOING -> DONE and LATER -> NOW -> DONE, then back to none", () => {
-    expect([null, "TODO", "DOING", "DONE", "LATER", "NOW"].map((s) => nextTaskState(s as never))).toEqual(["TODO", "DOING", "DONE", null, "NOW", "DONE"]);
+  it("cycles through every state: none -> TODO -> DOING -> LATER -> NOW -> DONE -> none", () => {
+    expect([null, "TODO", "DOING", "LATER", "NOW", "DONE"].map((s) => nextTaskState(s as never))).toEqual(["TODO", "DOING", "LATER", "NOW", "DONE", null]);
   });
 });
 
@@ -19,7 +19,7 @@ describe("cycling a line", () => {
   it.each([
     ["- buy milk", "- TODO buy milk"],
     ["- TODO buy milk", "- DOING buy milk"],
-    ["- DOING buy milk", "- DONE buy milk"],
+    ["- DOING buy milk", "- LATER buy milk"],
     ["- DONE buy milk", "- buy milk"],
     ["- LATER read", "- NOW read"],
     ["- NOW read", "- DONE read"],
@@ -38,7 +38,7 @@ describe("cycling a line", () => {
 
   it("goes all the way round back to the original", () => {
     let text = "\t- write the review";
-    for (let i = 0; i < 4; i++) text = cycle(text);
+    for (let i = 0; i < 6; i++) text = cycle(text);
     expect(text).toBe("\t- write the review");
   });
 

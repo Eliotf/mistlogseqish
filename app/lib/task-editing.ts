@@ -8,7 +8,7 @@ import { parseLine, priorityAt } from "./note-parser";
 
 /**
  * Tasks in the editor (PRD F6, F42). Cmd/Ctrl+Enter cycles the lines the
- * selection touches (tasks.ts: TODO -> DOING -> DONE, LATER -> NOW -> DONE).
+ * selection touches (tasks.ts: TODO -> DOING -> LATER -> NOW -> DONE).
  * Keywords and `[#A]`-style priorities are styled text, and a DONE line's
  * text is struck through; the text itself is never changed by styling.
  * Selected blocks cycle in block-selection.ts. In suggest mode the shortcut
