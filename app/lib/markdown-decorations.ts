@@ -51,7 +51,8 @@ export const MARKDOWN_PATTERNS: MarkdownPattern[] = [
   },
   {
     name: "heading",
-    regex: /^(#{1,6}\s)(.+)$/gm,
+    // After the line's bullet if it has one ("\t- ## Notes"), as Logseq writes headings (F47)
+    regex: /^((?:\t*- )?)(#{1,6}\s)(.+)$/gm,
     type: "heading",
     contentClass: "md-heading",
     delimiterClass: "md-heading-delimiter",
@@ -274,11 +275,12 @@ export function findDecorations(
         }),
       );
     } else if (pattern.type === "heading") {
-      // match[1] = "## ", match[2] = heading text
-      const delimEnd = fullStart + match[1].length;
-      const level = match[1].trim().length; // number of # characters
+      // match[1] = the bullet ("\t- ") or "", match[2] = "## ", match[3] = heading text
+      const delimStart = fullStart + match[1].length;
+      const delimEnd = delimStart + match[2].length;
+      const level = match[2].trim().length; // number of # characters
       decorations.push(
-        Decoration.inline(fullStart, delimEnd, {
+        Decoration.inline(delimStart, delimEnd, {
           class: pattern.delimiterClass,
         }),
       );

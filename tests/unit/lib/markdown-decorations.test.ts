@@ -114,6 +114,23 @@ describe("findDecorations", () => {
       ]);
     });
 
+    it("decorates a heading after a line's bullet, at any depth, leaving the bullet alone (F47)", () => {
+      expect(matchPositions("- ## Notes", pattern)).toEqual([
+        { from: 2, to: 5, class: "md-heading-delimiter" },
+        { from: 5, to: 10, class: "md-heading md-heading-2" },
+      ]);
+      expect(matchPositions("\t\t- # Top", pattern)).toEqual([
+        { from: 4, to: 6, class: "md-heading-delimiter" },
+        { from: 6, to: 9, class: "md-heading md-heading-1" },
+      ]);
+    });
+
+    it("needs a space after the #s, so tags and words stay as they are", () => {
+      for (const text of ["- #tag", "#tag", "- ####### seven", "- ##", "a ## b", "-## no", "  - ## spaces aren't nesting"]) {
+        expect(matchPositions(text, pattern)).toEqual([]);
+      }
+    });
+
     it("decorates ## level 2 heading", () => {
       const decos = matchPositions("## Hello", pattern);
       expect(decos).toEqual([
