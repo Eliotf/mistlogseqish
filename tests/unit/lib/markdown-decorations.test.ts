@@ -125,6 +125,14 @@ describe("findDecorations", () => {
       ]);
     });
 
+    it("decorates a heading after a task keyword, which stays styled as a task", () => {
+      expect(matchPositions("- LATER ## Plans", pattern)).toEqual([
+        { from: 8, to: 11, class: "md-heading-delimiter" },
+        { from: 11, to: 16, class: "md-heading md-heading-2" },
+      ]);
+      expect(matchPositions("- later ## not a keyword", pattern)).toEqual([]);
+    });
+
     it("needs a space after the #s, so tags and words stay as they are", () => {
       for (const text of ["- #tag", "#tag", "- ####### seven", "- ##", "a ## b", "-## no", "  - ## spaces aren't nesting"]) {
         expect(matchPositions(text, pattern)).toEqual([]);

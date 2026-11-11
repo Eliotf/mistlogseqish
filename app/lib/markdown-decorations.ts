@@ -51,8 +51,9 @@ export const MARKDOWN_PATTERNS: MarkdownPattern[] = [
   },
   {
     name: "heading",
-    // After the line's bullet if it has one ("\t- ## Notes"), as Logseq writes headings (F47)
-    regex: /^((?:\t*- )?)(#{1,6}\s)(.+)$/gm,
+    // After the line's bullet if it has one ("\t- ## Notes"), as Logseq writes headings (F47),
+    // and after a task keyword ("- LATER ## Plans"), so a heading can stay a task
+    regex: /^((?:\t*- )?(?:(?:TODO|DOING|DONE|LATER|NOW) )?)(#{1,6}\s)(.+)$/gm,
     type: "heading",
     contentClass: "md-heading",
     delimiterClass: "md-heading-delimiter",
@@ -275,7 +276,7 @@ export function findDecorations(
         }),
       );
     } else if (pattern.type === "heading") {
-      // match[1] = the bullet ("\t- ") or "", match[2] = "## ", match[3] = heading text
+      // match[1] = the bullet and task keyword ("\t- TODO ") or "", match[2] = "## ", match[3] = heading text
       const delimStart = fullStart + match[1].length;
       const delimEnd = delimStart + match[2].length;
       const level = match[2].trim().length; // number of # characters

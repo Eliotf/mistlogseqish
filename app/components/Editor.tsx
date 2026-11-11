@@ -20,6 +20,7 @@ import { activeEditor } from "~/lib/active-editor";
 import { Zoom, ZOOM_EVENT, setZoom, type ZoomDetail } from "~/lib/zoom-editing";
 import { Wikilink, OPEN_LINK_EVENT } from "~/lib/wikilink-editing";
 import { DateTrigger } from "~/lib/date-trigger";
+import { SlashMenu } from "~/lib/slash-menu";
 import { pageTitles } from "~/lib/page-titles";
 import { usePresenceWhileFocused } from "~/lib/connection-budget";
 import BubbleToolbar from "~/components/BubbleToolbar";
@@ -263,6 +264,7 @@ export default function Editor({
         Zoom.configure({ suggesting: () => docState?.get("mode") === "suggest" }),
         Wikilink.configure({ titles: pageTitles(), docState }),
         DateTrigger.configure({ docState }),
+        SlashMenu.configure({ docState }),
         CommentClickHandler.configure({ onCommentClick }),
         CommentHighlight,
         ActiveCommentHighlight,

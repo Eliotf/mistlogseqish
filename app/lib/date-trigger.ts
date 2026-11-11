@@ -5,7 +5,7 @@ import { WIKILINK_MARK } from "./wikilink";
 import { journalId, journalTitle, localDate } from "./note-ids";
 import { dateSuggestions, MAX_DATE_PHRASE } from "./fuzzy-dates";
 import { SuggestionList, type Suggestion } from "./link-suggestions";
-import { linkSpans, spanAt } from "./wikilink-editing";
+import { canTriggerAt, triggerQuery } from "./inline-trigger";
 
 /**
  * `@` dates (PRD 6.2, F20). Typing `@` at the start of a line or after a
@@ -29,17 +29,9 @@ export const dateTriggerKey = new PluginKey<DateTriggerState>("dateTrigger");
 
 const NO_MATCH = (query: string) => `No date matches “${query}”. Try “next fri” or “in 2 weeks”.`;
 
-/** What has been typed after the `@`, or null once the list should close. */
+/** What has been typed after the `@`, or null once the list should close (a long run of text isn't a date). */
 export function dateQuery(state: EditorState, from: number): string | null {
-  const { selection, doc } = state;
-  if (!selection.empty || from + 1 > doc.content.size) return null;
-  const head = selection.head;
-  const $at = doc.resolve(from);
-  if (!$at.parent.isTextblock || head <= from || head > $at.end() || doc.textBetween(from, from + 1) !== "@") return null;
-  const query = doc.textBetween(from + 1, head);
-  // "@ " is a plain at sign; a long run of text isn't a date
-  if (/^\s/.test(query) || query.length > MAX_DATE_PHRASE) return null;
-  return query;
+  return triggerQuery(state, from, "@", MAX_DATE_PHRASE);
 }
 
 export const DateTrigger = Extension.create<DateTriggerOptions>({
@@ -121,13 +113,7 @@ export const DateTrigger = Extension.create<DateTriggerOptions>({
         },
         props: {
           handleTextInput: (view, from, to, text) => {
-            if (text !== "@" || from !== to || !editing(view)) return false;
-            const { doc } = view.state;
-            const $from = doc.resolve(from);
-            if (!$from.parent.isTextblock) return false;
-            const before = doc.textBetween(Math.max(from - 1, $from.start()), from);
-            // Only at the start of a line or after a space, and not inside a link
-            if ((before && !/\s/.test(before)) || spanAt(linkSpans(doc), from)) return false;
+            if (text !== "@" || from !== to || !editing(view) || !canTriggerAt(view.state.doc, from)) return false;
             view.dispatch(view.state.tr.insertText("@", from, to).setMeta(dateTriggerKey, { start: from }));
             return true;
           },

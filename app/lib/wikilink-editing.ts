@@ -420,7 +420,8 @@ export const Wikilink = Mark.create<WikilinkOptions>({
     const choose = (item: Suggestion) => {
       const view = currentView;
       suggestions?.hide();
-      if (!view) return;
+      // Commands belong to the / menu's own list
+      if (!view || item.kind === "command") return;
       const { state } = view;
       const span = spanAt(linkSpans(state.doc), state.selection.head);
       if (!span) return;
