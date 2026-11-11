@@ -14,6 +14,8 @@ import PhoneToolbar from "~/components/PhoneToolbar";
 import SidePanel from "~/components/SidePanel";
 import SearchBox from "~/components/SearchBox";
 import { SearchBoxProvider } from "~/lib/search-box";
+import ShortcutSheet from "~/components/ShortcutSheet";
+import { ShortcutSheetProvider } from "~/lib/shortcut-sheet";
 import { SidePanelProvider, useSidePanel, useToggleShortcut } from "~/lib/side-panel";
 import "./app.css";
 
@@ -56,13 +58,15 @@ export default function App() {
   return (
     <SidePanelProvider>
       <SearchBoxProvider>
-        <Shell />
+        <ShortcutSheetProvider>
+          <Shell />
+        </ShortcutSheetProvider>
       </SearchBoxProvider>
     </SidePanelProvider>
   );
 }
 
-/** Every screen, with the side panel (PRD F18) beside it and the search box (F13) over it. */
+/** Every screen, with the side panel (PRD F18) beside it and the search box (F13) and shortcut sheet (F43) over it. */
 function Shell() {
   const panel = useSidePanel();
   useToggleShortcut(panel.toggle);
@@ -74,6 +78,7 @@ function Shell() {
       <SidePanel />
       <PhoneToolbar />
       <SearchBox />
+      <ShortcutSheet />
     </div>
   );
 }

@@ -5,6 +5,7 @@ import TodayButton from "~/components/TodayButton";
 import NewPageButton from "~/components/NewPageButton";
 import SearchButton from "~/components/SearchButton";
 import ThemeSelector from "~/components/ThemeSelector";
+import ShortcutsButton from "~/components/ShortcutsButton";
 
 /** The bar across the top of every Mistlog screen. Page-specific items go in children. */
 export default function AppHeader({ children }: { children?: ReactNode }) {
@@ -40,6 +41,7 @@ export default function AppHeader({ children }: { children?: ReactNode }) {
       {children ?? <div className="grow" />}
       {/* On a phone, a page's own controls (connection, Share) need the room */}
       <div className={`shrink-0 items-center border-l border-border ${children ? "hidden sm:flex" : "flex"}`}>
+        <ShortcutsButton />
         <ThemeSelector />
       </div>
     </header>
