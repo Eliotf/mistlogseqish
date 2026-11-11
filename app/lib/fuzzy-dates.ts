@@ -6,14 +6,17 @@ import { parseJournalDate } from "./note-ids";
  * in the browser's time zone; see localDate). All arithmetic is on calendar
  * dates, so daylight-saving changes never move a day.
  *
- * - "friday", "this friday" and "next friday" are the coming Friday (never
- *   today); "last friday" is the one before today.
+ * - Weeks run Monday to Sunday (owner's choice, 2026-11-11). "this friday"
+ *   is the Friday of the current week, even if it has passed; "next friday"
+ *   is the following week's and "last friday" the previous week's. "friday"
+ *   alone is the coming Friday (never today).
  * - "in N months" keeps the day of the month, or the month's last day if it
  *   is shorter (Jan 31 + 1 month is Feb 28th).
  * - "oct 31" or "31 oct" is this year's, or next year's once it has passed.
  */
 
-const DAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+// In week order: weeks start on Monday
+const DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
 
 /** Phrases longer than this are never dates (the `@` list closes). */
@@ -46,9 +49,10 @@ function addMonths(date: string, n: number): string {
   return format(y, m + n, Math.min(d, lastDay));
 }
 
+/** Day of the week, Monday 0 to Sunday 6. */
 function weekday(date: string): number {
   const { y, m, d } = parse(date);
-  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  return (new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7;
 }
 
 /** A month from its name or a prefix of at least three letters ("oct", "octob"). */
@@ -83,8 +87,10 @@ export function resolvePhrase(phrase: string, today: string): string | null {
   if (m && dayIndex(m[2]) >= 0) {
     const target = dayIndex(m[2]);
     const current = weekday(today);
-    if (m[1] === "last") return addDays(today, -((current - target + 7) % 7 || 7));
-    return addDays(today, (target - current + 7) % 7 || 7);
+    // Without a word: the coming one. With one: that day in this, the next or the last calendar week
+    if (!m[1]) return addDays(today, (target - current + 7) % 7 || 7);
+    const thisWeek = addDays(today, target - current);
+    return m[1] === "this" ? thisWeek : addDays(thisWeek, m[1] === "next" ? 7 : -7);
   }
   let month = -1;
   let day = 0;

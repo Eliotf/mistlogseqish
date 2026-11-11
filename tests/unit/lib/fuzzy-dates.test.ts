@@ -42,16 +42,39 @@ describe("resolvePhrase", () => {
     expect(resolvePhrase("yesterday", "2026-10-26")).toBe("2026-10-25");
   });
 
-  it("takes weekdays as the coming one (never today), and last as the one before", () => {
+  it("takes a weekday alone as the coming one (never today)", () => {
     expect(resolvePhrase("friday", TODAY)).toBe("2026-10-23");
-    expect(resolvePhrase("next friday", TODAY)).toBe("2026-10-23");
-    expect(resolvePhrase("this fri", TODAY)).toBe("2026-10-23");
-    expect(resolvePhrase("next tue", TODAY)).toBe("2026-10-27");
+    expect(resolvePhrase("fri", TODAY)).toBe("2026-10-23");
     expect(resolvePhrase("tuesday", TODAY)).toBe("2026-10-27");
-    expect(resolvePhrase("last tuesday", TODAY)).toBe("2026-10-13");
-    expect(resolvePhrase("last monday", TODAY)).toBe("2026-10-19");
-    expect(resolvePhrase("last wed", TODAY)).toBe("2026-10-14");
-    expect(resolvePhrase("next sunday", "2026-12-30")).toBe("2027-01-03");
+    expect(resolvePhrase("monday", TODAY)).toBe("2026-10-26");
+  });
+
+  it("takes this, next and last as that day in this, the following or the previous Monday-to-Sunday week", () => {
+    // Oct 20th is in the week of Mon Oct 19th to Sun Oct 25th
+    expect(resolvePhrase("this friday", TODAY)).toBe("2026-10-23");
+    expect(resolvePhrase("this monday", TODAY)).toBe("2026-10-19");
+    expect(resolvePhrase("this tue", TODAY)).toBe(TODAY);
+    expect(resolvePhrase("this sunday", TODAY)).toBe("2026-10-25");
+    expect(resolvePhrase("next friday", TODAY)).toBe("2026-10-30");
+    expect(resolvePhrase("next mon", TODAY)).toBe("2026-10-26");
+    expect(resolvePhrase("next tue", TODAY)).toBe("2026-10-27");
+    expect(resolvePhrase("last friday", TODAY)).toBe("2026-10-16");
+    expect(resolvePhrase("last monday", TODAY)).toBe("2026-10-12");
+    expect(resolvePhrase("last sunday", TODAY)).toBe("2026-10-18");
+  });
+
+  it("counts a Sunday as the end of its week, and crosses years", () => {
+    // Sun Oct 25th: this week began Mon Oct 19th
+    expect(resolvePhrase("this friday", "2026-10-25")).toBe("2026-10-23");
+    expect(resolvePhrase("next friday", "2026-10-25")).toBe("2026-10-30");
+    expect(resolvePhrase("friday", "2026-10-25")).toBe("2026-10-30");
+    // Mon Oct 26th starts a new week
+    expect(resolvePhrase("this friday", "2026-10-26")).toBe("2026-10-30");
+    expect(resolvePhrase("next friday", "2026-10-26")).toBe("2026-11-06");
+    // Wed Dec 30th is in the week to Sun Jan 3rd
+    expect(resolvePhrase("this sunday", "2026-12-30")).toBe("2027-01-03");
+    expect(resolvePhrase("next sunday", "2026-12-30")).toBe("2027-01-10");
+    expect(resolvePhrase("last monday", "2027-01-02")).toBe("2026-12-21");
   });
 
   it("reads month and day either way round, this year or next once passed", () => {
@@ -87,7 +110,7 @@ describe("dateSuggestions", () => {
   });
 
   it("completes what has been typed, each day once", () => {
-    expect(dateSuggestions("next f", TODAY)).toEqual([{ phrase: "next friday", date: "2026-10-23" }]);
+    expect(dateSuggestions("next f", TODAY)).toEqual([{ phrase: "next friday", date: "2026-10-30" }]);
     // "fri" names the day itself; "friday" is the same day, so it isn't listed again
     expect(dateSuggestions("fri", TODAY)).toEqual([{ phrase: "fri", date: "2026-10-23" }]);
     expect(dateSuggestions("to", TODAY).map((s) => s.phrase)).toEqual(["today", "tomorrow"]);

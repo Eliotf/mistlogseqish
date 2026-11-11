@@ -14,7 +14,7 @@ Type a phrase and link to that day's journal (PRD 6.2):
 
 ## Meanings (from the prototype)
 
-- `friday`, `this friday` and `next friday` all mean the coming Friday, never today. `last friday` is the one before today.
+- Weeks run Monday to Sunday (owner's choice). `this friday` is the current week's Friday, even if it has passed. `next friday` is the following week's, and `last friday` the previous week's. `friday` alone is the coming one, never today.
 - `in N days/weeks/months`. Months keep the day of the month, or use the month's last day when it is shorter: Jan 31 + 1 month is Feb 28th.
 - `oct 31` and `31st october` mean this year's date, or next year's once it has passed. `feb 29` finds the next leap year.
 - Short names are accepted: `fri`, `sept`.
@@ -22,8 +22,8 @@ Type a phrase and link to that day's journal (PRD 6.2):
 
 ## Decisions
 
-- **The week-start setting (6.2) is deferred.** None of the listed phrases depends on it. It comes with a phrase that does, such as `next week`. Recorded in the PRD.
-- **"next friday" follows the prototype:** the coming Friday. Some tools read it as the Friday of next week. The PRD decision row records the choice.
+- **Weekdays count by calendar week,** at the owner's request, which overrides the prototype. Weeks start on Monday, fixed for now; the week-start setting in 6.2 can come later. The PRD decision row records this.
+- **The rule was changed after the first build,** in a follow-up commit. Five more deliberate breaks, all caught: weeks starting on Sunday, `last` meaning the day before, `this` meaning next week, and two that let a bare weekday be today or in the past.
 
 ## What changed
 

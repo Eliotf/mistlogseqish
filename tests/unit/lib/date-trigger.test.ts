@@ -93,9 +93,9 @@ describe("@ dates (F20)", () => {
   it("completes a partial phrase", () => {
     const { doc, editor } = setup("call ");
     type(editor, "@next fr");
-    expect(options()).toEqual(["Oct 23rd, 2026next friday"]);
+    expect(options()).toEqual(["Oct 30th, 2026next friday"]);
     press(editor, "Enter");
-    expect(text(doc)).toEqual(["call [[Oct 23rd, 2026]]"]);
+    expect(text(doc)).toEqual(["call [[Oct 30th, 2026]]"]);
   });
 
   it("stays plain text in an email address, and after @ and a space", () => {
@@ -186,12 +186,12 @@ describe("dates in [[ ]] suggestions (F20)", () => {
     type(editor, "[[next f");
     await vi.advanceTimersByTimeAsync(200);
     const items = [...document.querySelectorAll('.link-suggest[aria-label="Link to page"] [role=option]')].map((o) => o.textContent);
-    expect(items).toEqual(["Next steps", "Oct 23rd, 2026next friday", "New page: next f"]);
+    expect(items).toEqual(["Next steps", "Oct 30th, 2026next friday", "New page: next f"]);
     press(editor, "ArrowDown");
     expect(press(editor, "Enter")).toBe(true);
-    expect(text(doc)).toEqual(["[[Oct 23rd, 2026]]"]);
-    expect(links(doc)).toEqual(["journal-2026-10-23"]);
-    expect(requested).toContain("journal-2026-10-23");
+    expect(text(doc)).toEqual(["[[Oct 30th, 2026]]"]);
+    expect(links(doc)).toEqual(["journal-2026-10-30"]);
+    expect(requested).toContain("journal-2026-10-30");
   });
 
   it("doesn't list a day already among the pages, offers at most three, and none for tags", async () => {
