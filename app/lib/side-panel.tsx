@@ -130,11 +130,14 @@ function isTyping(event: KeyboardEvent): boolean {
   return !!el && (el.isContentEditable || el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT");
 }
 
-/** How long after `t` an `r` still counts as `t r`. */
+/** How long after `t` an `r` (or `l`) still counts as `t r` (`t l`). */
 export const CHORD_MS = 1000;
 
-/** `t` then `r`, outside text fields: show or hide the side panel (PRD F8). */
-export function useToggleShortcut(toggle: () => void): void {
+/**
+ * `t` then `r`, outside text fields: show or hide the side panel (PRD F8).
+ * With `key` "l", `t l` for the left sidebar.
+ */
+export function useToggleShortcut(toggle: () => void, key: "r" | "l" = "r"): void {
   useEffect(() => {
     let tAt = 0;
     const onKey = (event: KeyboardEvent) => {
@@ -143,7 +146,7 @@ export function useToggleShortcut(toggle: () => void): void {
         tAt = Date.now();
         return;
       }
-      if (event.key === "r" && Date.now() - tAt <= CHORD_MS) {
+      if (event.key === key && Date.now() - tAt <= CHORD_MS) {
         tAt = 0;
         event.preventDefault();
         toggle();
@@ -153,5 +156,5 @@ export function useToggleShortcut(toggle: () => void): void {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggle]);
+  }, [toggle, key]);
 }

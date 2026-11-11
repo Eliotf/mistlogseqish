@@ -44,19 +44,25 @@ const SEARCH_BOX = "app/components/SearchBox.tsx";
 const SELECTION = "app/lib/block-selection.ts";
 const LINKS = "app/lib/wikilink-editing.ts";
 const DATES = "app/lib/date-trigger.ts";
+// The app-wide frame around every screen (root.tsx renders it)
+const SHELL = "app/components/AppShell.tsx";
 
 const CHECKS: Record<string, Check[]> = {
   // Behaviour tested in tests/unit/components/shortcut-sheet.test.tsx; here, that they are mounted
-  sheet: [{ file: "app/root.tsx", has: ["<ShortcutSheetProvider>", "<ShortcutSheet />"] }],
+  sheet: [{ file: SHELL, has: ["<ShortcutSheetProvider>", "<ShortcutSheet />"] }],
   "go-journals": [{ file: "app/lib/shortcut-sheet.tsx", has: ["chord.next(event)", "navigate(to)"] }],
   "go-pages": [{ file: "app/lib/shortcut-sheet.tsx", has: ["chord.next(event)", "navigate(to)"] }],
   search: [
     { file: "app/lib/search-box.tsx", has: ['event.key.toLowerCase() === "k"'] },
-    { file: "app/root.tsx", has: ["<SearchBoxProvider>", "<SearchBox />"] },
+    { file: SHELL, has: ["<SearchBoxProvider>", "<SearchBox />"] },
+  ],
+  "left-sidebar": [
+    { file: "app/lib/side-panel.tsx", has: ['event.key === "t"', "event.key === key"] },
+    { file: SHELL, has: ['useToggleShortcut(sidebar?.toggleFromKey ?? noop, "l")'] },
   ],
   "side-panel": [
-    { file: "app/lib/side-panel.tsx", has: ['event.key === "t"', 'event.key === "r"'] },
-    { file: "app/root.tsx", has: ["useToggleShortcut(panel.toggle)"] },
+    { file: "app/lib/side-panel.tsx", has: ['event.key === "t"', "event.key === key", 'key: "r" | "l" = "r"'] },
+    { file: SHELL, has: ["useToggleShortcut(panel.toggle)"] },
   ],
   "search-choose": [{ file: SEARCH_BOX, has: ['event.key === "ArrowDown" || event.key === "ArrowUp"'] }],
   "search-open": [{ file: SEARCH_BOX, has: ['event.key === "Enter"', "void choose(rows[current], side)"] }],

@@ -15,6 +15,7 @@ export default [
   route("api/pages/titles", "routes/api.pages.titles.ts"),
   route("api/pages/search", "routes/api.pages.search.ts"),
   route("api/search", "routes/api.search.ts"),
+  route("api/index/status", "routes/api.index.status.ts"),
   route("api/pages/backlinks", "routes/api.pages.backlinks.ts"),
   route("api/pages/delete", "routes/api.pages.delete.ts"),
   route("api/import/check", "routes/api.import.check.ts"),

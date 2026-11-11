@@ -32,6 +32,7 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
       { id: "go-journals", keys: ["g j"], action: "Go to the journals" },
       { id: "go-pages", keys: ["g a"], action: "Go to All pages" },
       { id: "search", keys: ["Mod+K"], action: "Search, even while typing" },
+      { id: "left-sidebar", keys: ["t l"], action: "Show or hide the sidebar (on a phone, the menu)" },
       { id: "side-panel", keys: ["t r"], action: "Show or hide the side panel" },
     ],
   },

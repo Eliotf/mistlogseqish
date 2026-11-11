@@ -4,17 +4,19 @@ import { createElement } from "react";
 import { render, cleanup } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import AppHeader from "~/components/AppHeader";
+import { LeftSidebarProvider } from "~/lib/left-sidebar";
 import { shareLink } from "~/components/ShareButton";
 import { fetchOlderDays } from "~/components/JournalFeed";
 
 describe("AppHeader", () => {
   afterEach(cleanup);
 
-  it("links home and offers Today and New page on every screen", () => {
-    const { getByRole } = render(createElement(MemoryRouter, null, createElement(AppHeader)));
+  // Today and New page moved to the left sidebar, which is on every screen (F8, decision 2026-10-24); see left-sidebar.test.tsx
+  it("links home and offers the sidebar and phone menu buttons on every screen", () => {
+    const { getByRole } = render(createElement(MemoryRouter, null, createElement(LeftSidebarProvider, null, createElement(AppHeader))));
     expect(getByRole("link", { name: "mistlogseqish" }).getAttribute("href")).toBe("/");
-    expect(getByRole("button", { name: "Today" })).toBeTruthy();
-    expect(getByRole("button", { name: "New page" })).toBeTruthy();
+    expect(getByRole("button", { name: "Hide sidebar" })).toBeTruthy();
+    expect(getByRole("button", { name: "Open menu" })).toBeTruthy();
   });
 
   it("places page-specific items in the header", () => {

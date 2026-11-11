@@ -2,17 +2,14 @@ import { useNavigate } from "react-router";
 import { localDate } from "~/lib/note-ids";
 
 /**
- * Header button: open today's journal. "Today" is worked out when clicked,
- * in the browser's time zone; the server runs on UTC and could be a day off.
+ * Sidebar button (PRD F8): open today's journal. "Today" is worked out when
+ * clicked, in the browser's time zone; the server runs on UTC and could be a
+ * day off.
  */
-export default function TodayButton({ now = () => new Date() }: { now?: () => Date }) {
+export default function TodayButton({ now = () => new Date(), className = "" }: { now?: () => Date; className?: string }) {
   const navigate = useNavigate();
   return (
-    <button
-      type="button"
-      onClick={() => navigate(`/journal/${localDate(now())}`)}
-      className="flex h-full cursor-pointer items-center px-2 text-xs uppercase tracking-wider sm:px-3 sm:text-sm transition-colors hover:bg-border"
-    >
+    <button type="button" onClick={() => navigate(`/journal/${localDate(now())}`)} className={`cursor-pointer ${className}`}>
       Today
     </button>
   );

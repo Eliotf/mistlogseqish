@@ -670,3 +670,7 @@ body {
 .link-suggest-sub { margin-left: 0.75em; color: var(--color-muted); font-size: 0.85em; }
 .link-suggest-item[aria-selected="true"] .link-suggest-sub { color: #1a1a1a; }
 .link-suggest-none { color: var(--color-muted); cursor: default; white-space: normal; }
+
+/* Left sidebar (PRD F8): a sidebar closed in this browser stays hidden while
+   the app loads (the head script in root.tsx sets the marker) */
+html[data-left-sidebar="closed"] .left-sidebar { display: none; }

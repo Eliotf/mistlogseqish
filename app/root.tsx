@@ -10,13 +10,8 @@ import {
 
 import type { Route } from "./+types/root";
 import Fathom from "~/components/Fathom";
-import PhoneToolbar from "~/components/PhoneToolbar";
-import SidePanel from "~/components/SidePanel";
-import SearchBox from "~/components/SearchBox";
-import { SearchBoxProvider } from "~/lib/search-box";
-import ShortcutSheet from "~/components/ShortcutSheet";
-import { ShortcutSheetProvider } from "~/lib/shortcut-sheet";
-import { SidePanelProvider, useSidePanel, useToggleShortcut } from "~/lib/side-panel";
+import AppShell from "~/components/AppShell";
+import { SIDEBAR_HEAD_SCRIPT } from "~/lib/left-sidebar";
 import "./app.css";
 
 export const links: Route.LinksFunction = () => [
@@ -36,11 +31,13 @@ const themeScript = `(function(){var t=localStorage.getItem('mist-theme')||'auto
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" data-theme="auto">
+    // The head scripts set data-theme and data-left-sidebar before React loads
+    <html lang="en" data-theme="auto" suppressHydrationWarning>
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        <script dangerouslySetInnerHTML={{ __html: SIDEBAR_HEAD_SCRIPT }} />
         <Meta />
         <Links />
       </head>
@@ -54,32 +51,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** Every screen, inside the app-wide sidebar, side panel and search box (AppShell). */
 export default function App() {
   return (
-    <SidePanelProvider>
-      <SearchBoxProvider>
-        <ShortcutSheetProvider>
-          <Shell />
-        </ShortcutSheetProvider>
-      </SearchBoxProvider>
-    </SidePanelProvider>
-  );
-}
-
-/** Every screen, with the side panel (PRD F18) beside it and the search box (F13) and shortcut sheet (F43) over it. */
-function Shell() {
-  const panel = useSidePanel();
-  useToggleShortcut(panel.toggle);
-  return (
-    <div className="flex">
-      <div className="min-w-0 flex-1">
-        <Outlet />
-      </div>
-      <SidePanel />
-      <PhoneToolbar />
-      <SearchBox />
-      <ShortcutSheet />
-    </div>
+    <AppShell>
+      <Outlet />
+    </AppShell>
   );
 }
 

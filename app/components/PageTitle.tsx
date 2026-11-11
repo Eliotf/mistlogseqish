@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type * as Y from "yjs";
 import { normalizeTitle, UNTITLED, type RenameResult } from "~/lib/page-title";
+import { pageTitles } from "~/lib/page-titles";
 import { APP_DISPLAY_NAME } from "~/shared/constants";
 
 /** Claim a title on the server (unique ignoring case) and get the page's new address. */
@@ -98,6 +99,14 @@ export default function PageTitle({ doc, pageId, autoFocus = false, rename = ren
       // The server writes meta.title itself; it arrives through Yjs moments later
       el.textContent = answer.title;
       setError(null);
+      // Links to this page and the sidebar's Recent list show the new title at
+      // once. A new page may not be indexed yet, so the store can think it missing.
+      const titles = pageTitles();
+      const known = titles.get(pageId);
+      if (known) {
+        const slug = answer.path.startsWith("/page/") ? decodeURIComponent(answer.path.slice("/page/".length)) : null;
+        titles.prime(pageId, { ...known, title: answer.title, slug, missing: false });
+      }
       onRenamed?.(answer.path);
     } catch {
       setError("Couldn't save the title. Check your connection and try again.");

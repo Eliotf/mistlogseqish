@@ -89,12 +89,20 @@ A link is a `wikilink` mark on text in the page's Yjs document, with a `pageId` 
 
 **Side panel (2.5d, F18).**
 
-- **State:** `app/lib/side-panel.tsx` holds it, for every screen through `SidePanelProvider` in `app/root.tsx`, which also wires `t r`.
+- **State:** `app/lib/side-panel.tsx` holds it, for every screen through `SidePanelProvider` in `app/components/AppShell.tsx` (rendered by `app/root.tsx`), which also wires `t r`.
   - The open pages are newest first, capped at 10.
   - Whether it's shown, plus the list, is kept in `localStorage` through a small store read with `useSyncExternalStore`. The server renders it empty, so there's no hydration mismatch.
 - **Opening a link there:** Cmd/Ctrl+click, or Alt+Shift+Enter, sets `side` on the `wikilink-open` event. `ConnectedEditor` opens the page in the panel, or navigates for missing pages or when no provider is present.
 - **What it shows:** `app/components/SidePanel.tsx` renders each page as a live editor (`useYjsEditor` plus `DocumentProvider`) with its title from the title store.
 - **Layout:** it's a full-height right-hand column on wide screens and a fixed full-screen sheet on phones. `DocumentLayout` hides the comments column while the panel shows pages.
+
+**Left sidebar and phone menu (F8, F17).**
+
+- **State:** `app/lib/left-sidebar.tsx` (`LeftSidebarProvider`, inside `AppShell`): whether the sidebar is shown (`mistlog-left-sidebar`) and the Recent list (`mistlog-recent-pages`, page IDs, newest first, capped at 8) are kept in `localStorage` behind try/catch, read with `useSyncExternalStore`; the server renders the sidebar shown with Recent empty. A head script (`SIDEBAR_HEAD_SCRIPT`) marks `<html data-left-sidebar="closed">` before React loads, and `app.css` hides `.left-sidebar` for it, so a closed sidebar doesn't flash open; the store updates the marker on every toggle. `<html>` has `suppressHydrationWarning` because the head scripts change its attributes.
+- **Shortcut:** `useToggleShortcut(toggle, "l")` (the `t r` hook, with a key argument) calls `toggleFromKey`: the sidebar at 768px and wider (`DESKTOP_QUERY`), the menu below.
+- **Contents:** `app/components/LeftSidebar.tsx` `SidebarContents`, shared by the column (`<nav aria-label="Sidebar">`, only mounted while shown and wide) and `PhoneMenu` (a modal dialog holding the same nav). Recent titles come from the title store (`useLinkTarget`); missing pages are left out unless on screen. `docs.$id.tsx` records each page or day opened with `useRecordVisit`. A rename primes the title store (`PageTitle`), so Recent and links show the new title without waiting for the next refresh.
+- **Index status line:** `useIndexStatus` reads `GET /api/index/status` (`{ pending }` from `WorkspaceAgent.indexStatus`) when the sidebar appears, when the tab is shown again and, while `pending > 0`, on each move to another screen. No timer.
+- **Phone menu:** opened by ☰ (`SidebarButtons` in `AppHeader`); focus goes to its first control, Tab and Shift+Tab wrap inside it, and Escape, the scrim, ✕, choosing a link or moving to another screen closes it and puts the focus back where it was (synchronously, so the search box opened from the menu returns focus to ☰). It sits at `z-50`, above the side panel sheet and the phone toolbar, which hides anyway once the editor loses focus.
 
 **Older tabs are refused (`DOC_FORMAT_VERSION` 4).** An editor whose schema lacks a mark deletes text carrying it: y-tiptap drops what it cannot convert, and the deletion syncs to everyone.
 
@@ -314,7 +322,7 @@ Nothing in normal operation. Signals appear only where results may be incomplete
 | Situation | Where | Message |
 |---|---|---|
 | This page's latest edit is not confirmed by the index | Small dot by the backlinks heading | "Recent edits to this page aren't in search yet" |
-| A rebuild is running | One line at the foot of the left sidebar, and a note above search, backlinks and Tasks results | "Updating index · 140 of 412 pages" |
+| A rebuild is running | One line at the foot of the left sidebar, and a note above search, backlinks and Tasks results | "Updating the index · 140 pages to go" (the index counts pages left, not a total) |
 | The weekly check fixed pages | Not shown; logged | — |
 | User suspects drift | Settings | "Rebuild index" button, same progress line |
 

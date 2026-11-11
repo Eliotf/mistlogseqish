@@ -9,6 +9,7 @@ import { DocumentProvider, useDocument } from "~/lib/DocumentContext";
 import PreviewToggle from "~/components/PreviewToggle";
 import ConnectionStatus from "~/components/ConnectionStatus";
 import { useSidePanel } from "~/lib/side-panel";
+import { useRecordVisit } from "~/lib/left-sidebar";
 import Backlinks from "~/components/Backlinks";
 import ShareButton from "~/components/ShareButton";
 import ModeToggle from "~/components/ModeToggle";
@@ -87,6 +88,8 @@ function DocumentLayout({ id, exists, path, focusTitle }: Omit<ScreenProps, "cre
   // The side panel takes the comments column while it shows pages
   const panel = useSidePanel();
   const panelOpen = panel.shown && panel.pages.length > 0;
+  // Listed under Recent in the left sidebar
+  useRecordVisit(id);
 
   return (
     <div className="flex h-screen flex-col">

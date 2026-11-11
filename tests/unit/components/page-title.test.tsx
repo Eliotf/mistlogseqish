@@ -5,6 +5,7 @@ import { render, fireEvent, waitFor, act, cleanup } from "@testing-library/react
 import * as Y from "yjs";
 import PageTitle, { renameOnServer } from "~/components/PageTitle";
 import type { RenameResult } from "~/lib/page-title";
+import { pageTitles } from "~/lib/page-titles";
 
 const PAGE_ID = "abcd1234";
 
@@ -69,6 +70,16 @@ describe("PageTitle", () => {
     const { heading, onRenamed } = setup({ title: "Old" });
     await rename(heading, "Fresh Start");
     await waitFor(() => expect(onRenamed).toHaveBeenCalledWith("/page/fresh-start"));
+  });
+
+  it("updates the title store after a rename, so links and Recent (F8) show the new title", async () => {
+    const store = pageTitles();
+    // A page just created isn't in the index yet, so its links think it missing
+    store.prime(PAGE_ID, { title: "", kind: "page", slug: null, empty: true, missing: true });
+    const { heading, onRenamed } = setup({ title: "" });
+    await rename(heading, "Fresh Start");
+    await waitFor(() => expect(onRenamed).toHaveBeenCalled());
+    expect(store.get(PAGE_ID)).toEqual({ title: "Fresh Start", kind: "page", slug: "fresh-start", empty: true, missing: false });
   });
 
   it("does not save or report an address when the server refuses", async () => {

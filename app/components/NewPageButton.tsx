@@ -10,8 +10,8 @@ export async function createPage(): Promise<string> {
   return id;
 }
 
-/** Header button: create an empty page and open it with its title ready to type. */
-export default function NewPageButton({ create = createPage }: { create?: () => Promise<string> }) {
+/** Sidebar button (PRD F8): create an empty page and open it with its title ready to type. */
+export default function NewPageButton({ create = createPage, className = "" }: { create?: () => Promise<string>; className?: string }) {
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -35,19 +35,9 @@ export default function NewPageButton({ create = createPage }: { create?: () => 
       onClick={() => void onClick()}
       disabled={busy}
       title={failed ? "Couldn't create a page. Check your connection and try again." : undefined}
-      className="flex h-full cursor-pointer items-center px-2 text-xs uppercase tracking-wider sm:px-3 sm:text-sm transition-colors hover:bg-border disabled:cursor-wait disabled:opacity-60"
+      className={`cursor-pointer disabled:cursor-wait disabled:opacity-60 ${className}`}
     >
-      {failed ? (
-        "Try again"
-      ) : (
-        <>
-          {/* "New" on phones, where the header is short of room */}
-          <span aria-hidden="true" className="sm:hidden">
-            New
-          </span>
-          <span className="sr-only sm:not-sr-only">New page</span>
-        </>
-      )}
+      {failed ? "Try again" : "New page"}
     </button>
   );
 }
