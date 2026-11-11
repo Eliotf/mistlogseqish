@@ -17,6 +17,8 @@ describe("AppHeader", () => {
     expect(getByRole("link", { name: "mistlogseqish" }).getAttribute("href")).toBe("/");
     expect(getByRole("button", { name: "Hide sidebar" })).toBeTruthy();
     expect(getByRole("button", { name: "Open menu" })).toBeTruthy();
+    expect(getByRole("link", { name: "Tasks" }).getAttribute("href")).toBe("/tasks");
+    expect(getByRole("link", { name: "Pages" }).getAttribute("href")).toBe("/pages");
   });
 
   it("places page-specific items in the header", () => {
