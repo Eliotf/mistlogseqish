@@ -8,6 +8,7 @@ Big questions that change Mistlog's architecture, written down so the owner can 
 | 2 | A native iPhone (Swift) app alongside the web app? | Open (raised 2026-11-12) | Nothing yet |
 | — | Short-term offline journal (A–D, F below) | Built 2026-11-12 as an interim layer, then **held** (not live): it's on the local branch `offline-interim`, waiting on questions 1 and 3. See "What the interim offline layer is" | — |
 | 3 | Render screens in the browser from local data, rather than on the server? | Open (raised 2026-11-12) | Simplifying the offline layer |
+| 4 | Token-based access: share pages (and blocks) by revocable token, with people now and agents over MCP later? | Open, planned (raised 2026-11-12); four decisions to make, see section 4 | F11 sharing, F12 (in part), M4, an MCP server |
 
 Known risks we're holding are in `PRD.md` section 10 (Risks). Features that don't depend on these go ahead as normal: editor behaviour, layout, tasks, references, and so on.
 
@@ -117,3 +118,78 @@ Mistlog renders every screen on the server (React Router SSR), with data from se
 3. **A full Swift app.** Only worth it if the phone becomes the main way Mistlog is used and the web app's limits get in the way.
 
 **Recommendation:** do the short-term improvements (A to D, and F) first. Revisit a native shell only if iOS storage clearing or the lack of background refresh proves a real problem in use.
+
+---
+
+## 4. Token-based access (sharing with people, then agents)
+
+**The ask (2026-11-12).** Simple token-based access to pages, and maybe blocks: first for sharing with other people, in time for agents over MCP. Tokens are stored so they can be revoked. Anyone who is neither signed in nor holding a token gets access denied. Made from the Share button on each page.
+
+**The catch: Cloudflare Access.** Access sits in front of every address today, so someone holding a token but not on the email whitelist never reaches Mistlog. Share links need a door in Access: a Bypass rule for `/s/*` (and later `/mcp`), set in the Cloudflare dashboard. That door is only safe once the Worker checks the Access sign-in itself, which it doesn't yet (the "Access only at the edge" risk in `PRD.md` section 10). So the Worker's own check has to be built and live first. Then the rule holds everywhere: signed in through Access, or holding a valid token, or access denied.
+
+### Plan
+
+**Step 0. The Worker checks the sign-in (before anything else).**
+- On every request, verify Cloudflare's signed Access token (`Cf-Access-Jwt-Assertion`) against the team's public keys and the application's `aud`. WebCrypto can do it, so no new dependency.
+- Anything without a valid sign-in and outside `/s/` gets 403, including the live editing connections (`/agents/document-agent/*`).
+- Local dev skips the check, but only on localhost with a setting in `.dev.vars`.
+
+**Step 1. Share links for pages.**
+- **Where tokens live:** a new table in the workspace index (a schema migration). Each row holds:
+  - the page (and a block, for step 2);
+  - a scope (`page`, `block`, later `workspace`) and a mode (`view`, `edit`, later `append`), so MCP needs no second migration;
+  - a kind (`person` or `agent`) and the owner's label for it ("Sam", "Claude");
+  - created, last used (updated at most hourly, to spare Durable Object requests), revoked, and an optional expiry.
+- **What's stored:** a SHA-256 hash of the token, never the token itself, so a leak of the index gives nothing away.
+- **The token:** 256 random bits, so it can't be guessed. It has an `mlg_` prefix so a pasted one is easy to spot.
+- **Share dialog:** the Share button opens a dialog listing the page's links, with New link (view or edit, plus a label), Copy, and Revoke.
+- **What a guest sees at `/s/<token>`:** that page only.
+  - **Hidden:** the sidebar, search, linked references, Tasks, and `[[` title suggestions.
+  - **Links to other pages:** shown as the text already written in the page, but they don't open, and their current titles aren't looked up. Otherwise a shared page would reveal the names of pages the guest can't read (invariant 5).
+- **Live editing:** the editing connection goes through `/s/<token>/ws`. The Worker checks the token, then forwards to the page's `DocumentAgent` with a view or edit label. The Worker sets that label itself and strips any copy sent from outside.
+- **View-only:** on a view-only connection, `DocumentAgent` answers sync requests but ignores incoming edits.
+- **Revoking:** closes that link's open connections at once (connections are tagged with their token), not just future ones.
+- **All other API routes** (backlinks, search, titles, rename, delete, import) refuse token holders.
+
+**Step 2. Blocks.**
+- A page syncs as one live Yjs document, so a guest's browser can't be sent half of one: it would hold the whole page.
+- So block sharing starts as a **read-only snapshot**: the server renders the block and its children afresh each time the link is opened.
+- Live or editable shared blocks would need a separate synced copy of the block, which is a big job. Only worth it if snapshots fall short.
+
+**Step 3. MCP for agents.**
+- The same token table with kind `agent`, and an MCP endpoint at `/mcp` (a second Access Bypass), using the Agents SDK's MCP support. Tokens arrive in the `Authorization: Bearer` header.
+- **Possible tools:**
+  - read a page or block;
+  - search, limited to what the token covers;
+  - add lines to a page or today's journal, through Yjs so edits merge (invariant 2).
+- An agent probably wants more than one page: that's the `workspace` scope, read-only at first.
+- Some MCP clients (claude.ai connectors) expect OAuth rather than a bearer token. Claude Code takes a bearer token. OAuth would mean a new dependency (Cloudflare's `workers-oauth-provider`), so ask first if it's needed.
+
+### Risks
+
+- **Token in the address:** it lands in the guest's browser history and in Workers Logs (the owner's). Share pages send `Referrer-Policy: no-referrer` so it doesn't leak to other sites through links.
+- **Offline copies stay:** the guest's browser keeps an IndexedDB copy of the page. Revoking stops new syncing but can't wipe what they already have.
+- **Comments are visible:** comments and suggestions live in the page's Yjs document, so a view link shows them. Separate comment or suggest modes could come later.
+- **Access is all-or-nothing:** everyone on the Access whitelist still has full access, including making and revoking links (the 2026-11-05 decision). Per-person accounts are still F12.
+- **Cost:** each token check is one call to the workspace index (one more subrequest and Durable Object request). Fine at this scale.
+
+### How it touches the other questions
+
+- **Local-first (1):** a guest's device must only ever sync what its token covers. The token model has to come before any whole-workspace sync.
+- **Rendering in the browser (3):** share pages may want server-rendered HTML even if the rest of the app moves to a browser-rendered shell.
+
+### Needs approval before building (AGENTS.md "ask first")
+
+- Changing authentication and permissions.
+- A change to the sync protocol (view-only connections).
+- New Worker settings for Access's application `aud` and team domain.
+- The Access Bypass rules for `/s/*` and later `/mcp` (the owner sets them in the dashboard, only after step 0 is live).
+
+### Decisions for the owner
+
+1. **Copying a link again later.** Recommended: each link is shown once, when made, as GitHub does with tokens; only the hash is stored, and a lost link means making another. The alternative stores the token so the dialog can copy it any time: more convenient, less safe.
+2. **Expiry by default?** Suggested: never, with an expiry you can choose.
+3. **Read-only snapshots for shared blocks at first?** Suggested: yes.
+4. **Order.** Suggested: steps 0 and 1 first (about one iteration), then MCP, then blocks, since an agent may be more use than sharing a block.
+
+When decided, write it into `PRD.md` as spec 6.5 under M4, with decision log rows, the F11 and F12 rows, and the "Access only at the edge" risk updated.
