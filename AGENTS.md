@@ -10,6 +10,7 @@ Mistlog is a Logseq-style notes app: daily notes, `[[backlinks]]`, tasks and sha
 
 - Product spec and roadmap: `PRD.md` (read the relevant milestone before starting work; section 6.1 for anything touching links)
 - Interaction reference: `docs/prototype/mistlog-demo.html` (single-file clickable prototype; open it in a browser and match its behaviour, not its code). Its defaults follow the PRD decisions; the "Prototype controls" switches show alternatives that were considered and rejected. If the prototype and `PRD.md` disagree, the PRD wins.
+- Open architecture questions the owner hasn't decided: `docs/design-choices.md`. Don't build against one of them until it's decided.
 - Mist's own docs in `docs/` describe the inherited editor and CriticMarkup. Where they disagree with `PRD.md`, the PRD wins.
 
 ## Commands
