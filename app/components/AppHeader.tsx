@@ -5,6 +5,7 @@ import SearchButton from "~/components/SearchButton";
 import ThemeSelector from "~/components/ThemeSelector";
 import ShortcutsButton from "~/components/ShortcutsButton";
 import { SidebarButtons } from "~/components/LeftSidebar";
+import HistoryButtons from "~/components/HistoryButtons";
 import { useLeftSidebar } from "~/lib/left-sidebar";
 
 /**
@@ -18,6 +19,7 @@ export default function AppHeader({ children }: { children?: ReactNode }) {
   return (
     <header className="flex items-stretch overflow-x-auto scrollbar-none border-b border-border">
       <SidebarButtons />
+      <HistoryButtons />
       <Link
         to="/"
         className="flex shrink-0 items-center bg-ink px-2 py-2 text-xs font-medium text-paper sm:px-4 sm:text-base transition-colors hover:bg-chartreuse hover:text-[#1a1a1a]"
