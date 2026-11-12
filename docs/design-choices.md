@@ -6,8 +6,10 @@ Big questions that change Mistlog's architecture, written down so the owner can 
 |---|---|---|---|
 | 1 | Local-first: is the copy on each device the real one, not a cache? | Open (raised 2026-11-12) | F14 offline, anything that creates pages offline |
 | 2 | A native iPhone (Swift) app alongside the web app? | Open (raised 2026-11-12) | Nothing yet |
+| — | Short-term offline journal (A–D, F below) | Built 2026-11-12 as an interim layer, then **held** (not live): it's on the local branch `offline-interim`, waiting on questions 1 and 3. See "What the interim offline layer is" | — |
+| 3 | Render screens in the browser from local data, rather than on the server? | Open (raised 2026-11-12) | Simplifying the offline layer |
 
-Features that don't depend on these go ahead as normal: editor behaviour, layout, tasks, references, and so on.
+Known risks we're holding are in `PRD.md` section 10 (Risks). Features that don't depend on these go ahead as normal: editor behaviour, layout, tasks, references, and so on.
 
 ---
 
@@ -60,6 +62,39 @@ The owner wants to open the site on their phone with no connection, and read the
 - **Older code in a saved tab.** A cached app shell must never run older editor code against newer documents. Fetching fresh code first when online, plus the Worker's existing refusal of outdated tabs (`refuseOutdatedEditor`), covers this.
 
 **Recommendation:** A, B, C and D first. Together they meet the need ("open the URL offline and read and edit today's journal") without deciding the bigger question. Add F if the phone clears storage. E is the first step towards the local index.
+
+### What the interim offline layer is (built 2026-11-12, held)
+
+It's held on the branch `offline-interim`, not live: the owner chose to come back to it once questions 1 and 3 are considered. It meets the need (open the site offline, then read and edit the journal) without deciding question 1. It works around how the app is built today:
+- screens are rendered on the server, with their data in server loaders;
+- sync is one live connection per page;
+- the list of journal days comes only from the server's index;
+- Cloudflare Access sits in front of everything.
+
+| Piece | Why it exists | What replaces it once questions 1 and 3 are decided |
+|---|---|---|
+| `public/sw.js`, built files cached first | Code on the phone | **Stays** |
+| `public/sw.js`, each page's HTML and route data (`.data`) kept by address, and an unseen page sent to `/` | Screens arrive as server HTML with their data baked in | One app shell rendered in the browser (question 3): cache `index.html` and nothing else |
+| `clientLoader` fallbacks in `home.tsx` and `journal.$date.tsx` | Data comes from server loaders | Screens read local data first, then refresh |
+| `savedJournalDays`, which finds days from IndexedDB's database names | The only list of days is the server's | A query on the local index |
+| `POST /api/journals/state`, `DocumentAgent.savedState`, `keepRecentDays` (base64, hourly) | No way to fetch many pages without a live connection each | One sync connection for many pages, or syncing the whole workspace |
+| `OfflineNotice` (from `navigator.onLine`) | Shows when there's no connection | **Stays**, and may merge with the connection badge |
+| Manifest and icons | Add to Home Screen | **Stays** |
+
+Its risks will go in `PRD.md` section 10 (the "Offline:" entries, on the branch) when it ships. When question 1 or 3 is decided, remove the rows above marked as replaced, rather than building on them.
+
+## 3. Render screens in the browser from local data
+
+Mistlog renders every screen on the server (React Router SSR), with data from server loaders. That's why offline support needed per-address HTML caching and offline fallbacks in each route. The alternative: a client-rendered app shell whose screens read the local copies (and later a local index) first, then refresh from the server. This pairs with local-first (question 1).
+
+- **Gains:**
+  - offline needs only one cached shell;
+  - screens appear instantly from local data;
+  - no loader fallbacks.
+- **Costs:**
+  - the first visit shows a blank shell until scripts load;
+  - no server-rendered HTML for shared pages (matters with M4 sharing, and could be kept for those routes only);
+  - a rework of each route's data loading.
 
 ---
 
