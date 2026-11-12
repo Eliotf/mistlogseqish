@@ -11,6 +11,7 @@ export default [
   route("import", "routes/import.tsx"),
   route("api/rename", "routes/api.rename.ts"),
   route("api/journals", "routes/api.journals.ts"),
+  route("api/journals/state", "routes/api.journals.state.ts"),
   route("api/pages", "routes/api.pages.ts"),
   route("api/pages/titles", "routes/api.pages.titles.ts"),
   route("api/pages/search", "routes/api.pages.search.ts"),

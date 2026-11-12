@@ -15,6 +15,9 @@ import { SIDEBAR_HEAD_SCRIPT } from "~/lib/left-sidebar";
 import "./app.css";
 
 export const links: Route.LinksFunction = () => [
+  // Add to Home Screen, and opening offline (PRD F14)
+  { rel: "manifest", href: "/manifest.webmanifest" },
+  { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
   {
     rel: "preconnect",
@@ -36,6 +39,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="theme-color" content="#1a1a1a" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <script dangerouslySetInnerHTML={{ __html: SIDEBAR_HEAD_SCRIPT }} />
         <Meta />

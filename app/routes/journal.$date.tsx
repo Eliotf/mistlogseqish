@@ -3,6 +3,7 @@ import type { Route } from "./+types/journal.$date";
 import { loadJournal } from "~/lib/document-loader.server";
 import { journalId, parseJournalDate } from "~/lib/note-ids";
 import { pagePath } from "~/lib/slug";
+import { isOfflineError, savedJournalDays } from "~/lib/offline";
 
 /**
  * /journal/YYYY-MM-DD: one day's journal. Any real date can be opened; the
@@ -16,6 +17,18 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const id = journalId(params.date);
   const doc = await loadJournal(context, id);
   return { ...doc, path: pagePath(id, null) };
+}
+
+/** Offline (PRD F14): the day from its copy in this browser, if there is one. */
+export async function clientLoader({ params, serverLoader }: Route.ClientLoaderArgs) {
+  try {
+    return await serverLoader();
+  } catch (err) {
+    if (!isOfflineError(err) || parseJournalDate(`journal-${params.date}`) === null) throw err;
+    const id = journalId(params.date);
+    const saved = (await savedJournalDays()).includes(params.date);
+    return { id, createdAt: null, exists: saved, path: pagePath(id, null) };
+  }
 }
 
 export { default, meta } from "./docs.$id";

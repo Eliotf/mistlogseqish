@@ -1,4 +1,6 @@
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
+import OfflineNotice from "~/components/OfflineNotice";
+import { registerServiceWorker } from "~/lib/offline";
 import PhoneToolbar from "~/components/PhoneToolbar";
 import SidePanel from "~/components/SidePanel";
 import SearchBox from "~/components/SearchBox";
@@ -40,11 +42,15 @@ function Shell({ children, fetchStatus }: ShellProps) {
   const sidebar = useLeftSidebar();
   useToggleShortcut(sidebar?.toggleFromKey ?? noop, "l");
   const desktop = useIsDesktop();
+  useEffect(() => registerServiceWorker(), []);
   return (
     <div className="flex">
       {sidebar?.shown && desktop && <LeftSidebar fetchStatus={fetchStatus} />}
       <PhoneMenu fetchStatus={fetchStatus} />
-      <div className="min-w-0 flex-1">{children}</div>
+      <div className="min-w-0 flex-1">
+        <OfflineNotice />
+        {children}
+      </div>
       <SidePanel />
       <PhoneToolbar />
       <SearchBox />

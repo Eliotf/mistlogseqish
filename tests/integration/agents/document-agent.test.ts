@@ -12,6 +12,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as Y from "yjs";
+import { base64ToBytes } from "~/lib/offline-days";
 import * as awarenessProtocol from "y-protocols/awareness";
 import { DOC_FORMAT_VERSION, CLOSE_OUTDATED_CLIENT, CLOSE_DELETED_PAGE } from "~/shared/constants";
 import { YjsProvider } from "~/lib/yjs-provider";
@@ -1419,6 +1420,23 @@ describe("DocumentAgent", () => {
         expect(await agent.deletePage()).toEqual({ ok: false, code: "failed" });
         expect(await exists()).toBe(true);
         vi.restoreAllMocks();
+      });
+    });
+
+    describe("savedState (offline journal, F14)", () => {
+      it("is null for a page never created, and the content once it is", async () => {
+        expect(await agent.savedState()).toBeNull();
+        await create("- kept offline");
+        const state = await agent.savedState();
+        const copy = new Y.Doc();
+        Y.applyUpdate(copy, base64ToBytes(state!));
+        expect(linesFromYjs(copy.getXmlFragment("default")).map((l) => l.text)).toEqual(["- kept offline"]);
+      });
+
+      it("is null once the page is deleted", async () => {
+        await create("- going");
+        await agent.deletePage();
+        expect(await agent.savedState()).toBeNull();
       });
     });
 

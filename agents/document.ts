@@ -1,6 +1,7 @@
 import { Agent, getAgentByName } from "agents";
 import type { Connection, ConnectionContext, WSMessage } from "agents";
 import * as Y from "yjs";
+import { bytesToBase64 } from "../app/lib/offline-days";
 import * as syncProtocol from "y-protocols/sync";
 import * as awarenessProtocol from "y-protocols/awareness";
 import * as encoding from "lib0/encoding";
@@ -423,6 +424,17 @@ class DocumentAgent extends Agent {
     }
 
     return new Response("Not found", { status: 404 });
+  }
+
+  /**
+   * This page's content as one Yjs update (base64), so a browser can keep a
+   * copy for offline use without connecting (PRD F14, the offline journal).
+   * Read-only; null if the page was never created or is deleted.
+   */
+  async savedState(): Promise<string | null> {
+    const { doc } = this.ensureInitialised();
+    if (!this.exists()) return null;
+    return bytesToBase64(Y.encodeStateAsUpdate(doc));
   }
 
   /* ---------- Journals (docs/technical-architecture.md, "Journal Pages") ---------- */
