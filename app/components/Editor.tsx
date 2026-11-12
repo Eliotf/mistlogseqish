@@ -377,8 +377,9 @@ export default function Editor({
 
   return (
     <>
+      {/* Tall enough to click into, not the whole window, so linked references show below short pages */}
       <div
-        className={`min-h-full cursor-text ${hidden ? "hidden" : ""} ${cleanView ? "clean-view" : ""}`}
+        className={`min-h-24 cursor-text ${hidden ? "hidden" : ""} ${cleanView ? "clean-view" : ""}`}
         onClick={handleClick}
       >
         <EditorContent editor={editor} />
