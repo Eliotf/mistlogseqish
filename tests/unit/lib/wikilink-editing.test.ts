@@ -7,7 +7,7 @@ import Paragraph from "@tiptap/extension-paragraph";
 import Text from "@tiptap/extension-text";
 import Collaboration from "@tiptap/extension-collaboration";
 import { CriticAddition, CriticDeletion, CriticComment, CriticHighlight } from "~/lib/critic-marks";
-import { Wikilink, linkSpans, clipboardText, pastedRanges, OPEN_LINK_EVENT, type TitleSource } from "~/lib/wikilink-editing";
+import { Wikilink, TAP_MAX_MS, linkSpans, clipboardText, pastedRanges, OPEN_LINK_EVENT, type TitleSource } from "~/lib/wikilink-editing";
 import type { LinkPage, LinkTarget } from "~/lib/page-titles";
 import { linesFromYjs } from "~/lib/note-lines";
 import { parseNote } from "~/lib/note-parser";
@@ -549,6 +549,66 @@ describe("opening links", () => {
     expect(down.defaultPrevented).toBe(false);
     target.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  describe("on a touch screen", () => {
+    /** A touch event as our handler sees it (jsdom has no Touch), sent straight to the handler. */
+    function touch(editor: Editor, type: "touchstart" | "touchend", target: Element, at: number, x = 10, y = 10) {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      const point = [{ clientX: x, clientY: y }];
+      Object.defineProperties(event, { target: { value: target }, timeStamp: { value: at }, touches: { value: type === "touchstart" ? point : [] }, changedTouches: { value: point } });
+      const handled = editor.view.someProp("handleDOMEvents", (h) => h[type]?.(editor.view, event as TouchEvent));
+      return { handled, prevented: event.defaultPrevented };
+    }
+
+    it("opens a link on a quick tap, so the caret never lands in it", () => {
+      const { editor, onOpen } = setup(SEE_LINK, { titles: fakeTitles({ [BOOKS]: { title: "Reading list", slug: "reading-list" } }) });
+      const el = editor.view.dom.querySelector(".wikilink")!;
+      touch(editor, "touchstart", el, 100);
+      expect(touch(editor, "touchend", el, 250, 13, 12)).toEqual({ handled: true, prevented: true });
+      expect(onOpen).toHaveBeenCalledWith("/page/reading-list", BOOKS, editor.view, false);
+    });
+
+    it("leaves a scroll, a long press (to edit the link) and a tap on another link to the browser", () => {
+      const { editor, onOpen } = setup(SEE_LINK);
+      const el = editor.view.dom.querySelector(".wikilink")!;
+      touch(editor, "touchstart", el, 100);
+      expect(touch(editor, "touchend", el, 200, 10, 40).prevented).toBe(false);
+      touch(editor, "touchstart", el, 100);
+      expect(touch(editor, "touchend", el, 100 + TAP_MAX_MS + 1).prevented).toBe(false);
+      touch(editor, "touchstart", el, 100);
+      expect(touch(editor, "touchend", editor.view.dom, 150).prevented).toBe(false);
+      // A touchend with no touchstart on a link before it
+      expect(touch(editor, "touchend", el, 150).prevented).toBe(false);
+      expect(onOpen).not.toHaveBeenCalled();
+    });
+
+    it("after a long press, lets the mouse events a browser sends place the caret instead of opening", () => {
+      const { editor, onOpen } = setup(SEE_LINK);
+      const el = editor.view.dom.querySelector(".wikilink")!;
+      touch(editor, "touchstart", el, 100);
+      touch(editor, "touchend", el, 100 + TAP_MAX_MS + 100);
+      const mouse = (type: string, at: number) => {
+        const event = new MouseEvent(type, { bubbles: true, cancelable: true });
+        Object.defineProperties(event, { target: { value: el }, timeStamp: { value: at } });
+        return editor.view.someProp("handleDOMEvents", (h) => (h as Record<string, (v: unknown, e: Event) => boolean>)[type]?.(editor.view, event));
+      };
+      expect(mouse("mousedown", 800)).toBeFalsy();
+      expect(mouse("click", 810)).toBeFalsy();
+      expect(onOpen).not.toHaveBeenCalled();
+      // Much later, a click opens it again
+      expect(mouse("click", 5000)).toBe(true);
+      expect(onOpen).toHaveBeenCalledTimes(1);
+    });
+
+    it("lets a tap inside a link you are editing place the cursor", () => {
+      const { editor, onOpen } = setup(SEE_LINK);
+      caret(editor, INNER + 2);
+      const target = editor.view.dom.querySelector(".wikilink-editing") ?? editor.view.dom;
+      touch(editor, "touchstart", target, 100);
+      expect(touch(editor, "touchend", target, 150).prevented).toBe(false);
+      expect(onOpen).not.toHaveBeenCalled();
+    });
   });
 
   it("opens the link the cursor is in or just after with Alt+Enter", () => {

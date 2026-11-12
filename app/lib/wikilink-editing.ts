@@ -54,6 +54,13 @@ export interface WikilinkOptions {
   today: () => string;
 }
 
+/** A touch that moves further than this is a scroll, not a tap on a link. */
+const TAP_SLOP_PX = 10;
+/** A touch held longer than this is a long press: it places the caret, to edit the link. */
+export const TAP_MAX_MS = 500;
+/** Mouse events this soon after a long press come from it. */
+const LONG_PRESS_MOUSE_MS = 1000;
+
 /** Dates offered in a link's suggestions, below the pages (F20). */
 const LINK_DATE_SUGGESTIONS = 3;
 
@@ -518,6 +525,12 @@ export const Wikilink = Mark.create<WikilinkOptions>({
       }
     };
 
+    /** A finger that went down on a link: where and when, to tell a tap from a scroll or a long press. */
+    let touch: { pageId: string; x: number; y: number; at: number } | null = null;
+    /** When a long press on a link ended: the mouse events some browsers send after it place the caret, not open it. */
+    let longPressAt: number | null = null;
+    const afterLongPress = (event: Event) => longPressAt !== null && event.timeStamp - longPressAt < LONG_PRESS_MOUSE_MS;
+
     const linkElement = (view: EditorView, event: Event): HTMLElement | null => {
       const target = event.target as Element | null;
       const el = target?.closest?.("[data-page-id]");
@@ -640,15 +653,39 @@ export const Wikilink = Mark.create<WikilinkOptions>({
               if (!view.isDestroyed) view.dispatch(view.state.tr.setMeta(FOCUS, false));
               return false;
             },
+            // On a touch screen the browser places the caret before any click, so a tap on a
+            // link would open it for editing. A quick tap opens it instead; a long press
+            // still places the caret, to edit it
+            touchstart: (view, event) => {
+              const pageId = linkElement(view, event)?.dataset.pageId;
+              const t = (event as TouchEvent).touches[0];
+              touch = pageId && t && (event as TouchEvent).touches.length === 1 ? { pageId, x: t.clientX, y: t.clientY, at: event.timeStamp } : null;
+              return false;
+            },
+            touchend: (view, event) => {
+              const start = touch;
+              touch = null;
+              const t = (event as TouchEvent).changedTouches[0];
+              if (!start || !t || linkElement(view, event)?.dataset.pageId !== start.pageId) return false;
+              if (Math.hypot(t.clientX - start.x, t.clientY - start.y) > TAP_SLOP_PX) return false;
+              if (event.timeStamp - start.at > TAP_MAX_MS) {
+                longPressAt = event.timeStamp;
+                return false;
+              }
+              // No caret, no keyboard, no click after it
+              event.preventDefault();
+              onOpen(linkHref(start.pageId, titles?.get(start.pageId)), start.pageId, view, false);
+              return true;
+            },
             // A link you are not editing opens on click instead of taking the cursor
             mousedown: (view, event) => {
-              if (!linkElement(view, event)) return false;
+              if (!linkElement(view, event) || afterLongPress(event)) return false;
               event.preventDefault();
               return true;
             },
             click: (view, event) => {
               const pageId = linkElement(view, event)?.dataset.pageId;
-              if (!pageId) return false;
+              if (!pageId || afterLongPress(event)) return false;
               event.preventDefault();
               onOpen(linkHref(pageId, titles?.get(pageId)), pageId, view, (event as MouseEvent).metaKey || (event as MouseEvent).ctrlKey);
               return true;
