@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import type { BacklinkGroup } from "~/lib/backlink-lines";
+import type { BacklinkGroup, BacklinkLine } from "~/lib/backlink-lines";
+import { parseLine } from "~/lib/note-parser";
 import { linkHref } from "~/lib/page-titles";
 import ReferenceLine, { PageLink } from "~/components/ReferenceLine";
 
@@ -15,7 +16,8 @@ type Load = { state: "loading" } | { state: "failed" } | { state: "ready"; group
 /**
  * Linked references below a page (PRD F4): the pages that link here, most
  * recently updated first, each with its linking lines as read-only
- * snapshots from the index. Fetched on open and again when the tab is
+ * snapshots from the index, shown open with the lines nested under them.
+ * Fetched on open and again when the tab is
  * shown, never polled. Click a page or link to open it; Cmd/Ctrl+click opens
  * it in the side panel.
  */
@@ -60,11 +62,37 @@ export default function Backlinks({ pageId, load = fetchBacklinks }: { pageId: s
               {group.lines.map((line) => (
                 <li key={line.line} className="text-ink">
                   <ReferenceLine line={line} />
+                  <NestedLines line={line} />
                 </li>
               ))}
             </ul>
           </div>
         ))}
     </section>
+  );
+}
+
+/** The lines nested under a linking line, indented by how far below it they sit. */
+function NestedLines({ line }: { line: BacklinkLine }) {
+  if (!line.children?.length && !line.more) return null;
+  const indent = parseLine(line.text).indent;
+  return (
+    <ul aria-label="Nested lines" className="mt-0.5 space-y-0.5">
+      {line.children?.map((child) => (
+        <li key={child.line} className="flex gap-1.5" style={{ paddingLeft: `${Math.max(0, parseLine(child.text).indent - indent - 1) * 1.25}em` }}>
+          <span aria-hidden="true" className="text-muted">
+            •
+          </span>
+          <span className="min-w-0">
+            <ReferenceLine line={child} />
+          </span>
+        </li>
+      ))}
+      {line.more ? (
+        <li className="text-sm text-muted">
+          {line.more} more {line.more === 1 ? "line" : "lines"}
+        </li>
+      ) : null}
+    </ul>
   );
 }

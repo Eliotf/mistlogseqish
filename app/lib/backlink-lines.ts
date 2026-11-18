@@ -1,4 +1,4 @@
-import { parseLine, type DocLine } from "./note-parser";
+import { parseLine, type DocLine, type TextRun } from "./note-parser";
 import { WIKILINK_MARK, isWikilinkAttrs } from "./wikilink";
 
 /**
@@ -11,6 +11,10 @@ export interface BacklinkLine {
   text: string;
   /** Link marks in the line: [from, to) offsets of a title, and its page. */
   links: Array<{ from: number; to: number; pageId: string }>;
+  /** In linked references: the lines nested under this one, in order. Left out when there are none. */
+  children?: BacklinkLine[];
+  /** Nested lines past MAX_NESTED_LINES, not sent. */
+  more?: number;
 }
 
 /** One page linking here, as WorkspaceAgent.backlinks returns it. */
@@ -75,4 +79,62 @@ export function lineSegments(line: BacklinkLine): Segment[] {
   }
   pushText(line.text.slice(at));
   return segments;
+}
+
+/** The most lines sent from under one linking line; the rest are counted. */
+export const MAX_NESTED_LINES = 30;
+
+/**
+ * A page's lines from its stored runs (the index's page_text): each line's
+ * text and link positions, numbered as in the page.
+ */
+export function linesFromRuns(runs: readonly TextRun[]): BacklinkLine[] {
+  const lines: BacklinkLine[] = [{ line: 0, text: "", links: [] }];
+  for (const run of runs) {
+    const current = lines[lines.length - 1];
+    if (typeof run !== "string") {
+      current.links.push({ from: current.text.length, to: current.text.length + run.text.length, pageId: run.pageId });
+      current.text += run.text;
+      continue;
+    }
+    const parts = run.split("\n");
+    lines[lines.length - 1].text += parts[0];
+    for (const part of parts.slice(1)) lines.push({ line: lines.length, text: part, links: [] });
+  }
+  return lines;
+}
+
+/**
+ * The lines nested under line `at` (more indented, up to the next line that
+ * isn't), at most `max` of them, and how many more there are.
+ */
+export function nestedLines(lines: readonly BacklinkLine[], at: number, max = MAX_NESTED_LINES): { children: BacklinkLine[]; more: number } {
+  const indent = parseLine(lines[at]?.text ?? "").indent;
+  let end = at + 1;
+  while (end < lines.length && parseLine(lines[end].text).indent > indent) end++;
+  const children = lines.slice(at + 1, Math.min(end, at + 1 + max));
+  return { children, more: end - (at + 1) - children.length };
+}
+
+/**
+ * Linking lines with what is nested under each, from the page's stored runs.
+ * A linking line nested under an earlier one is shown there, so it is not
+ * listed again. Without runs (or if they don't match the stored lines, which
+ * should not happen), the lines are listed alone.
+ */
+export function withNestedLines(linking: readonly BacklinkLine[], runs: readonly TextRun[] | null): BacklinkLine[] {
+  const lines = runs ? linesFromRuns(runs) : [];
+  const listed: BacklinkLine[] = [];
+  let shownUpTo = -1;
+  for (const link of linking) {
+    if (link.line <= shownUpTo) continue;
+    if (lines[link.line]?.text !== link.text) {
+      listed.push(link);
+      continue;
+    }
+    const { children, more } = nestedLines(lines, link.line);
+    shownUpTo = link.line + children.length + more;
+    listed.push({ ...link, ...(children.length ? { children } : {}), ...(more ? { more } : {}) });
+  }
+  return listed;
 }

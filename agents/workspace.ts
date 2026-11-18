@@ -1,4 +1,4 @@
-import { toBacklinkLine, type BacklinkSource } from "../app/lib/backlink-lines";
+import { toBacklinkLine, withNestedLines, type BacklinkSource } from "../app/lib/backlink-lines";
 import type { TaskItem } from "../app/lib/tasks";
 import { Agent, getAgentByName } from "agents";
 import type { Connection, ConnectionContext } from "agents";
@@ -146,15 +146,18 @@ class WorkspaceAgent extends Agent<Env> {
 
   /**
    * Linked references, with each line reduced to its text and link
-   * positions: RPC results must be serialisable, and the stored marks'
-   * other attributes are not needed.
+   * positions (RPC results must be serialisable, and the stored marks'
+   * other attributes are not needed), and the lines nested under it.
    */
   async backlinks(targetId: string): Promise<BacklinkSource[]> {
     return this.index.backlinks(targetId).map((b) => ({
       sourceId: b.sourceId,
       sourceTitle: b.sourceTitle,
       sourceKind: b.sourceKind,
-      lines: b.lines.map(({ line, content }) => toBacklinkLine(line, content)),
+      lines: withNestedLines(
+        b.lines.map(({ line, content }) => toBacklinkLine(line, content)),
+        b.runs,
+      ),
     }));
   }
 

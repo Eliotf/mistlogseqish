@@ -176,6 +176,11 @@ describe("WorkspaceIndex", () => {
       expect(links[1].lines[0].content).toEqual(line("about Access", [[6, 12, ACCESS]]));
     });
 
+    it("returns each linking page's text as runs, for the lines nested under its links", () => {
+      index.updatePage(page(MIST, "Mistlog", [line("- about Access", [[8, 14, ACCESS]]), line("\t- more")]));
+      expect(index.backlinks(ACCESS)[0].runs).toEqual(["- about ", { pageId: ACCESS, text: "Access" }, "\n\t- more"]);
+    });
+
     it("does not list a page as linking to itself", () => {
       index.updatePage(page(MIST, "Mistlog", [line("self Mistlog", [[5, 12, MIST]])]));
       expect(index.backlinks(MIST)).toEqual([]);

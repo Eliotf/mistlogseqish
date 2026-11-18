@@ -207,6 +207,8 @@ export interface Backlink {
   sourceTitle: string;
   sourceKind: "page" | "journal";
   lines: Array<{ line: number; content: DocLine }>;
+  /** The source page's text as runs, to show what is nested under each line; null if not stored. */
+  runs: TextRun[] | null;
 }
 
 export type { SearchHit };
@@ -442,7 +444,7 @@ export class WorkspaceIndex {
     return row ? toPage(row) : null;
   }
 
-  /** Pages linking to a page, most recently updated first, with each linking line. */
+  /** Pages linking to a page, most recently updated first, with each linking line and the page's text. */
   backlinks(targetId: string): Backlink[] {
     const rows = this.db.exec(
       `SELECT l.source_id, l.line, l.content, p.title, p.kind
@@ -456,10 +458,14 @@ export class WorkspaceIndex {
       const id = row.source_id as string;
       let group = groups.get(id);
       if (!group) {
-        group = { sourceId: id, sourceTitle: row.title as string, sourceKind: row.kind as "page" | "journal", lines: [] };
+        group = { sourceId: id, sourceTitle: row.title as string, sourceKind: row.kind as "page" | "journal", lines: [], runs: null };
         groups.set(id, group);
       }
       group.lines.push({ line: row.line as number, content: JSON.parse(row.content as string) as DocLine });
+    }
+    for (const group of groups.values()) {
+      const text = this.db.exec(`SELECT runs FROM page_text WHERE page_id = ?`, group.sourceId)[0];
+      if (text) group.runs = JSON.parse(text.runs as string) as TextRun[];
     }
     return [...groups.values()];
   }

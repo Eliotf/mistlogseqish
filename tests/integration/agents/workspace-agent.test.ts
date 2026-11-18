@@ -175,6 +175,22 @@ describe("WorkspaceAgent", () => {
   });
 
   describe("RPC methods", () => {
+    it("sends linked references with the lines nested under them", async () => {
+      await agent.updatePage({
+        pageId: "eeee5555",
+        title: "Plans",
+        updatedAt: 10,
+        lines: [
+          { text: "- read Books", marks: [{ type: WIKILINK_MARK, from: 7, to: 12, attrs: { pageId: "abcd1234" } }] },
+          { text: "\t- chapter one", marks: [] },
+          { text: "- other", marks: [] },
+        ],
+      });
+      expect((await agent.backlinks("abcd1234"))[0].lines).toEqual([
+        { line: 0, text: "- read Books", links: [{ from: 7, to: 12, pageId: "abcd1234" }], children: [{ line: 1, text: "\t- chapter one", links: [] }] },
+      ]);
+    });
+
     it("indexes a page and answers queries through Durable Object storage", async () => {
       await agent.registerPage("abcd1234", 1);
       const ack = await agent.updatePage({
