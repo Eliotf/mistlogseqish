@@ -3,12 +3,14 @@ import { Link } from "react-router";
 import { convertGraph, summarise, titlesToResolve, type ImportFile, type ImportPlan, type ImportSummary, type ExistingInMistlog } from "~/lib/logseq-import";
 import { importLabel, type ImportRecord } from "~/lib/import-lines";
 import { importApi, runImport, runUndo, type ImportApi, type ImportOutcome, type ImportProgress } from "~/lib/import-run";
+import { graphImageName } from "~/lib/images";
+import { sendImages, sendImage, type GraphImage, type SendImage, type SendOutcome } from "~/lib/asset-upload";
 
 type Stage =
   | { kind: "idle" }
   | { kind: "reading"; done: number; total: number }
   | { kind: "checking" }
-  | { kind: "ready"; plan: ImportPlan; summary: ImportSummary; label: string | null }
+  | { kind: "ready"; plan: ImportPlan; summary: ImportSummary; label: string | null; images: GraphImage[] }
   | { kind: "importing"; progress: ImportProgress | null }
   | { kind: "imported"; outcome: ImportOutcome }
   | { kind: "confirm-undo"; record: ImportRecord }
@@ -35,7 +37,11 @@ interface ImportViewProps {
   check?: typeof checkExisting;
   api?: ImportApi;
   wait?: (ms: number) => Promise<unknown>;
+  send?: SendImage;
 }
+
+/** Sending a folder's images: not started, under way, or finished. */
+type ImageSend = { kind: "sending"; done: number } | { kind: "sent"; outcome: SendOutcome } | null;
 
 /** The folder's name, from the path the browser gives each file inside it. */
 export function folderName(files: File[]): string | null {
@@ -57,10 +63,11 @@ const withRecord = (imports: ImportRecord[], record: ImportRecord) => [record, .
  * and the pages it created that no other import uses). One cut short is
  * continued by choosing its folder again.
  */
-export default function ImportView({ imports: initial, check = checkExisting, api = importApi, wait }: ImportViewProps) {
+export default function ImportView({ imports: initial, check = checkExisting, api = importApi, wait, send = sendImage }: ImportViewProps) {
   const [imports, setImports] = useState(initial);
   const [stage, setStage] = useState<Stage>({ kind: "idle" });
-  const busy = stage.kind === "importing" || stage.kind === "undoing" || stage.kind === "reading" || stage.kind === "checking";
+  const [imageSend, setImageSend] = useState<ImageSend>(null);
+  const busy = stage.kind === "importing" || stage.kind === "undoing" || stage.kind === "reading" || stage.kind === "checking" || imageSend?.kind === "sending";
   // Running or being undone: until it is finished or undone, no other import starts or is undone
   const unfinished = imports.find((i) => i.state !== "done") ?? null;
   const canPick = !busy && stage.kind !== "confirm-undo" && unfinished?.state !== "undoing";
@@ -69,17 +76,21 @@ export default function ImportView({ imports: initial, check = checkExisting, ap
     const list = [...(event.target.files ?? [])];
     if (!list.length) return;
     setStage({ kind: "reading", done: 0, total: list.length });
+    setImageSend(null);
     try {
       const files: ImportFile[] = [];
+      const images: GraphImage[] = [];
       for (const [i, file] of list.entries()) {
         const path = file.webkitRelativePath || file.name;
         files.push({ path, text: NEEDS_TEXT.test(path) ? await file.text() : "" });
+        const imageName = graphImageName(path);
+        if (imageName) images.push({ name: imageName, file });
         if (i % 50 === 0) setStage({ kind: "reading", done: i, total: list.length });
       }
       const plan = convertGraph(files);
       setStage({ kind: "checking" });
       const existing = await check(plan);
-      setStage({ kind: "ready", plan, summary: summarise(plan, existing), label: folderName(list) });
+      setStage({ kind: "ready", plan, summary: summarise(plan, existing), label: folderName(list), images });
     } catch (err) {
       console.error("Import dry run failed", err);
       setStage({ kind: "failed", message: "Couldn't read the folder or reach Mistlog. Try again in a moment." });
@@ -111,6 +122,12 @@ export default function ImportView({ imports: initial, check = checkExisting, ap
       console.error("Import failed", err);
       setStage({ kind: "failed", message: "The import stopped before it finished. Choose the folder again to continue it, or undo it." });
     }
+  };
+
+  const sendFolderImages = async (images: GraphImage[]) => {
+    setImageSend({ kind: "sending", done: 0 });
+    const outcome = await sendImages(images, (done) => setImageSend({ kind: "sending", done }), send);
+    setImageSend({ kind: "sent", outcome });
   };
 
   const undo = async (record: ImportRecord) => {
@@ -179,7 +196,10 @@ export default function ImportView({ imports: initial, check = checkExisting, ap
         </p>
       )}
       {stage.kind === "ready" && (
-        <Report plan={stage.plan} summary={stage.summary} label={stage.label} imports={imports} unfinished={unfinished} onImport={(continuing) => void start(stage.plan, stage.label, continuing)} />
+        <>
+          <Report plan={stage.plan} summary={stage.summary} label={stage.label} imports={imports} unfinished={unfinished} onImport={(continuing) => void start(stage.plan, stage.label, continuing)} />
+          <Images images={stage.images} others={stage.plan.stats.assets - stage.images.length} state={imageSend} onSend={() => void sendFolderImages(stage.images)} />
+        </>
       )}
       {stage.kind === "imported" && <Imported outcome={stage.outcome} />}
     </div>
@@ -312,7 +332,6 @@ function Report({ plan, summary, label, imports, unfinished, onImport }: ReportP
           {n(stats.blockIds, "block ID")} and {n(stats.folds, "fold")} kept; {n(stats.continuationLines, "line")} of multi-line blocks kept under their bullets
         </li>
         <li>{n(stats.lines, "line")} in all</li>
-        {stats.assets > 0 && <li>{n(stats.assets, "attachment")} (images, PDFs) not imported yet; links to them stay as text</li>}
       </ul>
       {plan.renamed.length > 0 && (
         <Details title={`${n(plan.renamed.length, "page")} renamed (titles can't contain [[ or ]])`}>
@@ -357,6 +376,72 @@ function Report({ plan, summary, label, imports, unfinished, onImport }: ReportP
         </>
       )}
     </section>
+  );
+}
+
+interface ImagesProps {
+  images: GraphImage[];
+  /** Other files in `assets/` (PDFs, SVGs and so on), which stay as links. */
+  others: number;
+  state: ImageSend;
+  onSend: () => void;
+}
+
+/** The folder's images: sent apart from the import, so they can be sent before or after it. */
+function Images({ images, others, state, onSend }: ImagesProps) {
+  if (images.length === 0 && others === 0) return null;
+  return (
+    <section aria-label="Images" className="mt-6 text-sm">
+      <h2 className="text-sm uppercase tracking-wider text-muted">Images</h2>
+      {images.length > 0 && (
+        <p className="mt-2 text-ink">
+          {n(images.length, "image")} in <code>assets</code>. Send them to Mistlog so they show in your pages. This doesn't change any page, and images Mistlog has already are
+          skipped, so it's safe to do before or after importing.
+        </p>
+      )}
+      {others > 0 && <p className="mt-2 text-muted">{n(others, "other attachment")} (PDFs and so on) aren't sent; links to them stay as text.</p>}
+      {images.length > 0 && state === null && (
+        <button type="button" onClick={onSend} className="mt-3 border border-ink px-3 py-1.5 text-sm uppercase tracking-wider text-ink hover:bg-border">
+          Send images
+        </button>
+      )}
+      {state?.kind === "sending" && (
+        <p role="status" className="mt-3 text-muted">
+          Sending images: {state.done.toLocaleString()} of {images.length.toLocaleString()}… Keep this tab open.
+        </p>
+      )}
+      {state?.kind === "sent" && <ImagesSent outcome={state.outcome} />}
+    </section>
+  );
+}
+
+function ImagesSent({ outcome }: { outcome: SendOutcome }) {
+  const problems = outcome.tooBig.length + outcome.failed.length;
+  return (
+    <div role="status" className="mt-3">
+      <p className="text-ink">
+        {n(outcome.stored, "image")} sent
+        {outcome.exists > 0 && `; ${n(outcome.exists, "image")} Mistlog had already`}.
+      </p>
+      {outcome.tooBig.length > 0 && (
+        <Details title={`${n(outcome.tooBig.length, "image")} too big to send (over 10 MB)`}>
+          {outcome.tooBig.map((name) => (
+            <li key={name}>{name}</li>
+          ))}
+        </Details>
+      )}
+      {outcome.failed.length > 0 && (
+        <>
+          <Details title={`${n(outcome.failed.length, "image")} couldn't be sent`}>
+            {outcome.failed.map((name) => (
+              <li key={name}>{name}</li>
+            ))}
+          </Details>
+          <p className="mt-2 text-coral">Choose the folder again to try those again; the ones sent are skipped.</p>
+        </>
+      )}
+      {problems === 0 && <p className="mt-1 text-muted">They show in your pages wherever they're linked.</p>}
+    </div>
   );
 }
 

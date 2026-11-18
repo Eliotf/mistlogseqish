@@ -20,4 +20,6 @@ export default [
   route("api/pages/delete", "routes/api.pages.delete.ts"),
   route("api/import/check", "routes/api.import.check.ts"),
   route("api/import/:step", "routes/api.import.$step.ts"),
+  route("files/assets/:name", "routes/files.assets.$name.ts"),
+  route("api/files/assets/:name", "routes/api.files.assets.$name.ts"),
 ] satisfies RouteConfig;

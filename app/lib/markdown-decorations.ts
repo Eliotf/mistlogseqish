@@ -60,7 +60,8 @@ export const MARKDOWN_PATTERNS: MarkdownPattern[] = [
   },
   {
     name: "link",
-    regex: /\[([^\]]+)\]\(([^)]+)\)/g,
+    // Not an image's ![alt](src) (image-preview.ts shows those)
+    regex: /(?<!!)\[([^\]]+)\]\(([^)]+)\)/g,
     type: "link",
     contentClass: "md-link-text",
     delimiterClass: "md-delimiter",

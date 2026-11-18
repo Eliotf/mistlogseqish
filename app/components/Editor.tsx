@@ -11,6 +11,7 @@ import { CriticAddition, CriticDeletion, CriticComment, CriticHighlight, CriticD
 import { markdownDecorations, cleanViewKey } from "~/lib/markdown-decorations";
 import { suggestModePlugin } from "~/lib/suggest-mode";
 import { BulletEditing } from "~/lib/bullet-editing";
+import { ImagePreview } from "~/lib/image-preview";
 import { BlockParagraph } from "~/lib/block-id-editing";
 import { Folding } from "~/lib/folding-editing";
 import { BlockMoving } from "~/lib/block-moving";
@@ -254,6 +255,7 @@ export default function Editor({
           render: renderCaret,
         }),
         MarkdownDecorations,
+        ImagePreview,
         SuggestMode.configure({ docState }),
         BulletEditing.configure({ docState }),
         TaskEditing.configure({ docState }),

@@ -150,6 +150,7 @@ Mistlog renders every screen on the server (React Router SSR), with data from se
 - **View-only:** on a view-only connection, `DocumentAgent` answers sync requests but ignores incoming edits.
 - **Revoking:** closes that link's open connections at once (connections are tagged with their token), not just future ones.
 - **All other API routes** (backlinks, search, titles, rename, delete, import) refuse token holders.
+- **Images** (`/files/assets/<name>`, F31, since 2026-11-18): a token holder may only load images their shared page links to; the import's `PUT /api/files/...` refuses them.
 
 **Step 2. Blocks.**
 - A page syncs as one live Yjs document, so a guest's browser can't be sent half of one: it would hold the whole page.

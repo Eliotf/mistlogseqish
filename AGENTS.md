@@ -121,6 +121,7 @@ PRD.md        Product spec and roadmap
 - Adding a keyboard shortcut or typed trigger: list it in `app/lib/shortcuts.ts` (the `?` sheet) and add a check for it to `CHECKS` in `tests/unit/lib/shortcuts.test.ts`, or that test fails.
 - Outline lines hang (`.md-line` in `app/app.css`): Chrome measures tab stops from the padded edge, so the bullet must stay exactly one tab (1.5em) wide, or every tab after it shifts.
 - In browser walkthroughs, `GET /new` redirects to the journal feed (only POST creates a page), so text typed there lands in today's journal. Make test pages through a link instead, and clean up after.
+- Images (F31) live in the R2 bucket bound as `FILES` (`mistlog-files`), under `assets/<name>`. The bucket must exist in the Cloudflare account before a deploy with the binding, or the deploy fails. Locally, Wrangler simulates it. App code only ever adds images there (never replaces or deletes), and `/files/` and `/api/files/` must stay behind the same permission checks as pages.
 - Workspace index tests run real SQL on Node's built-in SQLite through `tests/helpers/sqlite.ts`; Node prints an experimental-feature warning, which is expected. Node's SQLite has no 100-parameter limit, so a test of chunking must wrap the db to refuse more (see the F13 "many linked pages" test).
 - Search indexes each link as its page's current title (`page_text`, F13). Anything that changes a page's title or deletes it in the index must rewrite the linking pages' search rows (`rewriteLinkingSearchText`).
 

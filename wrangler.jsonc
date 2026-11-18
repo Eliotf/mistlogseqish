@@ -15,6 +15,10 @@
 		]
 	},
 	// Append-only: never edit or remove an entry that has been deployed
+	// Attachments from imported Logseq graphs (PRD F31): images under assets/<name>
+	"r2_buckets": [
+		{ "binding": "FILES", "bucket_name": "mistlog-files" }
+	],
 	"migrations": [
 		{ "tag": "v1", "new_sqlite_classes": ["DocumentAgent"] },
 		{ "tag": "v2", "new_sqlite_classes": ["WorkspaceAgent"] }

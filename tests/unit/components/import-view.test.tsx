@@ -52,10 +52,39 @@ describe("ImportView (dry run)", () => {
     expect(report.textContent).toContain("0 new journal days; 1 day you have already get the imported lines added below");
     expect(report.textContent).toContain("2 empty pages for links to pages that aren't in your graph");
     expect(report.textContent).toContain("1 link and 1 tag");
-    expect(report.textContent).toContain("1 attachment (images, PDFs) not imported yet");
+    expect(screen.getByRole("region", { name: "Images" }).textContent).toContain("1 image in assets");
     expect(report.textContent).toContain("“[[Ideas]]” becomes “Ideas”");
     expect(report.textContent).toContain("Logseq/journals/2026_11_04 2.md: A conflict copy");
     expect((screen.getByRole("button", { name: "Import" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("sends the folder's images apart from the import, and says what happened", async () => {
+    const send = vi.fn(async ({ name }: { name: string }) => (name === "old.png" ? ("exists" as const) : name === "huge.jpg" ? ("too-big" as const) : ("stored" as const)));
+    show({ check: async () => ({ pages: [], days: [] }), send });
+    choose([
+      picked("Logseq/pages/A.md", "- ![x](../assets/new.png)"),
+      picked("Logseq/assets/new.png", ""),
+      picked("Logseq/assets/old.png", ""),
+      picked("Logseq/assets/huge.jpg", ""),
+      picked("Logseq/assets/paper.pdf", ""),
+      picked("Logseq/assets/drawing.svg", ""),
+    ]);
+    const images = await screen.findByRole("region", { name: "Images" });
+    expect(images.textContent).toContain("3 images in assets");
+    expect(images.textContent).toContain("2 other attachments (PDFs and so on) aren't sent");
+    fireEvent.click(within(images).getByRole("button", { name: "Send images" }));
+    await waitFor(() => expect(within(images).getByRole("status").textContent).toContain("1 image sent; 1 image Mistlog had already."));
+    expect(send.mock.calls.map(([image]) => image.name).sort()).toEqual(["huge.jpg", "new.png", "old.png"]);
+    expect(images.textContent).toContain("1 image too big to send (over 10 MB)");
+    // The import is still there to run
+    expect((screen.getByRole("button", { name: "Import" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("shows no Images section for a folder with no assets", async () => {
+    show({ check: async () => ({ pages: [], days: [] }) });
+    choose([picked("Logseq/pages/A.md", "- x")]);
+    await screen.findByRole("region", { name: "What an import would do" });
+    expect(screen.queryByRole("region", { name: "Images" })).toBeNull();
   });
 
   it("says so when Mistlog can't be reached", async () => {

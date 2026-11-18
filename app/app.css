@@ -362,6 +362,37 @@ body {
   opacity: 0.35;
 }
 
+/* Images (image-preview.ts): the picture in the line, beside its bullet; its text hidden away from the caret */
+.md-image-source {
+  display: none;
+}
+
+/* Inline, so an image alone on a line sits beside its bullet; no text-indent, which the hanging line (.md-line) sets negative */
+.md-image {
+  display: inline-block;
+  vertical-align: top;
+  max-width: 100%;
+  margin: 0.15em 0;
+  text-indent: 0;
+}
+
+.md-image img {
+  display: block;
+  max-width: 100%;
+  max-height: 32rem;
+  height: auto;
+  cursor: zoom-in;
+  border: 1px solid var(--color-border);
+}
+
+.md-image-missing {
+  display: inline-block;
+  padding: 0.1em 0.5em;
+  font-size: 0.85em;
+  color: var(--color-muted);
+  border: 1px dashed var(--color-border);
+}
+
 /* CriticMarkup delimiter tokens (widget decorations around mark ranges) */
 .cm-delimiter {
   opacity: 0.35;
