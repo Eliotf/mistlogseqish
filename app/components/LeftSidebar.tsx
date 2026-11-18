@@ -132,7 +132,7 @@ function RecentPage({ pageId, pathname, onChoose }: { pageId: string; pathname: 
 /** The sidebar column on a wide screen, while it is shown (`t l`, or the header's button). */
 export default function LeftSidebar({ fetchStatus }: { fetchStatus?: () => Promise<IndexStatus> }) {
   return (
-    <nav id={SIDEBAR_ID} aria-label="Sidebar" className="left-sidebar hidden h-screen w-56 shrink-0 flex-col overflow-y-auto border-r border-border md:flex">
+    <nav id={SIDEBAR_ID} aria-label="Sidebar" className="left-sidebar hidden h-dvh w-56 shrink-0 flex-col overflow-y-auto border-r border-border md:flex">
       <SidebarContents fetchStatus={fetchStatus} />
     </nav>
   );

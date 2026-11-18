@@ -30,7 +30,8 @@ select {
 body {
   background-color: var(--color-paper);
   color: var(--color-ink);
-  min-height: 100vh;
+  /* dvh, not vh: on phones 100vh is the height with the browser's bars hidden, so it runs under them */
+  min-height: 100dvh;
 }
 
 /* Editor styles */

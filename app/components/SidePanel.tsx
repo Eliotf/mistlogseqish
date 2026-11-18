@@ -32,7 +32,7 @@ export default function SidePanel() {
   return (
     <aside
       aria-label="Side panel"
-      className="fixed inset-0 z-40 flex flex-col bg-paper lg:static lg:z-auto lg:h-screen lg:w-[28rem] lg:shrink-0 lg:border-l lg:border-border"
+      className="fixed inset-0 z-40 flex flex-col bg-paper lg:static lg:z-auto lg:h-dvh lg:w-[28rem] lg:shrink-0 lg:border-l lg:border-border"
     >
       <div className="flex shrink-0 items-stretch border-b border-border text-sm">
         <button type="button" onClick={() => panel.setShown(false)} className="px-3 py-2 text-muted hover:text-ink lg:hidden">

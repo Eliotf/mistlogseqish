@@ -92,7 +92,7 @@ function DocumentLayout({ id, exists, path, focusTitle }: Omit<ScreenProps, "cre
   useRecordVisit(id);
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-dvh flex-col">
       <AppHeader>
         <div className="hidden grow shrink-0 items-center px-4 sm:flex">
           <span className="font-mono text-sm text-muted" title="This page's address">

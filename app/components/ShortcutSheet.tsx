@@ -62,7 +62,7 @@ function SheetDialog({ onClose }: { onClose: () => void }) {
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="fixed left-1/2 top-16 z-50 flex max-h-[calc(100vh-96px)] w-[min(720px,calc(100%-32px))] -translate-x-1/2 flex-col border border-ink bg-paper shadow-lg"
+        className="fixed left-1/2 top-16 z-50 flex max-h-[calc(100dvh-96px)] w-[min(720px,calc(100%-32px))] -translate-x-1/2 flex-col border border-ink bg-paper shadow-lg"
       >
         <div className="flex items-center border-b border-border">
           <h2 id={titleId} className="flex-1 px-3.5 py-2.5 text-sm font-medium uppercase tracking-wider">

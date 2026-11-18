@@ -72,7 +72,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
 
   if (status === 404) {
     return (
-      <main className="flex min-h-screen flex-col items-center justify-center">
+      <main className="flex min-h-dvh flex-col items-center justify-center">
         <p className="mb-1 text-6xl font-light tracking-tight text-ink">404</p>
         <p className="mb-6 text-muted">mist not found</p>
         <Link to="/" className="font-bold text-ink underline">
@@ -83,7 +83,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center">
+    <main className="flex min-h-dvh flex-col items-center justify-center">
       <p className="mb-1 text-6xl font-light tracking-tight text-ink">{status}</p>
       <p className="mb-6 text-muted">Something went wrong</p>
       <Link to="/" className="font-bold text-ink underline">

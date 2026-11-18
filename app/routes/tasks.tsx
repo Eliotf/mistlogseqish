@@ -39,7 +39,7 @@ export default function Tasks({ loaderData }: Route.ComponentProps) {
   }, [revalidate]);
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-dvh flex-col">
       <AppHeader />
       <main className="flex-1 overflow-y-auto">
         <TasksView open={loaderData.open} done={loaderData.done} pending={loaderData.pending} loadFailed={loaderData.loadFailed} />

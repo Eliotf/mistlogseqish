@@ -22,7 +22,7 @@ export function meta(_args: Route.MetaArgs) {
 /** /import: import a Logseq graph, and undo it (PRD F31). */
 export default function Import({ loaderData }: Route.ComponentProps) {
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-dvh flex-col">
       <AppHeader />
       <main className="flex-1 overflow-y-auto">
         {loaderData.loadFailed && (

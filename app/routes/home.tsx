@@ -23,7 +23,7 @@ export function meta(_args: Route.MetaArgs) {
 
 export default function Home({ loaderData }: Route.ComponentProps) {
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-dvh flex-col">
       <AppHeader />
       <main className="flex-1 overflow-y-auto">
         <JournalFeed initialDays={loaderData.days} loadFailed={loaderData.loadFailed} />

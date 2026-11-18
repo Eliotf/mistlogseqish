@@ -177,7 +177,7 @@ function SearchDialog({ search = fetchSearch, create = linkPageForTitle, onClose
             {error}
           </p>
         )}
-        <ul ref={list} id={listId} role="listbox" aria-label="Results" className="max-h-[50vh] overflow-y-auto py-1">
+        <ul ref={list} id={listId} role="listbox" aria-label="Results" className="max-h-[50dvh] overflow-y-auto py-1">
           {rows.map((row, i) => {
             const heading = groupOf(row, !!answer?.query);
             const showHeading = heading !== null && (i === 0 || groupOf(rows[i - 1], !!answer?.query) !== heading);
