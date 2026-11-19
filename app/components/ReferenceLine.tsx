@@ -92,3 +92,30 @@ export function NestedLines({ line, className = "" }: { line: BacklinkLine; clas
     </ul>
   );
 }
+
+/** Whether a stored line has nested lines to show or fold. */
+export function hasNestedLines(line: BacklinkLine): boolean {
+  return !!(line.children?.length || line.more);
+}
+
+/**
+ * The arrow that folds a stored line's nested lines, in the gutter to its
+ * left (its list item must be `relative group`), as the editor's fold arrow
+ * is: shown on hover or focus, always while folded, faintly on touch screens.
+ */
+export function FoldButton({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-expanded={open}
+      aria-label={open ? "Fold" : "Unfold"}
+      title={open ? "Fold" : "Unfold"}
+      onClick={onToggle}
+      className={`absolute -left-5 top-0 w-4 cursor-pointer text-center text-muted transition-opacity hover:text-ink ${open ? "opacity-0 focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-60" : "opacity-100"}`}
+    >
+      <span aria-hidden="true" className={`inline-block ${open ? "rotate-90" : ""}`}>
+        ▸
+      </span>
+    </button>
+  );
+}

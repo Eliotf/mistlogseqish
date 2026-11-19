@@ -86,6 +86,19 @@ describe("Backlinks", () => {
     expect(ui.getByText("Linked references · 1")).toBeTruthy();
   });
 
+  it("folds a reference's nested lines with its arrow; references with none have no arrow", async () => {
+    const nested: BacklinkGroup[] = [
+      { pageId: "aaaa1111", title: "Plans", kind: "page", slug: "plans", lines: [{ line: 0, text: "- read [[Old name]]", links: [{ from: 9, to: 17, pageId: "abcd1234" }], children: [{ line: 1, text: "\t- chapter one", links: [] }] }, { line: 2, text: "- again [[Old name]]", links: [{ from: 10, to: 18, pageId: "abcd1234" }] }] },
+    ];
+    const ui = show(async () => nested);
+    const fold = await ui.findByRole("button", { name: "Fold" });
+    expect(ui.getAllByRole("button", { name: /fold/i })).toHaveLength(1);
+    fireEvent.click(fold);
+    expect(ui.queryByText("chapter one")).toBeNull();
+    fireEvent.click(ui.getByRole("button", { name: "Unfold" }));
+    expect(ui.getByText("chapter one")).toBeTruthy();
+  });
+
   it("shows links in references with their current titles", async () => {
     pageTitles().prime("abcd1234", { title: "Books", kind: "page", slug: "books", empty: false, missing: false });
     const ui = show(async () => groups);

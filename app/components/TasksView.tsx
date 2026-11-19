@@ -1,4 +1,4 @@
-import type { MouseEvent } from "react";
+import { useState, type MouseEvent } from "react";
 import { journalTitle, parseJournalDate } from "~/lib/note-ids";
 import { UNTITLED } from "~/lib/page-title";
 import { pagePath } from "~/lib/slug";
@@ -6,7 +6,7 @@ import { useOpenLink } from "~/lib/side-panel";
 import { zoomHref } from "~/lib/zoom";
 import { useModKeyLabel } from "~/lib/mod-key";
 import { OPEN_STATES, type TaskItem } from "~/lib/tasks";
-import ReferenceLine, { NestedLines, PageLink } from "~/components/ReferenceLine";
+import ReferenceLine, { FoldButton, hasNestedLines, NestedLines, PageLink } from "~/components/ReferenceLine";
 
 interface TasksViewProps {
   open: TaskItem[];
@@ -25,7 +25,7 @@ function pageName(task: TaskItem): string {
  * The Tasks view (PRD F6): one read-only list across all pages, NOW, DOING,
  * TODO then LATER (higher priority first in each), and recently done tasks.
  * Each task is shown like a linked reference, labelled with its page and
- * with the lines nested under it (its sub-bullets); it
+ * with the lines nested under it (its sub-bullets, open until folded); it
  * opens its page zoomed into its line, where it is changed (Cmd/Ctrl+click
  * opens the page in the side panel). Tasks from pages not re-indexed since
  * block IDs open the whole page.
@@ -79,6 +79,7 @@ export default function TasksView({ open, done, pending = 0, loadFailed }: Tasks
 
 function TaskRow({ task, done = false }: { task: TaskItem; done?: boolean }) {
   const openLink = useOpenLink();
+  const [open, setOpen] = useState(true);
   const page = pagePath(task.pageId, null);
   const href = zoomHref(page, task.blockId);
   const onClick = (event: MouseEvent<HTMLAnchorElement>) => {
@@ -86,14 +87,15 @@ function TaskRow({ task, done = false }: { task: TaskItem; done?: boolean }) {
     openLink(href, { pageId: task.pageId, side: event.metaKey || event.ctrlKey });
   };
   return (
-    <li className="flex flex-wrap items-baseline gap-x-3 border-l-2 border-border pl-3 hover:border-chartreuse">
+    <li className="group relative flex flex-wrap items-baseline gap-x-3 border-l-2 border-border pl-3 hover:border-chartreuse">
+      {hasNestedLines(task.line) && <FoldButton open={open} onToggle={() => setOpen(!open)} />}
       <a href={href} onClick={onClick} title={`Open ${pageName(task)} at this task`} className={`text-ink ${done ? "text-muted line-through" : ""}`}>
         <ReferenceLine line={task.line} plainLinks />
       </a>
       <PageLink pageId={task.pageId} href={page} className="text-xs text-muted hover:underline">
         {pageName(task)}
       </PageLink>
-      <NestedLines line={task.line} className="basis-full" />
+      {open && <NestedLines line={task.line} className="basis-full" />}
     </li>
   );
 }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import type { BacklinkGroup } from "~/lib/backlink-lines";
+import type { BacklinkGroup, BacklinkLine } from "~/lib/backlink-lines";
 import { linkHref } from "~/lib/page-titles";
-import ReferenceLine, { NestedLines, PageLink } from "~/components/ReferenceLine";
+import ReferenceLine, { FoldButton, hasNestedLines, NestedLines, PageLink } from "~/components/ReferenceLine";
 
 /** Linked references for a page, from GET /api/pages/backlinks. */
 export async function fetchBacklinks(pageId: string): Promise<BacklinkGroup[]> {
@@ -15,7 +15,8 @@ type Load = { state: "loading" } | { state: "failed" } | { state: "ready"; group
 /**
  * Linked references below a page (PRD F4): the pages that link here, most
  * recently updated first, each with its linking lines as read-only
- * snapshots from the index, shown open with the lines nested under them.
+ * snapshots from the index, shown open with the lines nested under them
+ * (each foldable).
  * Fetched on open and again when the tab is
  * shown, never polled. Click a page or link to open it; Cmd/Ctrl+click opens
  * it in the side panel.
@@ -59,14 +60,23 @@ export default function Backlinks({ pageId, load = fetchBacklinks }: { pageId: s
             </PageLink>
             <ul className="mt-1 space-y-1 border-l border-border pl-3">
               {group.lines.map((line) => (
-                <li key={line.line} className="text-ink">
-                  <ReferenceLine line={line} />
-                  <NestedLines line={line} />
-                </li>
+                <Reference key={line.line} line={line} />
               ))}
             </ul>
           </div>
         ))}
     </section>
+  );
+}
+
+/** One linking line, with the lines nested under it, open until folded. */
+function Reference({ line }: { line: BacklinkLine }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <li className="group relative text-ink">
+      {hasNestedLines(line) && <FoldButton open={open} onToggle={() => setOpen(!open)} />}
+      <ReferenceLine line={line} />
+      {open && <NestedLines line={line} />}
+    </li>
   );
 }

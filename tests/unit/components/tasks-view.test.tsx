@@ -97,9 +97,26 @@ describe("TasksView", () => {
     expect(nested.closest("a")).toBeNull();
   });
 
-  it("shows no nested list for a task with nothing under it", () => {
+  it("shows no nested list or fold arrow for a task with nothing under it", () => {
     show({ open: [task({})] });
     expect(screen.queryByRole("list", { name: "Nested lines" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Fold" })).toBeNull();
+  });
+
+  it("folds and unfolds a task's sub-bullets with its arrow, one task at a time", () => {
+    const children = [{ line: 1, text: "\t- book train", links: [] }];
+    show({ open: [task({ line: { line: 0, text: "- TODO plan trip", links: [], children } }), task({ pageId: "eeee5555", line: { line: 0, text: "- TODO pack", links: [], children: [{ line: 1, text: "\t- bags", links: [] }] } })] });
+    const [first] = screen.getAllByRole("button", { name: "Fold" });
+    expect(first.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(first);
+    expect(first.getAttribute("aria-expanded")).toBe("false");
+    expect(first.getAttribute("aria-label")).toBe("Unfold");
+    expect(screen.queryByText("book train")).toBeNull();
+    expect(screen.getByText("bags")).toBeTruthy();
+    // Folding never opens the task's page
+    expect(seen.where).toBe("/tasks");
+    fireEvent.click(first);
+    expect(screen.getByText("book train")).toBeTruthy();
   });
 
   it("keeps recently done tasks behind a Done toggle", () => {
