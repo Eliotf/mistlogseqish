@@ -6,7 +6,7 @@ import { useOpenLink } from "~/lib/side-panel";
 import { zoomHref } from "~/lib/zoom";
 import { useModKeyLabel } from "~/lib/mod-key";
 import { OPEN_STATES, type TaskItem } from "~/lib/tasks";
-import ReferenceLine, { PageLink } from "~/components/ReferenceLine";
+import ReferenceLine, { NestedLines, PageLink } from "~/components/ReferenceLine";
 
 interface TasksViewProps {
   open: TaskItem[];
@@ -24,7 +24,8 @@ function pageName(task: TaskItem): string {
 /**
  * The Tasks view (PRD F6): one read-only list across all pages, NOW, DOING,
  * TODO then LATER (higher priority first in each), and recently done tasks.
- * Each task is shown like a linked reference, labelled with its page; it
+ * Each task is shown like a linked reference, labelled with its page and
+ * with the lines nested under it (its sub-bullets); it
  * opens its page zoomed into its line, where it is changed (Cmd/Ctrl+click
  * opens the page in the side panel). Tasks from pages not re-indexed since
  * block IDs open the whole page.
@@ -92,6 +93,7 @@ function TaskRow({ task, done = false }: { task: TaskItem; done?: boolean }) {
       <PageLink pageId={task.pageId} href={page} className="text-xs text-muted hover:underline">
         {pageName(task)}
       </PageLink>
+      <NestedLines line={task.line} className="basis-full" />
     </li>
   );
 }

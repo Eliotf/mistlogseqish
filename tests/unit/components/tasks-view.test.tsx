@@ -86,6 +86,22 @@ describe("TasksView", () => {
     expect(seen.where).toBe("/tasks");
   });
 
+  it("shows a task's sub-bullets under it, outside the task's own link", () => {
+    const children = [
+      { line: 1, text: "\t- book train", links: [] },
+      { line: 2, text: "\t\t- check times", links: [] },
+    ];
+    show({ open: [task({ line: { line: 0, text: "- TODO plan trip", links: [], children } })] });
+    const nested = screen.getByRole("list", { name: "Nested lines" });
+    expect([...nested.querySelectorAll("li")].map((li) => li.textContent)).toEqual(["•book train", "•check times"]);
+    expect(nested.closest("a")).toBeNull();
+  });
+
+  it("shows no nested list for a task with nothing under it", () => {
+    show({ open: [task({})] });
+    expect(screen.queryByRole("list", { name: "Nested lines" })).toBeNull();
+  });
+
   it("keeps recently done tasks behind a Done toggle", () => {
     show({ done: [task({ state: "DONE", line: { line: 0, text: "- DONE shipped", links: [] } })] });
     const summary = screen.getByText("Done · 1");

@@ -2,7 +2,7 @@ import { toBacklinkLine, withNestedLines, type BacklinkSource } from "../app/lib
 import type { TaskItem } from "../app/lib/tasks";
 import { Agent, getAgentByName } from "agents";
 import type { Connection, ConnectionContext } from "agents";
-import type { TaskState } from "../app/lib/note-parser";
+import type { TaskState, TextRun } from "../app/lib/note-parser";
 import { WorkspaceIndex, type SqlDb, type SqlValue, type PageUpdate } from "./workspace-index";
 import { WORKSPACE_NAME } from "../app/shared/constants";
 
@@ -174,8 +174,16 @@ class WorkspaceAgent extends Agent<Env> {
     return this.index.searchPages(query, titleLimit, textLimit);
   }
 
-  /** Tasks as the Tasks view shows them; lines reduced like linked references, so the result is serialisable. */
+  /**
+   * Tasks as the Tasks view shows them; lines reduced like linked references,
+   * so the result is serialisable, with the lines nested under each.
+   */
   async tasks(states?: TaskState[]): Promise<TaskItem[]> {
+    const runs = new Map<string, TextRun[] | null>();
+    const runsOf = (pageId: string) => {
+      if (!runs.has(pageId)) runs.set(pageId, this.index.pageRuns(pageId));
+      return runs.get(pageId) ?? null;
+    };
     return this.index.tasks(states).map((t) => ({
       pageId: t.pageId,
       pageTitle: t.pageTitle,
@@ -185,7 +193,7 @@ class WorkspaceAgent extends Agent<Env> {
       priority: t.priority,
       blockId: t.blockId,
       // Rows from before schema 3 have no stored line: rebuild a plain one from the keyword and text
-      line: t.content ? toBacklinkLine(t.line, t.content) : { line: t.line, text: `${t.state} ${t.text}`, links: [] },
+      line: t.content ? withNestedLines([toBacklinkLine(t.line, t.content)], runsOf(t.pageId))[0] : { line: t.line, text: `${t.state} ${t.text}`, links: [] },
     }));
   }
 

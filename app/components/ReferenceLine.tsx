@@ -64,3 +64,31 @@ function LinkedTitle({ pageId, stored, plain }: { pageId: string; stored: string
     </PageLink>
   );
 }
+
+/**
+ * The lines nested under a stored line (a linked reference or a task),
+ * indented by how far below it they sit.
+ */
+export function NestedLines({ line, className = "" }: { line: BacklinkLine; className?: string }) {
+  if (!line.children?.length && !line.more) return null;
+  const indent = parseLine(line.text).indent;
+  return (
+    <ul aria-label="Nested lines" className={`mt-0.5 space-y-0.5 ${className}`}>
+      {line.children?.map((child) => (
+        <li key={child.line} className="flex gap-1.5" style={{ paddingLeft: `${Math.max(0, parseLine(child.text).indent - indent - 1) * 1.25}em` }}>
+          <span aria-hidden="true" className="text-muted">
+            •
+          </span>
+          <span className="min-w-0">
+            <ReferenceLine line={child} />
+          </span>
+        </li>
+      ))}
+      {line.more ? (
+        <li className="text-sm text-muted">
+          {line.more} more {line.more === 1 ? "line" : "lines"}
+        </li>
+      ) : null}
+    </ul>
+  );
+}

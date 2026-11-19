@@ -6,6 +6,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { WIKILINK_MARK } from "~/lib/wikilink";
 import { memoryStorage } from "../../helpers/sqlite";
+import { WorkspaceIndex } from "../../../agents/workspace-index";
 
 let storage: ReturnType<typeof memoryStorage>["storage"];
 /** Calls to this.schedule(): [delay seconds, callback name]. */
@@ -247,6 +248,27 @@ describe("WorkspaceAgent", () => {
       await agent.clearDerived();
       expect(await agent.getPage("journal-2026-10-22")).toBeNull();
       expect(await agent.registeredPages()).toEqual(["abcd1234", "journal-2026-10-22"]);
+    });
+
+    it("sends each task with the lines nested under it, reading each page once", async () => {
+      await agent.updatePage({
+        pageId: "abcd1234",
+        title: "Mistlog",
+        updatedAt: 1,
+        lines: [
+          { text: "- TODO plan trip", marks: [] },
+          { text: "\t- book train", marks: [] },
+          { text: "\t\t- check times", marks: [] },
+          { text: "- TODO alone", marks: [] },
+        ],
+      });
+      const pageRuns = vi.spyOn(WorkspaceIndex.prototype, "pageRuns");
+      expect((await agent.tasks()).map((t) => t.line)).toEqual([
+        { line: 0, text: "- TODO plan trip", links: [], children: [{ line: 1, text: "\t- book train", links: [] }, { line: 2, text: "\t\t- check times", links: [] }] },
+        { line: 3, text: "- TODO alone", links: [] },
+      ]);
+      expect(pageRuns).toHaveBeenCalledTimes(1);
+      pageRuns.mockRestore();
     });
 
     it("shows a task row from before schema 3 (no stored line) as its keyword and text", async () => {

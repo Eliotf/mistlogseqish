@@ -463,11 +463,14 @@ export class WorkspaceIndex {
       }
       group.lines.push({ line: row.line as number, content: JSON.parse(row.content as string) as DocLine });
     }
-    for (const group of groups.values()) {
-      const text = this.db.exec(`SELECT runs FROM page_text WHERE page_id = ?`, group.sourceId)[0];
-      if (text) group.runs = JSON.parse(text.runs as string) as TextRun[];
-    }
+    for (const group of groups.values()) group.runs = this.pageRuns(group.sourceId);
     return [...groups.values()];
+  }
+
+  /** A page's text as runs (page_text), to show what is nested under a line; null if not stored. */
+  pageRuns(pageId: string): TextRun[] | null {
+    const row = this.db.exec(`SELECT runs FROM page_text WHERE page_id = ?`, pageId)[0];
+    return row ? (JSON.parse(row.runs as string) as TextRun[]) : null;
   }
 
   /**

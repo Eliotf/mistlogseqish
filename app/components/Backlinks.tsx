@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import type { BacklinkGroup, BacklinkLine } from "~/lib/backlink-lines";
-import { parseLine } from "~/lib/note-parser";
+import type { BacklinkGroup } from "~/lib/backlink-lines";
 import { linkHref } from "~/lib/page-titles";
-import ReferenceLine, { PageLink } from "~/components/ReferenceLine";
+import ReferenceLine, { NestedLines, PageLink } from "~/components/ReferenceLine";
 
 /** Linked references for a page, from GET /api/pages/backlinks. */
 export async function fetchBacklinks(pageId: string): Promise<BacklinkGroup[]> {
@@ -69,30 +68,5 @@ export default function Backlinks({ pageId, load = fetchBacklinks }: { pageId: s
           </div>
         ))}
     </section>
-  );
-}
-
-/** The lines nested under a linking line, indented by how far below it they sit. */
-function NestedLines({ line }: { line: BacklinkLine }) {
-  if (!line.children?.length && !line.more) return null;
-  const indent = parseLine(line.text).indent;
-  return (
-    <ul aria-label="Nested lines" className="mt-0.5 space-y-0.5">
-      {line.children?.map((child) => (
-        <li key={child.line} className="flex gap-1.5" style={{ paddingLeft: `${Math.max(0, parseLine(child.text).indent - indent - 1) * 1.25}em` }}>
-          <span aria-hidden="true" className="text-muted">
-            •
-          </span>
-          <span className="min-w-0">
-            <ReferenceLine line={child} />
-          </span>
-        </li>
-      ))}
-      {line.more ? (
-        <li className="text-sm text-muted">
-          {line.more} more {line.more === 1 ? "line" : "lines"}
-        </li>
-      ) : null}
-    </ul>
   );
 }
