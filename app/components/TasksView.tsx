@@ -25,7 +25,7 @@ function pageName(task: TaskItem): string {
  * The Tasks view (PRD F6): one read-only list across all pages, NOW, DOING,
  * TODO then LATER (higher priority first in each), and recently done tasks.
  * Each task is shown like a linked reference, labelled with its page and
- * with the lines nested under it (its sub-bullets, open until folded); it
+ * with the lines nested under it (its sub-bullets, folded until opened with its arrow); it
  * opens its page zoomed into its line, where it is changed (Cmd/Ctrl+click
  * opens the page in the side panel). Tasks from pages not re-indexed since
  * block IDs open the whole page.
@@ -79,7 +79,7 @@ export default function TasksView({ open, done, pending = 0, loadFailed }: Tasks
 
 function TaskRow({ task, done = false }: { task: TaskItem; done?: boolean }) {
   const openLink = useOpenLink();
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const page = pagePath(task.pageId, null);
   const href = zoomHref(page, task.blockId);
   const onClick = (event: MouseEvent<HTMLAnchorElement>) => {
