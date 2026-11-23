@@ -21,6 +21,7 @@ import { WorkspaceIndex, type PageUpdate, type PageUpdateAck, type ClaimResult }
 import { memoryDb } from "../../helpers/sqlite";
 import { linesFromYjs } from "~/lib/note-lines";
 import type { ImportedLine } from "~/lib/import-lines";
+import { DAILY_PROMPT_LINE } from "~/lib/daily-prompt";
 
 /* ------------------------------------------------------------------ */
 /*  Mock Agent base class                                              */
@@ -1647,6 +1648,49 @@ describe("DocumentAgent", () => {
         const res = await agent.onRequest(new Request("https://do/"));
         return (await res.json()) as { exists: boolean; createdAt: number | null };
       }
+
+      describe("the daily line (owner, 2026-11-23)", () => {
+        const texts = (doc: Y.Doc) => linesFromYjs(doc.getXmlFragment("default")).map((l) => l.text);
+
+        it("starts the day with it, for every open tab, with a block ID, and creates the day", async () => {
+          const tab = connectYjsClient();
+          addLine(tab, "");
+          expect(await agent.addDailyPrompt()).toEqual({ ok: true, added: true });
+          expect(texts(tab.doc)).toEqual([DAILY_PROMPT_LINE, ""]);
+          expect(linesFromYjs(tab.doc.getXmlFragment("default"))[0].id).toEqual(expect.any(String));
+          expect((await status()).exists).toBe(true);
+          await vi.waitFor(() => expect(index.registeredPages()).toEqual([DAY]));
+          cleanup(tab);
+        });
+
+        it("goes above what is already written", async () => {
+          const tab = connectYjsClient();
+          addLine(tab, "- written offline first");
+          await agent.addDailyPrompt();
+          expect(texts(tab.doc)).toEqual([DAILY_PROMPT_LINE, "- written offline first"]);
+          cleanup(tab);
+        });
+
+        it("is written only once: not again from another device, and not back once deleted, even after a restart", async () => {
+          const tab = connectYjsClient();
+          await agent.addDailyPrompt();
+          expect(await agent.addDailyPrompt()).toEqual({ ok: true, added: false });
+          expect(texts(tab.doc)).toEqual([DAILY_PROMPT_LINE]);
+          tab.doc.transact(() => tab.doc.getXmlFragment("default").delete(0, 1));
+          const fresh = new DocumentAgent({} as never, {} as never);
+          (fresh as unknown as { name: string }).name = DAY;
+          expect(await fresh.addDailyPrompt()).toEqual({ ok: true, added: false });
+          const reopened = connectYjsClient(fresh);
+          expect(texts(reopened.doc)).not.toContain(DAILY_PROMPT_LINE);
+          cleanup(tab, reopened);
+        });
+
+        it("is refused for a page that isn't a journal day", async () => {
+          (agent as unknown as { name: string }).name = PAGE_ID;
+          expect(await agent.addDailyPrompt()).toEqual({ ok: false, code: "invalid" });
+          expect(mockSqlStore.has("state")).toBe(false);
+        });
+      });
 
       it("is not created, saved or indexed just by opening it", async () => {
         const client = connectYjsClient();

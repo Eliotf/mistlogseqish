@@ -112,6 +112,11 @@ function idsIn(fragment: Y.XmlFragment): Set<string> {
  * what undo removes. The caller wraps it in a transaction.
  */
 export function appendImportedLines(fragment: Y.XmlFragment, lines: readonly ImportedLine[]): string[] {
+  return insertImportedLines(fragment, fragment.length, lines);
+}
+
+/** As appendImportedLines, but before the line at `index` (0: at the top). */
+export function insertImportedLines(fragment: Y.XmlFragment, index: number, lines: readonly ImportedLine[]): string[] {
   const taken = idsIn(fragment);
   const added: string[] = [];
   const paragraphs = lines.map((line) => {
@@ -126,7 +131,7 @@ export function appendImportedLines(fragment: Y.XmlFragment, lines: readonly Imp
     paragraph.insert(0, [text]);
     return { paragraph, text, line };
   });
-  fragment.insert(fragment.length, paragraphs.map((p) => p.paragraph));
+  fragment.insert(index, paragraphs.map((p) => p.paragraph));
   // Text is filled once the paragraphs are in the document (Yjs types can't be edited before)
   for (const { text, line } of paragraphs) {
     // Text inserted without attributes takes the formatting before it, so plain runs say "no link"

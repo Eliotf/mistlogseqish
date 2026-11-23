@@ -10,9 +10,10 @@ import { MSG_SYNC, MSG_AWARENESS, DOC_FORMAT_VERSION, CLOSE_OUTDATED_CLIENT, CLO
 import { linesFromYjs } from "../app/lib/note-lines";
 import { BLOCK_ID_ATTR, assignBlockIds, newBlockId } from "../app/lib/block-ids";
 import { PARSER_VERSION } from "../app/lib/note-parser";
-import { isJournalId, isPageId } from "../app/lib/note-ids";
+import { isJournalId, isPageId, parseJournalDate } from "../app/lib/note-ids";
+import { DAILY_PROMPT_LINE, type DailyPromptResult } from "../app/lib/daily-prompt";
 import { normalizeTitle, type DocumentRenameResult, type CreateWithTitleResult, type DeletePageResult } from "../app/lib/page-title";
-import { appendImportedLines, isImportedLines, removeImportedLines, type ImportedLine, type ImportLinesResult } from "../app/lib/import-lines";
+import { appendImportedLines, insertImportedLines, isImportedLines, removeImportedLines, type ImportedLine, type ImportLinesResult } from "../app/lib/import-lines";
 import { WORKSPACE_NAME } from "./workspace";
 
 /**
@@ -550,6 +551,32 @@ class DocumentAgent extends Agent {
       delete rest[importId];
       this.writeImports(rest);
       return { removed };
+    });
+  }
+
+  /**
+   * Start this journal day with the daily line (DAILY_PROMPT_LINE, owner
+   * 2026-11-23), at the top, through Yjs so open tabs merge it. Only ever
+   * once per day: a second call, from another device or after the line was
+   * deleted, adds nothing. Writing it creates the day, as typing would.
+   * Called by POST /api/journals/prompt, which decides the day is today or
+   * later.
+   */
+  async addDailyPrompt(): Promise<DailyPromptResult> {
+    if (parseJournalDate(this.name) === null) return { ok: false, code: "invalid" };
+    const { doc } = this.ensureInitialised();
+    return this.withIndexLock(async (): Promise<DailyPromptResult> => {
+      if (this.isDeleted()) return { ok: false, code: "deleted" };
+      if (this.sql<{ value: ArrayBuffer }>`SELECT value FROM doc_state WHERE key = 'dailyPrompt'`.length > 0) return { ok: true, added: false };
+      doc.transact(() => {
+        insertImportedLines(doc.getXmlFragment("default"), 0, [{ text: DAILY_PROMPT_LINE, blockId: null, collapsed: false, links: [] }]);
+      }, SERVER_ORIGIN);
+      // No await since the change: both are stored together
+      this.sql`
+        INSERT INTO doc_state (key, value) VALUES ('dailyPrompt', ${sqlBlob(new Uint8Array([1]))})
+        ON CONFLICT(key) DO NOTHING
+      `;
+      return { ok: true, added: true };
     });
   }
 

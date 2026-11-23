@@ -1,4 +1,7 @@
+import { useEffect } from "react";
 import { useOpenLink } from "~/lib/side-panel";
+import { askForDailyPrompt, wantsDailyPrompt } from "~/lib/daily-prompt";
+import { localDate, parseJournalDate } from "~/lib/note-ids";
 import Editor from "~/components/Editor";
 import Preview from "~/components/Preview";
 import { useDocument } from "~/lib/DocumentContext";
@@ -25,6 +28,12 @@ export default function ConnectedEditor({ zoom = null, onZoom }: { zoom?: string
   } = useDocument();
   // Cmd/Ctrl+click opens the page in the side panel, otherwise it is navigated to
   const openLink = useOpenLink();
+
+  // A journal day from today on starts with the daily line (the server writes it once)
+  useEffect(() => {
+    const date = parseJournalDate(docId);
+    if (date && wantsDailyPrompt(date, localDate(new Date()))) void askForDailyPrompt(date);
+  }, [docId]);
 
   return (
     <>
