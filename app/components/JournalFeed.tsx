@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { localDate } from "~/lib/note-ids";
 import JournalDay from "~/components/JournalDay";
+import { savedJournalDays } from "~/lib/offline";
 
 /** Days loaded per batch, on first load and on each "older days" load. */
 export const FEED_PAGE_SIZE = 7;
@@ -18,10 +19,17 @@ interface JournalFeedProps {
   fetchOlder?: (before: string | null) => Promise<string[]>;
 }
 
-export async function fetchOlderDays(before: string | null): Promise<string[]> {
+/** Older days from the server; offline (PRD F14), from the days kept in this browser. */
+export async function fetchOlderDays(before: string | null, savedDays: () => Promise<string[]> = savedJournalDays): Promise<string[]> {
   const params = new URLSearchParams({ limit: String(FEED_PAGE_SIZE) });
   if (before) params.set("before", before);
-  const res = await fetch(`/api/journals?${params}`);
+  let res: Response;
+  try {
+    res = await fetch(`/api/journals?${params}`);
+  } catch {
+    // No connection (a server answer, even an error, is a Response)
+    return (await savedDays()).filter((d) => before === null || d < before).slice(0, FEED_PAGE_SIZE);
+  }
   if (!res.ok) throw new Error(`Loading days failed: ${res.status}`);
   return ((await res.json()) as { days: string[] }).days;
 }

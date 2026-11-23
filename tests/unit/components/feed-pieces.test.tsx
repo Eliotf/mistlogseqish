@@ -64,4 +64,11 @@ describe("fetchOlderDays", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", { status: 503 })));
     await expect(fetchOlderDays(null)).rejects.toThrow("Loading days failed: 503");
   });
+
+  it("offline, gives the older days kept in this browser instead", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+    const saved = ["2034-01-01", "2026-10-03", "2026-10-02", "2026-10-01", "2026-09-30", "2026-09-29", "2026-09-28", "2026-09-27", "2026-09-26", "2026-09-25"];
+    expect(await fetchOlderDays("2026-10-02", async () => saved)).toEqual(["2026-10-01", "2026-09-30", "2026-09-29", "2026-09-28", "2026-09-27", "2026-09-26", "2026-09-25"]);
+    expect(await fetchOlderDays(null, async () => saved.slice(0, 2))).toEqual(["2034-01-01", "2026-10-03"]);
+  });
 });

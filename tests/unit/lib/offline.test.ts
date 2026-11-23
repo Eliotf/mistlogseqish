@@ -109,4 +109,11 @@ describe("OfflineNotice", () => {
     act(() => void window.dispatchEvent(new Event("online")));
     expect(queryByRole("status")).toBeNull();
   });
+
+  it("floats over the screen and lets taps through, so it never pushes a full-height screen down", () => {
+    vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    const { getByRole } = render(createElement(OfflineNotice));
+    expect(getByRole("status").className).toMatch(/(^| )fixed( |$)/);
+    expect(getByRole("status").className).toContain("pointer-events-none");
+  });
 });
