@@ -16,6 +16,7 @@ import { BlockMoving } from "~/lib/block-moving";
 import { BlockSelectionStart } from "~/lib/block-selection";
 import { Zoom } from "~/lib/zoom-editing";
 import { Wikilink } from "~/lib/wikilink-editing";
+import { Pomodoro } from "~/lib/pomodoro-editing";
 import { allShortcuts, goChord, GO_CHORD_MS, GO_TARGETS, isSheetShortcut, isTypingTarget, keyLabel, SHORTCUT_GROUPS } from "~/lib/shortcuts";
 
 /** An editor extension's keymap, by key, without running any handler. */
@@ -72,6 +73,7 @@ const CHECKS: Record<string, Check[]> = {
   indent: [{ extension: BulletEditing, mounted: "BulletEditing.configure", keys: ["Tab", "Shift-Tab"] }],
   backspace: [{ extension: BulletEditing, mounted: "BulletEditing.configure", keys: ["Backspace"] }],
   task: [{ extension: TaskEditing, mounted: "TaskEditing.configure", keys: ["Mod-Enter"] }],
+  pomodoro: [{ extension: Pomodoro, mounted: "Pomodoro,", keys: ["Mod-Alt-p", "Mod-Alt-Shift-p"] }],
   undo: [{ extension: Collaboration, mounted: "Collaboration.configure", keys: ["Mod-z"] }],
   redo: [{ extension: Collaboration, mounted: "Collaboration.configure", keys: ["Shift-Mod-z", "Mod-y"] }],
   move: [{ extension: BlockMoving, mounted: "BlockMoving.configure", keys: ["Alt-Shift-ArrowUp", "Alt-Shift-ArrowDown"] }],

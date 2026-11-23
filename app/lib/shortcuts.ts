@@ -53,6 +53,7 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
       { id: "backspace", keys: ["Backspace"], action: "Right after a bullet: outdent, then remove the bullet" },
       { id: "task", keys: ["Mod+Enter"], action: "Cycle TODO → DOING → LATER → NOW → DONE" },
       { id: "slash", keys: ["/"], action: "Commands: task keywords, date, link, headings" },
+      { id: "pomodoro", keys: ["Mod+Alt+P", "Mod+Alt+Shift+P"], action: "Start or pause / reset the {{POMO}} timer on the line" },
       { id: "undo", keys: ["Mod+Z"], action: "Undo" },
       { id: "redo", keys: ["Mod+Shift+Z", "Mod+Y"], action: "Redo" },
     ],
