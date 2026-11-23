@@ -397,6 +397,7 @@ Larger architecture questions (local-first, a native iPhone app, rendering in th
 - 2026-11-12: Back and forward buttons in the header when Mistlog runs from the Home Screen (F17), which has no browser bar.
 - 2026-11-12: PRD tidied: built features marked 🟢 rather than prototyped, M2 and M2b.2 ticked off, the build order's progress noted, Pomodoro's milestone moved to M2b, M5 and M6 brought up to date, F14's held offline layer noted, coverage floors and the coverage risk updated, and a pointer to `docs/design-choices.md`.
 - 2026-11-22: Tasks view (F6): a task's sub-bullets start folded; its arrow shows them.
+- 2026-11-23: Phone keyboard toolbar (F17): placed from the visible area alone and re-measured while the keyboard settles, so it no longer hides behind the iPhone keyboard when a tap low on the screen (as on an older journal day) makes Safari move the page.
 - 2026-11-19: Tasks view (F6) shows each task's sub-bullets under it; they fold with an arrow, as do linked references' nested lines.
 - 2026-11-18: Linked references (F4) show the lines nested under each linking line. Phone layout: screens use the visible height (`dvh`), so they no longer run under Safari's and Chrome's bars.
 - 2026-11-18: Images (F31): pictures written as `![alt](src)` show in pages; the import page sends a graph's `assets/` images to a new R2 bucket (`FILES`) so imported pages show them. New routes `GET /files/assets/<name>` and `PUT /api/files/assets/<name>`. No document format or index change. Coverage floors raised.

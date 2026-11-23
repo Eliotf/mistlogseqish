@@ -23,11 +23,20 @@ function subscribeTouch(onChange: () => void): () => void {
   return () => query.removeEventListener("change", onChange);
 }
 
-/** How far the on-screen keyboard pushes up from the bottom of the window, in pixels. */
-function keyboardInset(): number {
+/** How long to keep measuring after focus or a viewport change, while the keyboard slides in. */
+const SETTLE_MS = 1000;
+
+/**
+ * Where the visible area ends (just above the on-screen keyboard), from the
+ * top of the window, in pixels. Taken from the visual viewport alone: on
+ * iPhones `innerHeight` doesn't say where the keyboard is once Safari has
+ * moved the page to show the caret (a tap low on the screen, as on an older
+ * journal day), so a position worked out from it left the toolbar behind
+ * the keyboard.
+ */
+function visibleBottom(): number | null {
   const viewport = window.visualViewport;
-  if (!viewport) return 0;
-  return Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
+  return viewport ? viewport.offsetTop + viewport.height : null;
 }
 
 /**
@@ -40,19 +49,34 @@ function keyboardInset(): number {
 export default function PhoneToolbar() {
   const current = useSyncExternalStore(activeEditor.subscribe, activeEditor.get, () => null);
   const touch = useSyncExternalStore(typeof window === "undefined" ? noSubscription : subscribeTouch, () => window.matchMedia(TOUCH).matches, () => false);
-  const [inset, setInset] = useState(0);
+  const [bottom, setBottom] = useState<number | null>(null);
 
-  // Follow the keyboard as it opens, closes or the page scrolls under it
+  // Follow the keyboard as it opens, closes or the page moves under it. iOS
+  // doesn't always send an event for each move, so keep measuring each frame
+  // for a moment after one, until the keyboard has settled.
   useEffect(() => {
     const viewport = window.visualViewport;
     if (!current || !touch || !viewport) return;
-    const update = () => setInset(keyboardInset());
+    let frame = 0;
+    let until = 0;
+    const measure = () => {
+      setBottom(visibleBottom());
+      frame = performance.now() < until ? requestAnimationFrame(measure) : 0;
+    };
+    const update = () => {
+      until = performance.now() + SETTLE_MS;
+      cancelAnimationFrame(frame);
+      measure();
+    };
     update();
     viewport.addEventListener("resize", update);
     viewport.addEventListener("scroll", update);
+    window.addEventListener("scroll", update);
     return () => {
+      cancelAnimationFrame(frame);
       viewport.removeEventListener("resize", update);
       viewport.removeEventListener("scroll", update);
+      window.removeEventListener("scroll", update);
     };
   }, [current, touch]);
 
@@ -70,7 +94,7 @@ export default function PhoneToolbar() {
       role="toolbar"
       aria-label="Editing controls"
       className="phone-toolbar fixed left-0 right-0 z-40 flex border-t border-border bg-paper"
-      style={{ bottom: inset }}
+      style={bottom === null ? { bottom: 0 } : { top: bottom, transform: "translateY(-100%)" }}
     >
       {BUTTONS.map(({ action, glyph, label }) => {
         const disabled = suggesting && OUTLINE_ACTIONS.has(action);

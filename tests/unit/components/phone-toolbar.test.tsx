@@ -78,11 +78,52 @@ describe("PhoneToolbar", () => {
     vi.stubGlobal("visualViewport", vv);
     activeEditor.set({ editor, suggesting: () => false });
     render(createElement(PhoneToolbar));
-    expect(screen.getByRole("toolbar").style.bottom).toBe("300px");
+    const toolbar = () => screen.getByRole("toolbar");
+    expect(toolbar().style.top).toBe("500px");
+    expect(toolbar().style.transform).toBe("translateY(-100%)");
     act(() => {
       vv.height = 800;
       vv.dispatchEvent(new Event("resize"));
     });
+    expect(toolbar().style.top).toBe("800px");
+  });
+
+  it("stays above the keyboard when Safari moves the page to show the caret", () => {
+    // A tap low on the screen (an older journal day): iOS shifts the visible
+    // area down the page, and the window's height no longer says where the keyboard is
+    touchScreen(true);
+    const vv = viewport(300);
+    vi.stubGlobal("visualViewport", vv);
+    activeEditor.set({ editor, suggesting: () => false });
+    render(createElement(PhoneToolbar));
+    act(() => {
+      vv.offsetTop = 200;
+      vi.stubGlobal("innerHeight", 500);
+      vv.dispatchEvent(new Event("scroll"));
+    });
+    expect(screen.getByRole("toolbar").style.top).toBe("700px");
+  });
+
+  it("keeps measuring while the keyboard slides in, even without events", () => {
+    touchScreen(true);
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => frames.push(callback));
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+    const vv = viewport(0);
+    vi.stubGlobal("visualViewport", vv);
+    activeEditor.set({ editor, suggesting: () => false });
+    render(createElement(PhoneToolbar));
+    expect(screen.getByRole("toolbar").style.top).toBe("800px");
+    vv.height = 500; // the keyboard opened, with no event
+    act(() => frames.shift()?.(0));
+    expect(screen.getByRole("toolbar").style.top).toBe("500px");
+  });
+
+  it("sits at the bottom of the window where there is no visual viewport", () => {
+    touchScreen(true);
+    vi.stubGlobal("visualViewport", undefined);
+    activeEditor.set({ editor, suggesting: () => false });
+    render(createElement(PhoneToolbar));
     expect(screen.getByRole("toolbar").style.bottom).toBe("0px");
   });
 });
