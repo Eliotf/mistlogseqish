@@ -66,7 +66,7 @@ One line per feature; the details are in section 6 or in the decision log.
 | F15 | Export to Logseq markdown | 🟡 | M3 | `pages/<slug>.md` and `journals/YYYY_MM_DD.md`, links written as `[[Current Title]]` |
 | F16 | Comments and suggest mode (CriticMarkup) | 🟢 | — | Inherited from Mist and kept, along with live collaboration (F30). Suggestions don't record who made them; comments record the tab's random name. How they fit the index, export and sharing: open question 1 |
 | F17 | Responsive layout for phones | 🟢 | M2b.2 | See 6.7. Keyboard toolbar above the on-screen keyboard, compact header, ☰ menu (2026-11-04 onwards) |
-| F18 | Side panel: Cmd/Ctrl+click opens a page beside this one | 🟢 | M2 | See 6.7. Like Roam's side-by-side pages (2026-10-29) |
+| F18 | Side panel: Cmd/Ctrl+click opens a page beside this one | 🟢 | M2 | See 6.7. Like Roam's side-by-side pages (2026-10-29); the Tasks list can go there too (2026-11-25) |
 | F20 | Fuzzy dates | 🟢 | M2b.3 | See 6.2. `@` and `[[` date suggestions (2026-11-11) |
 | F21 | All pages list | 🟢 | M2b.2 | See 6.3. `/pages`, with delete, one page or several (2026-11-04, 2026-11-11). The shared badge and permissions come with M4 |
 | F22 | Pomodoro timer (`{{POMO}}`) | 🟢 | M2b | See 6.4. Done 2026-11-23 |
@@ -189,7 +189,7 @@ Like Roam's `{{POMO}}` timer. Done 2026-11-23.
 - A status line while the index is catching up after a rebuild (`GET /api/index/status`, asked when the sidebar appears, when the tab is shown again and, while catching up, on each move; never on a timer).
 - Shown or hidden with `t l` or the header's sidebar button, remembered per browser. On phones it is the ☰ menu.
 
-**Side panel (F18)** (2026-10-29): Cmd/Ctrl+click or Alt+Shift+Enter opens a page there; pages stack newest first (at most 10), each a live editor with a close button; `t r` shows or hides the panel; remembered per browser. On a page it takes the comments column's place (its Comments button hides it). A full-screen sheet on phones.
+**Side panel (F18)** (2026-10-29): Cmd/Ctrl+click or Alt+Shift+Enter opens a page there; pages stack newest first (at most 10), each a live editor with a close button; `t r` shows or hides the panel; remembered per browser. On a page it takes the comments column's place (its Comments button hides it). A full-screen sheet on phones. Cmd/Ctrl+click on Tasks (the header or the sidebar) puts the Tasks list there (2026-11-25), refreshed when opened, when the tab is shown again and with ↻.
 
 **Search (F13)** (2026-11-11):
 - Cmd/Ctrl+K from anywhere (even while typing), or Search in the left sidebar (on phones and while the sidebar is hidden, in the header), opens a search box as in the prototype.
@@ -433,6 +433,7 @@ Larger architecture questions (local-first, a native iPhone app, rendering in th
 | 2026-11-23 | Pomodoro (F22): `{{POMO N}}` sets the focus length; finishing a round chimes; no notification, no journal log line; each device keeps its own timers (stored in the browser, never in the page) | The owner's choices; keeping timer state out of the page avoids a document schema change and keeps the text portable |
 | 2026-11-23 | Each journal day from today on starts with `- What are you thinking about {{POMO 10}}`, written once by the server the first time the day is opened; a deleted line stays deleted; past and imported days are left alone | The owner wants the prompt every day. Written by `DocumentAgent` under its lock and recorded, so two devices can't add it twice. For today and later days this replaces 2026-10-26's "opening a day saves nothing": opening one now creates it |
 | 2026-11-23 | Ship the held interim offline layer (F14) now, before deciding local-first or browser rendering | The owner wants to use the journal offline on the phone; the pieces to replace later are listed in `docs/design-choices.md` |
+| 2026-11-25 | The Tasks list can be opened in the side panel with Cmd/Ctrl+click on Tasks; tasks in it open in the main view (Cmd/Ctrl+click beside it). It loads from the Tasks view's own loader, and refreshes on opening, on returning to the tab, on moving to another kind of screen and with ↻, never by polling | The owner wants the list beside the journal while working, as a linked page can be |
 
 ## 12. Changelog
 
@@ -503,3 +504,4 @@ Larger architecture questions (local-first, a native iPhone app, rendering in th
 - 2026-11-23: Pomodoro timer (F22): `{{POMO}}` and `{{POMO 10}}` show an inline timer with start, pause and reset, a chime at the end of a round, kept per device. No document format or index change.
 - 2026-11-23: Phone keyboard toolbar (F17): placed from the visible area alone and re-measured while the keyboard settles, so it no longer hides behind the iPhone keyboard when a tap low on the screen (as on an older journal day) makes Safari move the page.
 - 2026-11-25: v0.4. PRD tidied: the feature table is one line per feature, with the details moved into new specs 6.5 (journal feed and the daily line), 6.6 (references and tasks), 6.7 (getting around), 6.8 (offline) and 6.9 (import and images); F11 and F12 say what is true today (no sharing built; random names); F36 partly done; milestones rewritten as done and still to do; the decision log and changelog put in date order; superseded decisions marked; open questions 1 and 2 pointed at the sharing plan.
+- 2026-11-25: The Tasks list (F6) opens in the side panel (F18) with Cmd/Ctrl+click on Tasks. No server, schema or document format change.

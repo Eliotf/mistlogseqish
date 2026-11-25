@@ -65,6 +65,7 @@ const CHECKS: Record<string, Check[]> = {
     { file: "app/lib/side-panel.tsx", has: ['event.key === "t"', "event.key === key", 'key: "r" | "l" = "r"'] },
     { file: SHELL, has: ["useToggleShortcut(panel.toggle)"] },
   ],
+  "tasks-side": [{ file: "app/components/TasksLink.tsx", has: ["event.metaKey || event.ctrlKey", "panel.open(TASKS_PANEL_ID)"] }],
   "search-choose": [{ file: SEARCH_BOX, has: ['event.key === "ArrowDown" || event.key === "ArrowUp"'] }],
   "search-open": [{ file: SEARCH_BOX, has: ['event.key === "Enter"', "void choose(rows[current], side)"] }],
   "search-side": [{ file: SEARCH_BOX, has: ["const side = event.metaKey || event.ctrlKey", "void choose(rows[index], event.metaKey || event.ctrlKey)"] }],

@@ -1,8 +1,10 @@
-import { useCallback } from "react";
-import { Link, useLocation, useNavigate } from "react-router";
+import { useCallback, useEffect } from "react";
+import { Link, useFetcher, useLocation, useNavigate } from "react-router";
 import { useYjsEditor } from "~/lib/useYjsEditor";
 import { DocumentProvider } from "~/lib/DocumentContext";
-import { useSidePanel } from "~/lib/side-panel";
+import { TASKS_PANEL_ID, useSidePanel } from "~/lib/side-panel";
+import TasksView from "~/components/TasksView";
+import type { loader as tasksLoader } from "~/routes/tasks";
 import { linkHref, type LinkTarget } from "~/lib/page-titles";
 import { useLinkTarget } from "~/lib/useLinkTarget";
 import { journalTitle, parseJournalDate } from "~/lib/note-ids";
@@ -58,11 +60,55 @@ export default function SidePanel() {
         </button>
       </div>
       <div className="flex-1 overflow-y-auto">
-        {panel.pages.map((pageId) => (
-          <SidePage key={pageId} pageId={pageId} />
-        ))}
+        {panel.pages.map((pageId) => (pageId === TASKS_PANEL_ID ? <SideTasks key={pageId} /> : <SidePage key={pageId} pageId={pageId} />))}
       </div>
     </aside>
+  );
+}
+
+/**
+ * The Tasks list (PRD F6) in the panel, from the Tasks view's own loader.
+ * Fetched when opened, when the tab is shown again, when the main view moves
+ * to another kind of screen (the fetcher's `load` changes) and with ↻; never polled.
+ */
+function SideTasks() {
+  const panel = useSidePanel();
+  const { data, state, load } = useFetcher<typeof tasksLoader>();
+  useEffect(() => {
+    void load("/tasks");
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void load("/tasks");
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [load]);
+
+  return (
+    <section aria-label="Tasks" className="border-b border-border pb-4">
+      <div className="flex items-baseline gap-2 px-6 pt-4">
+        <Link to="/tasks" className="grow truncate text-lg font-semibold text-ink hover:underline" title="Open in the main view">
+          Tasks
+        </Link>
+        <button
+          type="button"
+          onClick={() => void load("/tasks")}
+          disabled={state === "loading"}
+          aria-label="Refresh tasks"
+          title="Refresh"
+          className="px-1 text-muted hover:text-ink disabled:opacity-50"
+        >
+          ↻
+        </button>
+        <button type="button" onClick={() => panel.close(TASKS_PANEL_ID)} aria-label="Close Tasks" className="px-1 text-muted hover:text-ink">
+          ✕
+        </button>
+      </div>
+      {data ? (
+        <TasksView open={data.open} done={data.done} pending={data.pending} loadFailed={data.loadFailed} inPanel />
+      ) : (
+        <p className="px-6 pt-2 text-sm text-muted">Loading tasks…</p>
+      )}
+    </section>
   );
 }
 

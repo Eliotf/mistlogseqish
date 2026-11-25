@@ -10,6 +10,7 @@ import { UNTITLED } from "~/lib/page-title";
 import { APP_DISPLAY_NAME } from "~/shared/constants";
 import TodayButton from "~/components/TodayButton";
 import NewPageButton from "~/components/NewPageButton";
+import TasksLink from "~/components/TasksLink";
 
 export const SIDEBAR_ID = "left-sidebar";
 
@@ -59,9 +60,9 @@ export function SidebarContents({ onChoose, fetchStatus }: ContentsProps) {
             </NavLink>
           </li>
           <li>
-            <NavLink to="/tasks" end onClick={onChoose} className={ROW}>
+            <TasksLink onChoose={onChoose} className={ROW}>
               Tasks
-            </NavLink>
+            </TasksLink>
           </li>
           {search && (
             <li>

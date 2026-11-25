@@ -11,6 +11,8 @@ import { pageTitles } from "./page-titles";
 
 /** Most pages the panel holds; each is a live connection. */
 export const MAX_SIDE_PAGES = 10;
+/** The Tasks list's place in the panel's list; never a page ID (those are 8 letters and digits). */
+export const TASKS_PANEL_ID = "view:tasks";
 const STORAGE_KEY = "mistlog-side-panel";
 
 export interface SidePanel {

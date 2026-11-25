@@ -34,6 +34,7 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
       { id: "search", keys: ["Mod+K"], action: "Search, even while typing" },
       { id: "left-sidebar", keys: ["t l"], action: "Show or hide the sidebar (on a phone, the menu)" },
       { id: "side-panel", keys: ["t r"], action: "Show or hide the side panel" },
+      { id: "tasks-side", keys: ["Mod+click"], action: "On Tasks: open the list in the side panel" },
     ],
   },
   {

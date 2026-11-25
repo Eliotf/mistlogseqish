@@ -6,6 +6,7 @@ import ThemeSelector from "~/components/ThemeSelector";
 import ShortcutsButton from "~/components/ShortcutsButton";
 import { SidebarButtons } from "~/components/LeftSidebar";
 import HistoryButtons from "~/components/HistoryButtons";
+import TasksLink from "~/components/TasksLink";
 import { useLeftSidebar } from "~/lib/left-sidebar";
 
 /**
@@ -31,12 +32,9 @@ export default function AppHeader({ children }: { children?: ReactNode }) {
         <SearchButton />
       </div>
       {/* Also in the sidebar; kept in the bar at the owner's request (2026-11-11) */}
-      <Link
-        to="/tasks"
-        className="flex shrink-0 items-center border-r border-border px-2 text-xs uppercase tracking-wider transition-colors hover:bg-border sm:px-3 sm:text-sm"
-      >
+      <TasksLink className="flex shrink-0 items-center border-r border-border px-2 text-xs uppercase tracking-wider transition-colors hover:bg-border sm:px-3 sm:text-sm">
         Tasks
-      </Link>
+      </TasksLink>
       <Link
         to="/pages"
         className="flex shrink-0 items-center border-r border-border px-2 text-xs uppercase tracking-wider transition-colors hover:bg-border sm:px-3 sm:text-sm"
