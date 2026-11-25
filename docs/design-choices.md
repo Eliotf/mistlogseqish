@@ -8,7 +8,7 @@ Big questions that change Mistlog's architecture, written down so the owner can 
 | 2 | A native iPhone (Swift) app alongside the web app? | Open (raised 2026-11-12) | Nothing yet |
 | — | Short-term offline journal (A–D, F below) | Built 2026-11-12 as an interim layer, held, then made live 2026-11-23; see "What the interim offline layer is" (E not yet) | — |
 | 3 | Render screens in the browser from local data, rather than on the server? | Open (raised 2026-11-12) | Simplifying the offline layer |
-| 4 | Token-based access: share pages (and blocks) by revocable token, with people now and agents over MCP later? | Open, planned (raised 2026-11-12); four decisions to make, see section 4 | F11 sharing, F12 (in part), M4, an MCP server |
+| 4 | Token-based access: share pages (and blocks) by revocable token, with people now and agents over MCP later, and name the people who comment, suggest and edit? | Open, planned (raised 2026-11-12, names added 2026-11-25); decisions to make, see section 4 | F11 sharing, F12 (in part), M4, an MCP server |
 
 Known risks we're holding are in `PRD.md` section 10 (Risks). Features that don't depend on these go ahead as normal: editor behaviour, layout, tasks, references, and so on.
 
@@ -166,8 +166,31 @@ Mistlog renders every screen on the server (React Router SSR), with data from se
 - An agent probably wants more than one page: that's the `workspace` scope, read-only at first.
 - Some MCP clients (claude.ai connectors) expect OAuth rather than a bearer token. Claude Code takes a bearer token. OAuth would mean a new dependency (Cloudflare's `workers-oauth-provider`), so ask first if it's needed.
 
+### Names (added 2026-11-25)
+
+The owner wants people to name themselves, so comments, suggestions and edits say who made them, as in Mist.
+
+**What happens today:**
+- Every tab gets a random name and colour ("User 123", `randomUserInfo` in `app/lib/useYjsEditor.ts`), new on every reload.
+- **Live cursors** show that name.
+- **Comments and replies** keep a copy of the name and colour when made (the `threads` map in the page's Yjs document).
+- **Suggestions** (the CriticMarkup insert and delete marks) record no author at all.
+- **Edits** record nobody.
+
+Mist's open-source code has no way to set a name, so this is designed from scratch.
+
+**Proposed:**
+- **People who sign in** (Access) set a name once. It is kept on the server against their Access email, so it's the same on every device, and needs step 0's check to know who they are.
+- **Guests on a share link** type a name, kept in that browser. The link's label is offered as the starting value.
+- Comments, replies and suggestions record an author ID as well as a copy of the name, so a later rename can show everywhere.
+- **Edits:** the name shows on your cursor while you edit, and each page keeps a short "edited by" list, recorded by its `DocumentAgent` from the connection, so no per-line text changes.
+- A guest's name is their own claim. The owner also sees which link they came through.
+
+**Needs approval:** an author on suggestion marks is a Yjs schema change (bump `DOC_FORMAT_VERSION`). Names on the server are a workspace index migration.
+
 ### Risks
 
+- **Names can be made up:** a guest can type any name, including the owner's. Showing the link they came through is the check.
 - **Token in the address:** it lands in the guest's browser history and in Workers Logs (the owner's). Share pages send `Referrer-Policy: no-referrer` so it doesn't leak to other sites through links.
 - **Offline copies stay:** the guest's browser keeps an IndexedDB copy of the page. Revoking stops new syncing but can't wipe what they already have.
 - **Comments are visible:** comments and suggestions live in the page's Yjs document, so a view link shows them. Separate comment or suggest modes could come later.
@@ -188,9 +211,22 @@ Mistlog renders every screen on the server (React Router SSR), with data from se
 
 ### Decisions for the owner
 
+Links:
+
 1. **Copying a link again later.** Recommended: each link is shown once, when made, as GitHub does with tokens; only the hash is stored, and a lost link means making another. The alternative stores the token so the dialog can copy it any time: more convenient, less safe.
 2. **Expiry by default?** Suggested: never, with an expiry you can choose.
 3. **Read-only snapshots for shared blocks at first?** Suggested: yes.
 4. **Order.** Suggested: steps 0 and 1 first (about one iteration), then MCP, then blocks, since an agent may be more use than sharing a block.
+5. **A "suggest only" link** (comment and suggest, not edit), alongside view and edit? Suggested: later. The browser can hold a guest to suggest mode easily, but the server can only enforce it by checking every incoming edit, which is a sizeable job.
+6. **Comments on view links.** They live in the page's Yjs document, so a view link shows them, and hiding them means a separate copy of the page. Suggested: show them, and say so in the share dialog.
+7. **Others on the Access whitelist.** Today every tester has full access. Suggested: keep that until accounts (F12), and share with anyone else by link.
 
-When decided, write it into `PRD.md` as spec 6.5 under M4, with decision log rows, the F11 and F12 rows, and the "Access only at the edge" risk updated.
+Names:
+
+8. **Where a name comes from.** Suggested: signed-in people set one name, kept on the server, used on every device; guests type one, kept in their browser. The alternative is Mist-style, one name per browser for everyone: simpler, but set again on each device.
+9. **When a guest is asked.** Suggested: before their first comment, suggestion or edit; never on a view link.
+10. **Old comments after a rename.** Suggested: store an author ID, so the new name shows everywhere (as page links do). The alternative keeps each comment's copy as it was.
+11. **Suggestions name their author.** Suggested: yes. It is a document format change (`DOC_FORMAT_VERSION`), so older tabs reload once.
+12. **What "edits are named" means.** Suggested: your name on your cursor while you edit, and an "edited by" list per page. Naming each line's last editor writes on every keystroke and makes every edit a format change; full per-letter history is a much larger job.
+
+When decided, write it into `PRD.md` as spec 6.10 under M4, with decision log rows, the F11 and F12 rows, and the "Access only at the edge" risk updated.
