@@ -1,10 +1,10 @@
 # Mistlog: Product Requirements
 
-**Status:** Draft v0.3 · **Last updated:** 2026-11-12
+**Status:** Draft v0.4 · **Last updated:** 2026-11-25
 
 > **How to keep this alive.** Edit in place. When scope, status or a decision changes, update the feature table, add a line to the Decision log, and add a line to the Changelog. Agents: read the milestone you are working on before starting, and update this file in the same PR when behaviour changes.
 
-Status key: ✅ prototyped (UI demo only, not built for real) · 🟢 works today (inherited from Mist) · 🟡 planned · ⬜ future · ❌ cut
+Status key: ✅ prototyped only (UI demo, not built) · 🟢 built and live (or inherited from Mist) · 🟡 planned or partly built · ⬜ future · ❌ cut
 
 ## 1. Summary
 
@@ -44,43 +44,46 @@ It starts from [Mist](https://github.com/inanimate-tech/mist) (Cloudflare Worker
 
 ## 5. Features
 
+One line per feature; the details are in section 6 or in the decision log.
+
 | ID | Feature | Status | Milestone | Notes |
 |----|---------|--------|-----------|-------|
 | F0 | Documents persist (remove Mist's 99-hour expiry) | 🟢 | M1 | Done 2026-10-22: Mist's deleting `alarm()` override removed, so leftover deletion alarms on older documents fire harmlessly |
-| F1 | Daily notes feed (today on top, lazily created) | 🟢 | M2 | One document per day with a fixed ID, e.g. `journal-2026-10-21`. Days with no notes are skipped; today's journal is created on first keystroke. Mist's document header is shown on every day (revisit after M2, see open questions) |
+| F1 | Daily notes feed, and the daily line | 🟢 | M2 | See 6.5. Today on top, then earlier days with notes; one document per day (`journal-YYYY-MM-DD`). Each day from today on starts with a line and a 10 minute Pomodoro (2026-11-23) |
 | F2 | Pages with titles and readable URLs | 🟢 | M2 | One document per page with a random permanent ID. The title lives in the page's document and is copied to the index. Titles are unique ignoring case; renaming to an existing title is refused (merge is F32). URLs are `/page/<slug>` and `/journal/YYYY-MM-DD`; after a rename the old slug redirects |
-| F3 | `[[wikilinks]]` by page ID, with auto-pair and title autocomplete | 🟢 | M2 | See 6.1. Logseq style: `[[Title]]` is editable text; linking to a new title creates an empty placeholder page. Steps: ~~2.5a showing links~~ and ~~2.5b typing and editing links~~ (done 2026-10-28), ~~2.5c pasting~~ and ~~2.5d side panel (F18)~~ (done 2026-10-29) |
-| F4 | Backlinks / linked references panel | 🟢 | M2 | Done 2026-10-31 (chunk 2.6). Below a page's or journal day's text: linking pages, most recently updated first, each with its linking lines as read-only snapshots from the index, shown open with the lines nested under them (since 2026-11-18, each foldable with an arrow since 2026-11-19; up to 30, then a count; a linking line nested under another is shown once, inside it); links show current titles; click to open, Cmd/Ctrl+click for the side panel. Refreshed on open and on returning to the tab. Not in the feed or side panel |
-| F5 | Editable page titles; rename updates every link instantly | 🟢 titles | M2 | One title change in the index; no linking page is rewritten (see 6.1). Journal titles are dates, not editable |
-| F6 | Tasks: `TODO` / `DOING` / `DONE` (and `LATER` / `NOW`) and a Tasks view | 🟢 | M2b.1 | Cmd/Ctrl+Enter cycles (F42). Shown as styled text in the editor (no checkbox). The Tasks view (`/tasks`) is one read-only list across all pages, NOW, DOING, TODO, LATER, higher priority first, then recently done; each task is shown like a linked reference, with its sub-bullets under it (since 2026-11-19), folded at first, shown with the fold arrow beside it (since 2026-11-22), and opens its page zoomed into it (decisions 2026-10-28, 2026-11-01) |
+| F3 | `[[wikilinks]]` by page ID, with auto-pair and title suggestions | 🟢 | M2 | See 6.1. Logseq style: `[[Title]]` is editable text; linking to a new title creates an empty page; pasted links are converted (done 2026-10-29) |
+| F4 | Linked references | 🟢 | M2 | See 6.6. Below each page and journal day, with the lines nested under each linking line (2026-10-31, nested lines 2026-11-18) |
+| F5 | Editable page titles; rename updates every link instantly | 🟢 | M2 | One title change in the index; no linking page is rewritten (see 6.1). Journal titles are dates, not editable |
+| F6 | Tasks and the Tasks view | 🟢 | M2b.1 | See 6.6. Styled text in the editor (no checkbox); `/tasks` is one read-only list across all pages |
 | F7 | Bullets and indent | 🟢 | M2 | Tab / Shift+Tab indent with a tab character, children move with their parent. Enter continues a bullet at the same level; Backspace on an empty bullet outdents, then removes it. Logseq-compatible text. A long line wraps under its text, not under its bullet (2026-11-11) |
-| F8 | Collapsible left and right sidebars (`t l`, `t r`) | 🟢 | M2b.2 | Left, done 2026-11-11 as in the prototype: Journals, Today, All pages, Tasks, Search (opens the Cmd/Ctrl+K box) and New page; Recent, the last 8 pages and journal days opened in this browser, by their current title (deleted pages left out); and a status line while the index is catching up after a rebuild (`GET /api/index/status`, asked when the sidebar appears, when the tab is shown again and, while catching up, on each move; never on a timer). Shown or hidden with `t l` or the header's sidebar button, remembered per browser. On phones it is the menu behind ☰ (F17). Favourites wait until it is decided how a page becomes one. Right: pages opened side by side (F18) |
+| F8 | Collapsible left and right sidebars (`t l`, `t r`) | 🟢 (Favourites ⬜) | M2b.2 | See 6.7. Left done 2026-11-11; the right one is the side panel (F18). Favourites wait until it is decided how a page becomes one |
 | F9 | Live markdown formatting, always-editable | 🟢 | — | Mist's TipTap editor (each line a paragraph, markdown styled in place) |
-| F10 | Sync across devices with automatic merge | 🟢 | — | Yjs in a Durable Object per page. Offline editing is F14 |
-| F11 | Sharing: private / link view / link edit | ✅ UI | M4 | Today any document URL is readable and editable by anyone |
-| F12 | Accounts and login | 🟡 | M4 | Until then, Cloudflare Access gates the whole site with an email whitelist (one-time PIN or Cloudflare login; since 2026-11-05) |
-| F13 | Search across pages | 🟢 | M2b.2 | Done 2026-11-11. Cmd/Ctrl+K from anywhere (even while typing), or Search in the left sidebar (on phones and while the sidebar is hidden, in the header), opens a search box as in the prototype: titles (starting with the query first), then pages whose text matches, one row per page with a snippet and the matched words highlighted, then a row to create a page with the query as its title (for a date, to open that day). An empty query lists recently edited pages. ↑/↓ choose, Enter opens, Cmd/Ctrl+Enter or Cmd/Ctrl+click opens in the side panel, Esc closes and puts the focus back. Journal days are titled by their date; days with no text and deleted pages never appear; untitled pages are found by their text. Links are searched by their page's current title, not the stored copy, so a rename is found at once (index schema 7, parser version 4). Read through `GET /api/search`, where sharing (M4) will filter results. The left sidebar's Search entry came with F8 (2026-11-11) |
-| F14 | Offline editing | 🟡 | M3 | Offline journal (interim layer, built 2026-11-12, live 2026-11-23): a service worker lets the site open with no connection; the feed and journal days show from the copies kept in this browser; the last 10 days with notes are kept even if not opened (refreshed at most hourly while online); a notice says when you're offline; it can be added to the Home Screen. First part done 2026-11-05: every page you open is kept in the browser (y-indexeddb, approved 2026-11-05), so it shows at once and edits not yet sent survive a reload and sync when the server is back. Still open: local-first for everything (search, backlinks, Tasks offline, creating pages offline), see `docs/design-choices.md` questions 1 and 3 |
+| F10 | Sync across devices with automatic merge | 🟢 | — | Yjs in a Durable Object per page. Offline is F14 |
+| F11 | Sharing: private / link view / link edit | 🟡 | M4 | Not built (the prototype has the dialog). Plan and open decisions: `docs/design-choices.md` question 4. Until then everyone on the Access whitelist can read and edit every page, and no one else can reach the site |
+| F12 | Accounts, sign-in and names | 🟡 | M4 | Cloudflare Access gates the site with an email whitelist (one-time PIN or Cloudflare login; since 2026-11-05), but the Worker doesn't check the sign-in itself yet. People show as a random "User 123", new in every tab (Mist's); naming yourself comes with sharing (`docs/design-choices.md` question 4) |
+| F13 | Search across pages | 🟢 | M2b.2 | See 6.7. Cmd/Ctrl+K search box (2026-11-11) |
+| F14 | Offline | 🟡 offline journal live | M3 | See 6.8. Opened pages kept in the browser (2026-11-05); the app and recent journal days open with no connection (2026-11-23). Local-first is open (`docs/design-choices.md` questions 1 and 3) |
 | F15 | Export to Logseq markdown | 🟡 | M3 | `pages/<slug>.md` and `journals/YYYY_MM_DD.md`, links written as `[[Current Title]]` |
-| F16 | Comments and suggest mode (CriticMarkup) | 🟢 | — | Inherited from Mist and kept, along with live collaboration (F30). How they fit the workspace index, export and sharing is to be designed later (see open questions) |
-| F17 | Responsive layout for phones | 🟢 | M2b.2 | Done 2026-11-04: while typing on a touch screen, a keyboard toolbar (outdent, indent, task, link, move up and down, fold, done) sits above the on-screen keyboard; compact header; no per-day Mist bar in the feed; Mist's panel starts collapsed; fold arrows always visible on touch. The `@` date button came with fuzzy dates (F20) on 2026-11-11. The left sidebar's contents (F8) open from ☰ in the compact header as a panel sliding in from the left (2026-11-11): Escape, tapping outside, ✕ or choosing anything closes it, and the focus stays inside while it is open and goes back to ☰ after. Run from the Home Screen, where there is no browser bar, the header has back and forward buttons (2026-11-12; hidden in a browser tab). Screens fit the visible height (`dvh`, 2026-11-18), so their bottoms are not under Safari's or Chrome's bars. Dragging a bullet sideways could be added later as a shortcut |
-| F18 | Cmd/Ctrl+click a link opens the page in the right panel | 🟢 | M2 | Like Roam's side-by-side pages (done 2026-10-29, chunk 2.5d). Cmd/Ctrl+click or Alt+Shift+Enter opens a page there; pages stack newest first (at most 10), each a live editor with a close button; `t r` shows or hides the panel; remembered per browser. On a page it takes the comments column's place (its Comments button hides it). A full-screen sheet on phones |
-| F20 | Fuzzy dates | 🟢 | M2b.3 | See 6.2. Done 2026-11-11: `@` after a space or at the start of a line lists days for the phrase typed after it, and `[[` lists up to three matching days below the pages; choosing one links that day's journal. Phrases as in 6.2 plus `this <day>`, `<day>` alone, short day and month names (`fri`, `sept`) and `31 oct`. The phone toolbar has an `@` button. Weeks run Monday to Sunday: `this friday` is the current week's, `next friday` the following week's, `last friday` the previous week's; `friday` alone is the coming one. A week-start setting can come later |
-| F21 | All pages list | 🟢 | M2b.2 | See 6.3. Done 2026-11-04 at `/pages` (All pages in the left sidebar since 2026-11-11): filter, sort by title, backlinks or last edited, journal days on request, delete with confirmation, one page or several at once (2026-11-11: tick boxes, "select all shown" covers every row the filter shows, one confirmation naming the pages, failures stay listed and ticked). Deleting is soft: the page leaves the index (its title is free, its addresses 404, links to it show as missing, open tabs show "Deleted") and its storage is kept for a later Trash. Journal days can't be deleted yet. The shared badge comes with sharing (M4), and so do permissions |
-| F22 | Pomodoro timer (`{{POMO}}`) | 🟢 | M2b | See 6.4. Done 2026-11-23: `{{POMO}}` (25 minutes) or `{{POMO 10}}` (10; Roam's `{{[[POMO]]}}` and `{{POMO: 10}}` too) shows an inline timer where it is written, its text hidden except on the caret's line; ▶/⏸ starts or pauses, ↺ resets; Mod+Alt+P and Mod+Alt+Shift+P do the same for the caret's line. Focus, then a 5 minute break (15 after every fourth round), each started by hand; a chime when a round ends. Each device keeps its own timers (not synced), and a reload or sleeping tab doesn't lose time. Moved up from M5 in the 2026-11-04 order (C) |
+| F16 | Comments and suggest mode (CriticMarkup) | 🟢 | — | Inherited from Mist and kept, along with live collaboration (F30). Suggestions don't record who made them; comments record the tab's random name. How they fit the index, export and sharing: open question 1 |
+| F17 | Responsive layout for phones | 🟢 | M2b.2 | See 6.7. Keyboard toolbar above the on-screen keyboard, compact header, ☰ menu (2026-11-04 onwards) |
+| F18 | Side panel: Cmd/Ctrl+click opens a page beside this one | 🟢 | M2 | See 6.7. Like Roam's side-by-side pages (2026-10-29) |
+| F20 | Fuzzy dates | 🟢 | M2b.3 | See 6.2. `@` and `[[` date suggestions (2026-11-11) |
+| F21 | All pages list | 🟢 | M2b.2 | See 6.3. `/pages`, with delete, one page or several (2026-11-04, 2026-11-11). The shared badge and permissions come with M4 |
+| F22 | Pomodoro timer (`{{POMO}}`) | 🟢 | M2b | See 6.4. Done 2026-11-23 |
 | F30 | Live multiplayer on shared pages | 🟢 | — | Already how Mist works; needs permissions (M4) before it is safe to use with others |
-| F31 | Graph view, Logseq import, attachments (R2) | 🟡 import and images done | M2b.5 (import after M2b.4) | Import step 1 done 2026-11-05: `/import` (linked from All pages) reads a picked Logseq graph folder in the browser and reports what an import would do, writing nothing; only titles and dates are sent to check what exists. Conversion rules: indentation to tabs (`\t - ` is one level, never more than one level deeper than the line above), `id::` to block IDs, `collapsed::` to folds, `title::` to the title, continuation lines kept under their bullet, conflict and sync-backup copies skipped, titles with `[[`/`]]` kept without the brackets, date pages joined to their journal day. Step 2 done 2026-11-06: Import writes it (pages and days found or created, lines added below existing content with links by page ID), with progress; an import cut short is continued by choosing the folder again; undo removes exactly the lines it added and soft-deletes the pages it created, including the empty pages for linked titles. Several imports since 2026-11-09: each folder's import is listed by its folder name and undone on its own; one runs or is undone at a time; importing a folder already imported warns that its lines would be added twice; a page two imports use stays until both are undone. Images since 2026-11-18: `![alt](src)` in a page shows the picture in the line, at Logseq's `{:width N}` if given, with its text hidden except on the caret's line (the text stays as written); a click opens it full size; web addresses load as written, `../assets/<name>` from Mistlog's store, anything else stays text; one that can't load says "Image not found". The import page's Images section sends a graph's `assets/` images (PNG, JPEG, GIF, WebP, AVIF; up to 10 MB; SVG refused) to an R2 bucket (`FILES`, `mistlog-files`), apart from the import, so it can run before or after it; images already stored are skipped and never replaced, and undoing an import leaves them. PDFs and other attachments stay as text links. No upload by paste or drop yet (owner, 2026-11-18). Graph view later |
+| F31 | Logseq import, images, graph view | 🟢 import and images · ⬜ graph view, attachments | M2b.5 | See 6.9. Import 2026-11-06 (several imports 2026-11-09), images 2026-11-18 |
 | F32 | Merge pages | ⬜ | M6 | Offered when renaming a page to a title that already exists, as Logseq does. Links to both pages point to the merged page |
+| F33 | Live title updates across open tabs and devices | ⬜ | M6 | Until then, other tabs pick up a new title on next load or focus. Needs a live connection to the index |
 | F34 | Suggesting indentation changes in suggest mode | ⬜ | Later | Design the UI first: how an indent or outdent is shown as a suggestion, and accepted or rejected. Until then, bullet keys do nothing special in suggest mode (2.3) |
 | F35 | Unlinked references | ⬜ | M2b.4 | Pages that mention a page's title without linking it, with a way to link them, as Logseq shows below linked references |
-| F36 | Richer references | ⬜ | M2b.4 | Editable references (a live editor per reference) and context (parent bullets and nested lines); 2.6 shows the linking line only, read-only |
+| F36 | Richer references | 🟡 | M2b.4 | Nested lines are shown (2026-11-18). Still to do: editable references (a live editor per reference) and parent bullets as context |
 | F37 | Fold and unfold a block's children | 🟢 | M2b.1 | Arrow by the bullet, or Cmd/Ctrl+↑/↓. Folded state is a block property (Logseq's `collapsed:: true`), so it syncs to every device and everyone sharing the page (decision 2026-11-01) |
 | F38 | Move blocks | 🟢 | M2b.1 | Alt+Shift+↑/↓ moves a block with its children; drag a bullet to move it; a dropped block lands above the block it's dropped on, at that block's level (no dropping in as a child) |
-| F39 | Select whole blocks | 🟢 | M2b.1 | Esc then Shift+↑/↓; then Tab/Shift+Tab, Backspace/Delete, Cmd/Ctrl+C/X, Cmd/Ctrl+Enter (cycle tasks) on all of them, Enter to edit, Esc to leave. Cmd/Ctrl+Enter on a selection arrives with the tasks rework (F6) |
+| F39 | Select whole blocks | 🟢 | M2b.1 | Esc then Shift+↑/↓; then Tab/Shift+Tab, Backspace/Delete, Cmd/Ctrl+C/X, Cmd/Ctrl+Enter (cycle tasks) on all of them, Enter to edit, Esc to leave |
 | F40 | Zoom into a block | 🟢 | M2b.1 | Click a bullet (or Cmd/Ctrl+.) to show just that block and its children at `?block=<id>`, with a breadcrumb back; Cmd/Ctrl+, zooms out one level. In the feed or side panel, a bullet click opens the page zoomed. While zoomed, edits stay inside the block. Needs block IDs (F41) |
 | F41 | Permanent block IDs | 🟢 | M2b.1 | Every block has an ID, an invisible attribute on its line (exported as `id::` only where referenced). New lines get one from the browser that creates them; existing lines get one from their page's server, once. Splitting keeps the ID with the original text; joining keeps the upper line's ID; moving keeps it; pasted blocks get new IDs. Recorded in the index. Document format version 5; older tabs refused once |
-| F42 | More task states and priorities | 🟢 | M2b.1 | `LATER` and `NOW` alongside `TODO`/`DOING`/`DONE`; priorities `[#A]`–`[#C]`. Cmd/Ctrl+Enter cycles one way through every state (since 2026-11-11): plain → TODO → DOING → LATER → NOW → DONE → plain. The Tasks page is one read-only list across all pages: NOW, DOING, TODO, LATER, then recently DONE; clicking a task opens its page zoomed into it (decisions 2026-11-01). Part of the F6 rework |
-| F43 | Keyboard shortcut sheet and go-to shortcuts | 🟢 | M2b.2 | Done 2026-11-11. `?` outside text fields (or the `?` button in the header) opens a modal sheet of every shortcut the app has, grouped (getting around, the search box, writing, blocks, links and dates, selecting blocks, on a page), with Cmd or Ctrl as fits the computer. Esc, the close button or a click outside closes it and puts the focus back. `g j` goes to the journals and `g a` to All pages, outside text fields, with no modifier and the second key within a second. The list lives in `app/lib/shortcuts.ts`, and a test checks each entry against the code that handles it. `t l` comes with the left sidebar (F8) |
+| F42 | More task states and priorities | 🟢 | M2b.1 | See 6.6. `LATER` and `NOW` alongside `TODO`/`DOING`/`DONE`; priorities `[#A]`–`[#C]`; Cmd/Ctrl+Enter cycles through every state |
+| F43 | Keyboard shortcut sheet and go-to shortcuts | 🟢 | M2b.2 | See 6.7. `?` opens the sheet; `g j` and `g a` (2026-11-11) |
 | F44 | Slash command menu | 🟢 | M2b.3 | Done 2026-11-11: `/` at the start of a line or after a space offers TODO, DOING, LATER, NOW, DONE (sets the line's keyword), Date (opens the `@` list), Link (opens `[[ ]]`), Heading 1-3; typing narrows it, Enter or Tab chooses, Escape leaves the text. A heading on a task goes after its keyword (`- LATER ## Plans`) so it stays a task. Embed and template join with F48 and F51 |
 | F45 | Tags as pages | 🟢 | M2b.3 | Done 2026-11-05. `#tag` and `#[[multi word]]` link to pages by ID, as `[[...]]` does: the tag's name carries the same `wikilink` mark (no format change). Typing `#` suggests pages; a typed `#word` with no page creates it when you move on; pasted tags link at once; a tag shows its page's current title, and becomes `#[[...]]` when your cursor enters it after its page gained a space. Tagged lines show in linked references. Tag finding is shared by the parser and the editor (`tagsInLine`); parser version 3 (multi-word tags in the index) |
 | F46 | Properties | ⬜ | M2b.3 | `key:: value` on blocks and pages, styled; page properties include `alias::` and `tags::` |
@@ -89,7 +92,6 @@ It starts from [Mist](https://github.com/inanimate-tech/mist) (Cloudflare Worker
 | F49 | Scheduled, deadlines and agenda | ⬜ | M2b.4 | `SCHEDULED: <date>` and `DEADLINE: <date>`; today's journal lists what is due |
 | F50 | Simple queries | ⬜ | M2b.4 | `{{query ...}}` answered by the index (tasks, tags, links) |
 | F51 | Templates | ⬜ | M2b.5 | A block marked `template:: name`, inserted with `/template` |
-| F33 | Live title updates across open tabs and devices | ⬜ | M6 | Until then, other tabs pick up a new title on next load or focus. Needs a live connection to the index |
 
 ## 6. Feature specs
 
@@ -137,20 +139,108 @@ A page that lists every page.
 - Toggle to include or hide journal pages (hidden by default).
 - Click to open. "New page" creates and focuses the title.
 - Delete a page (with confirmation). Links to it remain and are shown dashed as unresolved (see 6.1).
+- Several at once (2026-11-11): tick boxes, "select all shown" covers every row the filter shows, one confirmation naming the pages; failures stay listed and ticked.
+- Deleting is soft: the page leaves the index (its title is free, its addresses 404, links to it show as missing, open tabs show "Deleted") and its storage is kept for a later Trash. Journal days can't be deleted yet.
+- Journal days with no text are left out.
+- The shared badge comes with sharing (M4).
 - Must respect permissions (only pages the viewer can read).
 - Acceptance: with 500 pages the list renders and sorts without noticeable lag (paginate or virtualise if needed).
 
 ### 6.4 Pomodoro (F22)
 
-Like Roam's `{{POMO}}` timer. Typing `{{POMO}}` in a page renders an inline timer.
+Like Roam's `{{POMO}}` timer. Done 2026-11-23.
 
-- Defaults: 25 minute focus, 5 minute break, longer break after 4 rounds. Configurable.
-- Controls: start, pause, reset. Shows remaining time inline.
+- `{{POMO}}` (25 minutes) or `{{POMO 10}}` (10) shows an inline timer where it is written; Roam's `{{[[POMO]]}}` and `{{POMO: 10}}` work too. Its text is hidden except on the caret's line.
+- ▶/⏸ starts or pauses, ↺ resets; Mod+Alt+P and Mod+Alt+Shift+P do the same for the caret's line.
+- Focus, then a 5 minute break (15 after every fourth round), each round started by hand.
+
 - On completion: a chime (built 2026-11-23). A browser notification was left out (owner, 2026-11-23).
 - A log line in today's journal on completion was left out (owner, 2026-11-23).
 - Must survive reload and backgrounded tabs, so store an end timestamp rather than counting with `setInterval`.
 - The timer does not sync across devices: each device keeps its own, in the browser (owner, 2026-11-23). A length set in the text (`{{POMO 10}}`) is the focus round; breaks are fixed for now.
 - The `{{POMO}}` text stays in the page text as-is, so exported files remain portable.
+
+### 6.5 Journal feed and the daily line (F1)
+
+- `/` shows today's journal on top, then earlier days that have notes, newest first; days with no notes are skipped. Each day is one document with a fixed ID (`journal-YYYY-MM-DD`), also opened alone at `/journal/YYYY-MM-DD`; any real date can be opened, past or future.
+- Every day in the feed is a live editor. Days connect as they come within 1200px of the screen (the first three at once) and stay connected; older days load seven at a time as you scroll, with a button for keyboard users (decision 2026-10-27).
+- On wide screens each day has a compact Mist bar (edit or suggest, connection, share, open the day); phones leave it out. Comments and accepting suggestions happen on the day's own page. Revisit whether the bar clutters the feed (open question 4).
+- A past day is created by its first real text; opening it saves nothing.
+- **The daily line** (2026-11-23): each day from today on starts with `- What are you thinking about {{POMO 10}}`. The browser asks for it once per day (`POST /api/journals/prompt`); `DocumentAgent.addDailyPrompt` writes it under the document's lock and records that it did, so a second device doesn't add it again and a deleted line stays deleted. Opening such a day therefore creates it. Past and imported days are left alone. The server refuses dates before yesterday in UTC, as it can't know the browser's today.
+- Offline, the feed shows the days kept on the device (6.8).
+
+### 6.6 References and tasks (F4, F6, F42)
+
+**Linked references (F4)**
+- Below a page's or journal day's text (not in the feed or the side panel): the pages linking to it, most recently updated first, each with its linking lines as read-only snapshots from the index (`GET /api/pages/backlinks`).
+- Each linking line shows the lines nested under it (2026-11-18), open at first and folded with an arrow beside the line (2026-11-19; not remembered). Up to 30, then a count; a linking line nested under another is shown once, inside it.
+- Links show current titles. Click to open, Cmd/Ctrl+click for the side panel. Refreshed on open and on returning to the tab.
+
+**Tasks (F6, F42)**
+- `TODO`, `DOING`, `DONE`, `LATER`, `NOW` at the start of a line, priorities `[#A]`–`[#C]`, shown as styled text (no checkbox).
+- Cmd/Ctrl+Enter cycles one way through every state (since 2026-11-11): plain → TODO → DOING → LATER → NOW → DONE → plain, on selected blocks too.
+- The Tasks view (`/tasks`) is one read-only list across all pages: NOW, DOING, TODO, LATER, higher priority first, then recently done. Each task is shown like a linked reference, with its sub-bullets under it (2026-11-19), folded at first with the fold arrow beside it (2026-11-22). Clicking a task opens its page zoomed into it.
+
+### 6.7 Getting around (F8, F13, F17, F18, F43)
+
+**Left sidebar (F8)**, as in the prototype (2026-11-11):
+- Journals, Today, All pages, Tasks, Search (opens the Cmd/Ctrl+K box) and New page.
+- Recent: the last 8 pages and journal days opened in this browser, by their current title (deleted pages left out).
+- A status line while the index is catching up after a rebuild (`GET /api/index/status`, asked when the sidebar appears, when the tab is shown again and, while catching up, on each move; never on a timer).
+- Shown or hidden with `t l` or the header's sidebar button, remembered per browser. On phones it is the ☰ menu.
+
+**Side panel (F18)** (2026-10-29): Cmd/Ctrl+click or Alt+Shift+Enter opens a page there; pages stack newest first (at most 10), each a live editor with a close button; `t r` shows or hides the panel; remembered per browser. On a page it takes the comments column's place (its Comments button hides it). A full-screen sheet on phones.
+
+**Search (F13)** (2026-11-11):
+- Cmd/Ctrl+K from anywhere (even while typing), or Search in the left sidebar (on phones and while the sidebar is hidden, in the header), opens a search box as in the prototype.
+- Results: titles (those starting with the query first), then pages whose text matches, one row per page with a snippet and the matched words highlighted, then a row to create a page with the query as its title (for a date, to open that day). An empty query lists recently edited pages.
+- ↑/↓ choose, Enter opens, Cmd/Ctrl+Enter or Cmd/Ctrl+click opens in the side panel, Esc closes and puts the focus back.
+- Journal days are titled by their date; days with no text and deleted pages never appear; untitled pages are found by their text. Links are searched by their page's current title, not the stored copy, so a rename is found at once (index schema 7, parser version 4).
+- Read through `GET /api/search`, where sharing (M4) will filter results.
+
+**Shortcut sheet (F43)** (2026-11-11): `?` outside text fields (or the `?` button in the header) opens a modal sheet of every shortcut, grouped, with Cmd or Ctrl as fits the computer. Esc, the close button or a click outside closes it and puts the focus back. `g j` goes to the journals and `g a` to All pages, outside text fields, the second key within a second. The list lives in `app/lib/shortcuts.ts`, and a test checks each entry against the code that handles it.
+
+**Phones (F17)**:
+- While typing on a touch screen, a keyboard toolbar (outdent, indent, task, link, `@` date, move up and down, fold, done) sits just above the on-screen keyboard, placed from the visible area (2026-11-23).
+- Compact header; no per-day Mist bar in the feed; Mist's panel starts collapsed; fold arrows always visible on touch.
+- The left sidebar opens from ☰ as a panel sliding in from the left: Escape, tapping outside, ✕ or choosing anything closes it; the focus stays inside while it is open and goes back to ☰ after.
+- Run from the Home Screen, where there is no browser bar, the header has back and forward buttons (2026-11-12).
+- Screens fit the visible height (`dvh`, 2026-11-18), so their bottoms are not under Safari's or Chrome's bars.
+- Links: a quick tap opens one; a long press places the caret to edit it (2026-11-12).
+- Dragging a bullet sideways to indent could come later.
+
+### 6.8 Offline (F14)
+
+- Every page you open is kept in the browser (y-indexeddb, 2026-11-05), so it shows at once, and edits not yet sent survive a reload and sync when the server is back.
+- The offline journal (an interim layer, built 2026-11-12, live 2026-11-23):
+  - a service worker lets the site open with no connection;
+  - the feed and journal days show from the copies kept in this browser, older days included as you scroll;
+  - the last 10 days with notes are kept even if not opened (refreshed at most hourly while online);
+  - a notice floats at the bottom while you're offline;
+  - it can be added to the Home Screen.
+- Still open: local-first for everything (search, backlinks, Tasks and creating pages offline), `docs/design-choices.md` questions 1 and 3; that file lists which interim pieces would be replaced. Risks are in section 10.
+
+### 6.9 Logseq import and images (F31)
+
+**Dry run** (2026-11-05): `/import` (linked from All pages) reads a picked Logseq graph folder in the browser and reports what an import would do, writing nothing; only titles and dates are sent to check what exists. Conversion rules:
+- indentation to tabs (`\t - ` is one level, never more than one level deeper than the line above);
+- `id::` to block IDs, `collapsed::` to folds, `title::` to the title;
+- continuation lines kept under their bullet;
+- conflict and sync-backup copies skipped;
+- titles with `[[`/`]]` kept without the brackets;
+- date pages joined to their journal day.
+
+**Import** (2026-11-06): pages and days found or created, lines added below existing content with links by page ID, with progress. An import cut short is continued by choosing the folder again. Undo removes exactly the lines it added and soft-deletes the pages it created, including the empty pages for linked titles.
+
+**Several imports** (2026-11-09): each folder's import is listed by its folder name and undone on its own; one runs or is undone at a time; importing a folder already imported warns that its lines would be added twice; a page two imports use stays until both are undone.
+
+**Images** (2026-11-18):
+- `![alt](src)` in a page shows the picture in the line, at Logseq's `{:width N}` if given, with its text hidden except on the caret's line (the text stays as written); a click opens it full size.
+- Web addresses load as written, `../assets/<name>` from Mistlog's store, anything else stays text; one that can't load says "Image not found".
+- The import page's Images section sends a graph's `assets/` images (PNG, JPEG, GIF, WebP, AVIF; up to 10 MB; SVG refused) to an R2 bucket (`FILES`, `mistlog-files`), apart from the import, so it can run before or after it. Images already stored are skipped and never replaced, and undoing an import leaves them.
+- PDFs and other attachments stay as text links. No upload by paste or drop yet (owner, 2026-11-18).
+
+**Later:** graph view.
 
 ## 7. Technical approach
 
@@ -160,7 +250,7 @@ Like Roam's `{{POMO}}` timer. Typing `{{POMO}}` in a page renders an inline time
 
 **Page text conventions:** inside the Yjs document, text follows Logseq conventions so that export is a straight conversion: bullets are `- `, nesting is a literal tab character, tasks are `TODO` / `DOING` / `DONE` at the start of a line. Links are marks carrying a page ID (6.1).
 
-**Workspace index:** a single `WorkspaceAgent` Durable Object (one per workspace; one in total while single-user) holds, in its SQLite:
+**Workspace index:** a single `WorkspaceAgent` Durable Object (one per workspace; one in total while single-user) holds, in its SQLite, among others (the full schema and its migrations are in `agents/workspace-index.ts`):
 - a page registry (every page ID and creation date, recorded at creation; never cleared, because Durable Objects cannot be listed)
 - `pages` (id, kind page or journal, title, journal date, updated_at, deleted)
 - `links` (source page id, target page id)
@@ -173,36 +263,36 @@ Each `DocumentAgent` re-indexes itself after edits settle (debounced with the Ag
 
 **Quality gates:**
 - CI (`.github/workflows/ci.yml`) runs typecheck, lint and tests on every push and pull request.
-- Coverage thresholds in `vitest.config.ts` are fixed floors (lines 88, branches 82, functions 86, statements 86 as of 2026-11-18). They stop coverage falling but do not rise on their own. Mist's original thresholds rose with the calendar towards 80 / 75 / 80 / 80 and failed CI on every commit, so they were frozen.
+- Coverage thresholds in `vitest.config.ts` are fixed floors (see that file for today's). They stop coverage falling but do not rise on their own. Mist's original thresholds rose with the calendar towards 80 / 75 / 80 / 80 and failed CI on every commit, so they were frozen.
 - **Keep raising the floors.** They passed the original 80 / 75 / 80 / 80 target during M2b. Raise them by hand in the same PR whenever new tests lift coverage; never lower them.
 - Cloudflare Workers Builds deploys every push to `main` and does not wait for GitHub CI, so its build command runs `npm run typecheck && npm run lint && npm run test && npm run build` itself. If any check fails, nothing deploys. This gate has not been verified yet (M0 task).
 
-**Access:** Cloudflare Access gates the whole `workers.dev` address (set up 2026-10-22). Since 2026-11-05 the Access application's Allow policy is an email whitelist (testers have full access until M4), and visitors sign in with a one-time PIN emailed to them or with any Cloudflare account (the Cloudflare login method's "Restrict to account members" is off). Add or remove testers in the policy's Emails list (Workers & Pages → the Worker → Settings → Domains & Routes → Manage Cloudflare Access). Every path is covered, including document WebSocket connections and `/new`. The Worker does not yet verify the Access token itself, and a custom domain added later needs its own Access application. Per-page permissions (M4) are checked before a WebSocket connection to a `DocumentAgent` is accepted and on every index query.
+**Access:** Cloudflare Access gates the whole `workers.dev` address (set up 2026-10-22). Since 2026-11-05 the Access application's Allow policy is an email whitelist (testers have full access until M4), and visitors sign in with a one-time PIN emailed to them or with any Cloudflare account (the Cloudflare login method's "Restrict to account members" is off). Add or remove testers in the policy's Emails list (Workers & Pages → the Worker → Settings → Domains & Routes → Manage Cloudflare Access). Every path is covered, including document WebSocket connections and `/new`. The Worker does not yet verify the Access token itself, and a custom domain added later needs its own Access application. Per-page permissions (M4) will be checked before a WebSocket connection to a `DocumentAgent` is accepted and on every index query; the plan is `docs/design-choices.md` question 4.
 
 ## 8. Milestones
 
-- [ ] **M0 Foundation:** import Mist into our own repo, deploy it to Cloudflare, connect GitHub for auto-deploy, add CI, add AGENTS.md and this PRD, lock the site down with Cloudflare Access while unfinished. Done so far: repo, auto-deploy via Workers Builds (verified 2026-10-22), CI, AGENTS.md, PRD, coverage thresholds frozen so CI can pass, Cloudflare Access with Cloudflare-account login (verified 2026-10-22), Workers Builds command set to run the checks before building (2026-10-22, not yet verified). Still to do:
+- [ ] **M0 Foundation.** Done: own repo, auto-deploy through Workers Builds (verified 2026-10-22), CI, AGENTS.md and this PRD, coverage floors, Cloudflare Access (2026-10-22, testers since 2026-11-05), the Workers Builds command set to run the checks before building (2026-10-22). Still to do:
   - [ ] **Verify the deploy gate.** (1) Open the Workers Builds log for a recent build and confirm `typecheck`, `lint` and `test` run before `build`. (2) Push a throwaway branch `chore/test-deploy-gate` with a test that always fails (`expect(1).toBe(2)`); confirm its preview build fails at `test`, nothing is uploaded, and the live site is unchanged; then delete the branch. Needs builds for non-production branches turned on; do not test on `main`, because a broken gate would put the failing code live.
-- [ ] **M1 Persistence and index:** ~~remove the 99-hour expiry (including for existing documents)~~ (done 2026-10-22); ~~shared parser, including the `wikilink` mark definition~~ (done 2026-10-22); ~~`WorkspaceAgent` index with page registry and parser-versioned rebuild~~ (done 2026-10-23; the rebuild itself built 2026-11-04); ~~documents report to the index and retry until confirmed~~ (done 2026-10-23); weekly index check (can land after M2). ~~Remove Mist's Fathom analytics~~ (kept, 2026-10-24).
-- [x] **M2 Notes core** (done 2026-11-11 with search and the sidebars from M2b.2): page identity in three parts: ~~2.1a titles (includes rename, formerly 2.7)~~ (done 2026-10-24), ~~2.1b readable URLs~~ (done 2026-10-25), ~~2.1d instant renames~~ (done 2026-10-26), ~~2.1c journal pages~~ (done 2026-10-26); ~~2.2 journal feed~~ (done 2026-10-27; owner checked scrolling and typing: "fine for now", revisit if it slows as days build up); ~~2.3 bullets and indenting~~ (done 2026-10-27); then 2.5 wikilinks (~~2.5a showing links~~ and ~~2.5b typing and editing links~~ done 2026-10-28; ~~2.5c pasting~~ and ~~2.5d side panel~~ done 2026-10-29) and ~~2.6 backlinks~~ (done 2026-10-31), then 2.4 tasks (reordered 2026-10-28); journal feed (replaces Mist's landing page and `/new`); bullets and indent; tasks; ID-based wikilinks with autocomplete and placeholder pages; backlinks below the page; rename; sidebars with Cmd/Ctrl+click to open in the right panel; search; responsive layout. Build order and UI details are agreed through a clickable prototype first.
-- [ ] **M2b Logseq's interface** (planned 2026-11-01). Five larger iterations. Within an iteration each chunk is committed locally with its tests and review notes; the iteration is pushed once, after a browser walk-through. Each iteration starts with a prototype update to agree the interactions.
-  - [x] **M2b.1 Outliner:** permanent block IDs (F41, format version 5), folding (F37), moving blocks (F38), selecting blocks (F39), zooming (F40), tasks reworked on top of linked references with `LATER`/`NOW` and priorities (F6, F42).
-  - **Order from 2026-11-04 (towards importing the owner's graph).** A and B are done; in C, fuzzy dates, headings and the slash menu are done (2026-11-11). A, ready to import: index rebuild (M1 chunk 1.6), All pages with delete (F21), tags as pages (F45), Logseq import (F31, import part: dry run, import, undo). B, finding things: search (F13), left sidebar and phone menu (F8, F17), shortcut sheet (F43). C, what the graph uses: block references and embeds (F48), Pomodoro (F22, moved up from M5), fuzzy dates (F20), headings (F47), slash menu (F44), unlinked and richer references (F35, F36). D, later: properties (F46), scheduled and agenda (F49), queries (F50), templates (F51), graph view. The iteration lists below keep their features; this order decides what is built first.
-  - [x] **M2b.2 Getting around** (done 2026-11-11 except Favourites, which wait until it is decided how a page becomes one): phones first (F17: keyboard toolbar, compact header, touch-friendly folding; decision 2026-11-04), then left sidebar with Journals, All pages, Tasks, Favourites, Recent (F8), search with Cmd/Ctrl+K (F13), All pages with delete (F21), shortcut sheet and go-to shortcuts (F43), phone keyboard toolbar (F17).
-  - [ ] **M2b.3 Commands and structure** (all done 2026-11-11 except properties, F46): slash menu (F44), tags as pages (F45), fuzzy dates and date picker (F20), properties with aliases (F46), headings (F47).
-  - [ ] **M2b.4 Blocks as things you link:** block references and embeds (F48), editable references with context (F36), unlinked references (F35), scheduled and deadlines with an agenda (F49), simple queries (F50).
-  - [ ] **M2b.5 The rest:** graph view, import and attachments (F31), templates (F51), export (F15, moved forward from M3 if wanted).
-- [ ] **M3 Portability and offline:** export to Logseq markdown (F15), offline editing (F14; waits on the open questions in `docs/design-choices.md`).
-- [ ] **M4 Sharing:** accounts, visibility model, share dialog, permission-aware backlinks and search.
-- [ ] **M5 Quality-of-life:** nothing left here: pomodoro, all pages and fuzzy dates moved to M2b.
-- [ ] **M6 Later:** merge pages (F32), live title updates across tabs (F33). Graph view, import and attachments moved to M2b.5 (import done 2026-11-09).
+- [ ] **M1 Persistence and index.** Done: expiry removed (2026-10-22), shared parser and the `wikilink` mark (2026-10-22), `WorkspaceAgent` index with page registry (2026-10-23), documents reporting to it and retrying until confirmed (2026-10-23), parser-versioned rebuild (2026-11-04). Still to do: the weekly index check.
+- [x] **M2 Notes core** (done 2026-11-11): titles, rename and readable URLs, journal pages and the feed, bullets and indenting, ID links with suggestions, pasting and placeholder pages, the side panel, linked references, tasks. Chunk history is in the changelog.
+- [ ] **M2b Logseq's interface** (planned 2026-11-01). Five larger iterations, each starting with a prototype update and pushed once, after a browser walk-through.
+  - **Build order from 2026-11-04 (towards importing the owner's graph):** A and B are done. C: Pomodoro, fuzzy dates, headings and the slash menu are done; block references and embeds (F48) and unlinked and richer references (F35, F36) are left. D, later: properties (F46), scheduled and agenda (F49), queries (F50), templates (F51), graph view. The iterations below keep their features; this order decides what is built first.
+  - [x] **M2b.1 Outliner** (done 2026-11-03): block IDs (F41), folding (F37), moving (F38), selecting (F39), zooming (F40), tasks reworked with `LATER`/`NOW` and priorities (F6, F42).
+  - [x] **M2b.2 Getting around** (done 2026-11-11; Favourites wait until it is decided how a page becomes one): phone layout (F17), left sidebar (F8), search (F13), All pages with delete (F21), shortcut sheet (F43).
+  - [ ] **M2b.3 Commands and structure** (done 2026-11-11 except properties, F46): slash menu (F44), tags as pages (F45), fuzzy dates (F20), headings (F47).
+  - [ ] **M2b.4 Blocks as things you link:** block references and embeds (F48), richer references (F36, nested lines done), unlinked references (F35), scheduled and deadlines with an agenda (F49), simple queries (F50).
+  - [ ] **M2b.5 The rest:** import and images (F31, done 2026-11-18); still to do: graph view, templates (F51), export (F15, moved forward from M3 if wanted).
+- [ ] **M3 Portability and offline:** export to Logseq markdown (F15); offline (F14: offline journal live 2026-11-23, local-first waits on `docs/design-choices.md`).
+- [ ] **M4 Sharing and people:** the Worker checks the Access sign-in, share links by token, naming yourself, and permission-aware backlinks, search, `[[` title suggestions, All pages and images (F11, F12, F30). Plan and the owner's open decisions: `docs/design-choices.md` question 4. When decided, the spec goes in 6.10.
+- **M5** has no features left: they moved to M2b.
+- [ ] **M6 Later:** merge pages (F32), live title updates across tabs (F33).
 
 ## 9. Open questions
 
 Larger architecture questions (local-first, a native iPhone app, rendering in the browser) are in `docs/design-choices.md`.
 
-1. **Design later:** how Mist's collaborative features (comments, suggest mode, live editing) fit the new architecture. For example: whether pending suggestions and comment text are indexed, how they appear in exported markdown, and how they interact with sharing permissions (M4).
-2. Do we want a read-only public site for link-shared pages, or require login to view? Decide at M4.
+1. **Design later:** how Mist's collaborative features (comments, suggest mode, live editing) fit the new architecture. For example: whether pending suggestions and comment text are indexed, and how they appear in exported markdown. Who made a comment or suggestion, and what a shared link may do with them, are part of sharing (M4, `docs/design-choices.md` question 4).
+2. Do link-shared pages open without signing in? The token plan says yes, for the shared page only (`docs/design-choices.md` question 4); decide with it.
 3. **Revisit:** page addresses. `/docs/<id>` is the permanent, canonical address and `/page/<slug>` the readable one (2.1b), with clashing slugs getting a short ID suffix. The owner likes `/docs/<id>` as the canonical source because it maps cleanly to one markdown file per page for portability (F15). Revisit whether readable slugs are worth their complexity once export exists.
 4. **Revisit after M2:** each day in the journal feed has a compact Mist bar (edit or suggest, connection, share, open day). Check whether it clutters the feed once real notes build up.
 
@@ -229,7 +319,7 @@ Larger architecture questions (local-first, a native iPhone app, rendering in th
 | Date | Decision | Why |
 |------|----------|-----|
 | 2026-10-20 | Host on Cloudflare (not Vercel) | Mist already runs on Workers and Durable Objects, and Vercel cannot hold WebSockets, which matters for live editing |
-| 2026-10-20 | Documents, not an outliner | Far less work; block references can come later |
+| 2026-10-20 | ~~Documents, not an outliner~~ (superseded 2026-11-01 by building Logseq's outliner, M2b) | Far less work; block references can come later |
 | 2026-10-20 | ~~D1 as source of truth for page text, exposed as files via API~~ | Superseded 2026-10-21 |
 | 2026-10-20 | ~~Async sharing with safe sync first, live multiplayer later~~ | Superseded 2026-10-21: Mist's storage already gives live sync |
 | 2026-10-21 | Keep Mist's storage (one Yjs Durable Object per page); drop markdown files as the stored format and compare-and-swap saves | Reuses working sync and merge instead of building them; export keeps us portable |
@@ -255,25 +345,26 @@ Larger architecture questions (local-first, a native iPhone app, rendering in th
 | 2026-10-22 | Backlinks sit below the page; the right panel is for pages opened side by side with Cmd/Ctrl+click | Logseq's layout for backlinks, Roam's for side-by-side reading |
 | 2026-10-22 | Backspace after a link reopens it for editing; Esc restores the original link | Logseq muscle memory, without ever leaving a link broken by accident |
 | 2026-10-22 | Fuzzy dates trigger with both `@` and inside `[[ ]]` | Both felt natural in the prototype; `@` only after a space avoids email addresses |
-| 2026-10-22 | Show Mist's document header on every day in the journal feed, to revisit after M2 | Keeps Mist's controls one click away; may clutter the feed later |
+| 2026-10-22 | Show Mist's document header on every day in the journal feed, to revisit after M2 (made a compact bar 2026-10-27) | Keeps Mist's controls one click away; may clutter the feed later |
 | 2026-10-22 | Phone editing uses a keyboard toolbar | One tap for every action, works on any phone, matches Logseq mobile |
 | 2026-10-22 | Journal titles use Logseq's default format (`Oct 22nd, 2026`) | Exported files match what Logseq expects |
 | 2026-10-22 | Keep Mist's collaborative features: comments, suggest mode and live editing | They are a reason to build on Mist; how they fit the architecture is designed later |
 | 2026-10-22 | ~~Remove Mist's Fathom analytics~~ | Reversed 2026-10-24 |
-| 2026-10-24 | Keep Mist's Fathom analytics | Owner's choice; it only loads when `VITE_FATHOM_SITE_ID` is set |
 | 2026-10-22 | Single user first | The index is per workspace, so teams can be added later |
 | 2026-10-22 | Parser rules: a tag is `#` at the start of a line or after whitespace, followed by letters, digits, `_`, `-` or `/`, and not only digits; no tags or tasks inside code fences or inline code; no tags inside link text; links count everywhere, once per page per line; only tab characters indent | Matches Logseq's behaviour closely enough and avoids false positives such as headings, URL fragments and issue numbers. See `app/lib/note-parser.ts` |
 | 2026-10-22 | `DOC_FORMAT_VERSION` is bumped when the editor starts writing `wikilink` marks (chunk 2.5), not when the mark is defined | Defining the mark changes no stored document |
+| 2026-10-22 | Gate deploys by running the checks in the Workers Builds command | Workers Builds ignores GitHub CI; this is the smallest change that stops failing code going live |
 | 2026-10-23 | Documents send their lines to the index, and the index runs the parser | One place parses on the server and records the parser version; backlinks and search need the line text anyway |
 | 2026-10-23 | The workspace index is never reachable from a browser: the Worker refuses `/agents/workspace-agent/*`, and the agent refuses requests and connections | Only other Durable Objects call it, over RPC; UI queries will go through server routes that can check permissions |
 | 2026-10-23 | The index does not enforce unique titles | It copies what documents say; refusing an entry would make it drift. Rename checks the index before allowing a title |
 | 2026-10-23 | ~~Documents re-index on a 2-second throttle, not a debounce~~ | Superseded 2026-10-27 by indexing after a pause with a 2-second maximum wait |
 | 2026-10-23 | Stale index updates are ignored using strictly increasing `updatedAt` values from each document | Retries can arrive late; this needs no schema change, unlike a separate sequence number |
 | 2026-10-23 | Pages send an empty title to the index until page titles exist (chunk 2.1); journals are titled from their date | Nothing displays index titles yet |
+| 2026-10-24 | Keep Mist's Fathom analytics | Owner's choice; it only loads when `VITE_FATHOM_SITE_ID` is set |
 | 2026-10-24 | Split chunk 2.1 into 2.1a titles, 2.1b readable URLs and 2.1c journal pages; merge 2.7 (rename) into 2.1a | With ID links, renaming is editing the title; links showing the new title belongs with links (2.5) |
 | 2026-10-24 | Page titles live in the page's Yjs document (`meta.title`) | They sync live between tabs and the index already reads them |
 | 2026-10-24 | `/docs/<id>` stays the permanent address; `/page/<slug>` redirects work for old slugs; clashing slugs get a short ID suffix | Readable links without breaking permanent ones (see open question 3) |
-| 2026-10-24 | "New page" and "Today" sit in the document header until the sidebar exists (2.8) | They need a home before the sidebar is built |
+| 2026-10-24 | ~~"New page" and "Today" sit in the document header until the sidebar exists (2.8)~~ (moved to the sidebar 2026-11-11) | They need a home before the sidebar is built |
 | 2026-10-24 | Title rules: whitespace collapsed, 1 to 200 characters, no `[[` or `]]`; unique across pages and journals ignoring case; if the check fails, the rename is refused | Keeps exported `[[Title]]` links valid; failing closed avoids duplicate titles when the index is unreachable |
 | 2026-10-25 | Slug history survives index rebuilds (the `slugs` table is never cleared, like the registry) | Old slugs cannot be recovered from documents, and old links must keep redirecting |
 | 2026-10-25 | Slugs keep letters and digits from any script, accents included, lowercased; everything else becomes `-`; up to 80 characters | Readable for non-English titles; ASCII-only would empty non-Latin slugs |
@@ -304,20 +395,26 @@ Larger architecture questions (local-first, a native iPhone app, rendering in th
 | 2026-10-28 | A renamed link's stored title is rewritten when the cursor enters it, outside undo history; never on open | You must see what you edit. The remaining risk is two cursors entering the same renamed link within a second, which would duplicate that title |
 | 2026-10-28 | Clicking a link opens the page; Alt+Enter opens the link the cursor is in; Cmd/Ctrl+click opens the page until the side panel (2.5d) | Logseq behaviour; every mouse action has a keyboard path |
 | 2026-10-28 | Side panel (F18) is step 2.5d of links | Owner asked for it alongside links |
+| 2026-10-28 | Build links (2.5) and backlinks (2.6) before tasks (2.4); park the tasks work | Ticking tasks from a separate Tasks view meant the server editing pages by matching lines, which failed in a browser run and felt over-complicated. With backlinks in place, the Tasks view can reuse the references design |
 | 2026-10-29 | On a page, the side panel takes the comments column while it shows pages; its Comments button hides it | Keeps the page readable at laptop widths (owner's choice over a third column or tabs) |
 | 2026-10-29 | The side panel holds at most 10 pages and is remembered per browser; Alt+Shift+Enter opens a link there | Each page is a live connection; keyboard path for Cmd/Ctrl+click |
+| 2026-10-29 | Pasting `[[New title]]` creates the page, as typing does | Same rule as typing and as Logseq; a large paste can create many pages |
+| 2026-10-31 | Linked references are read-only snapshots of the linking line, below the page and journal day only (not the feed or side panel); unlinked and editable references later (F35, F36) | Editable references need a live connection per linking page; the index already stores each linking line |
 | 2026-11-01 | Build Logseq's interface in five larger iterations (outliner; getting around; commands and structure; blocks as things you link; the rest), pushing once per iteration, outliner first | Owner wants all of Logseq's interactive features; larger iterations mean fewer, bigger deploys |
 | 2026-11-01 | Every block gets a permanent ID when created, stored as an invisible attribute on its line; existing lines get one from the server; document format version 5 (supersedes "only when needed", same day) | Zoom, block references, embeds and editable references need stable block identity. Assigning IDs only when needed lets two tabs assign different IDs to the same block at once, silently breaking one reference; assigning at creation (by the one tab that creates the line, or by the server) cannot race |
 | 2026-11-01 | Whiteboards, PDF annotation, flashcards and plugins are out of scope | Each is a product in itself |
+| 2026-11-01 | Outliner details: folded state is stored in the page and syncs; Cmd/Ctrl+Enter on a plain line starts `TODO`; the Tasks page is one list across all pages ordered NOW, DOING, TODO, LATER; dragging drops above the target at its level only | Owner's answers after trying the prototype; folding in the page follows Logseq and keeps export a straight conversion |
+| 2026-11-02 | Folding is kept out of undo; an edit that leaves the caret inside a folded block unfolds it; Enter at the end of a folded line adds a sibling after its children | Matches Logseq, and text is never typed into a hidden line |
 | 2026-11-04 | Phone layout (F17) comes first in M2b.2, before the index rebuild; Logseq import is built after M2b.4, not before | The owner uses Mistlog on their phone and tests there. Their graph (730 journals, 186 pages) needs tags as pages and block references to import faithfully, and has no way to be cleaned up until All pages with delete |
 | 2026-11-04 | Build towards importing the owner's Logseq graph first: index rebuild, All pages with delete, tags as pages, then import; Pomodoro moves up from M5 | The graph (read-only analysis: 730 journals, 186 pages, 1,538 links, 198 tags, 40 block references, 149 `{{POMO}}`, no queries or scheduled dates) needs tags converted at import; block references are already by ID (`((uuid))` with `id::`), so they can be rendered later without loss |
 | 2026-11-04 | Deleting a page is soft: it leaves the index and stops being served, but its storage is kept; journal days can't be deleted yet | Never lose the user's text (invariant 2), and make "undo this import" safe; a deleted journal day would come back when its date is opened |
 | 2026-11-05 | Testers get in through an email whitelist in the Access policy, signing in with a one-time PIN or any Cloudflare account (supersedes the 2026-10-22 Cloudflare-account-only login); testers have full access until M4 | The owner wants others to test it; the Cloudflare login was restricted to members of the owner's Cloudflare account, which refused testers |
 | 2026-11-05 | Tags are links: a typed `#word` with no page creates it (as in Logseq), `#` shows the same suggestions as `[[`; built without a prototype step since it behaves like `[[ ]]` | Owner agreed the recommendations; tags must be ID links before the import so the graph's 198 tags convert once |
 | 2026-11-05 | Logseq import rules: a Mistlog page or journal day that already exists gets the imported lines added below its content; multi-line blocks keep each continuation line as a plain line under its bullet; undo removes exactly the lines the import added (by block ID, even if edited since) and soft-deletes pages it created; no second import while one exists. Built as two pushes: dry run (report only), then import and undo | Owner agreed the recommendations. No text is lost either way, and undo stays exact |
+| 2026-11-05 | Keep each opened page in the browser (y-indexeddb) before full offline mode; no change to the phone toolbar (the iPhone keyboard bar can't be hidden by a website; the owner will use Chrome) | The owner wants faster, sturdier use on the phone first; y-indexeddb is the Yjs author's own persistence and was approved as a new dependency |
 | 2026-11-06 | The import creates an empty page for each linked title with no page (as typing a link does), rather than a placeholder made on first click; typed links stay as they are | Owner's choice: one kind of page, and links behave the same however they were made |
-| 2026-11-11 | Search is the prototype's search box (Cmd/Ctrl+K, and a header button until the left sidebar exists), not a separate screen. Text matches are one row per page with its best snippet, rather than one row per matching line as in the prototype. A link is searched by its page's current title (the index keeps each page's text with its links marked and rewrites linking pages' search text when a title changes); a deleted page's links are searched by the text they store. On a Mac the shortcut is Cmd+K only (Ctrl+K stays the system's delete-to-end-of-line) | PRD and prototype name Cmd/Ctrl+K; the full-text index is per page, and per-line results would need a new table; the stored copy goes stale on every rename, which was the F13 bug |
 | 2026-11-09 | More than one import (supersedes "one import at a time" of 2026-11-06): imports are listed and each can be undone. Only one import runs or is undone at a time. Undoing an import keeps a page it created if another import not undone wrote to it or links to it; that import takes it over | Owner wants to import more than one folder and undo each; the hand-over stops an undo leaving another import's links unresolved |
+| 2026-11-11 | Search is the prototype's search box (Cmd/Ctrl+K, and a header button until the left sidebar exists), not a separate screen. Text matches are one row per page with its best snippet, rather than one row per matching line as in the prototype. A link is searched by its page's current title (the index keeps each page's text with its links marked and rewrites linking pages' search text when a title changes); a deleted page's links are searched by the text they store. On a Mac the shortcut is Cmd+K only (Ctrl+K stays the system's delete-to-end-of-line) | PRD and prototype name Cmd/Ctrl+K; the full-text index is per page, and per-line results would need a new table; the stored copy goes stale on every rename, which was the F13 bug |
 | 2026-11-11 | The shortcut sheet is its own modal dialog over the page (`?`, or a `?` button in the header), not part of a controls panel as in the prototype; `?` only opens it; go-to shortcuts do nothing while it is open; Cmd/Ctrl, Alt or composing text cancel a `g` sequence | The prototype's sheet sat in its prototype-only controls panel; a modal matches the search box and keeps the focus handling simple |
 | 2026-11-11 | Fuzzy weekdays count by calendar week, Monday to Sunday: `this friday` is the current week's Friday, `next friday` the following week's, `last friday` the previous week's; a weekday alone is the coming one (never today). Weeks start on Monday, fixed for now | Owner's choice (supersedes the prototype, where `next friday` was the coming Friday) |
 | 2026-11-11 | Namespaces (Logseq's `parent/child` page titles, grouped) are dropped from F47; a `/` in a title is just part of the title | Owner doesn't use them |
@@ -325,6 +422,7 @@ Larger architecture questions (local-first, a native iPhone app, rendering in th
 | 2026-11-11 | Left sidebar and phone menu (F8, F17) as in the prototype. Journals, Today, All pages, Tasks, Search and New page move from the header into the sidebar (the home 2026-10-24 promised them); the header keeps the name, the sidebar button (☰ on phones) and the theme, and Search stays in the header on phones and while the sidebar is hidden. Recent lists pages opened in this browser (the prototype's), not recently edited ones (those are the search box's empty list). Below 768px the sidebar is the ☰ menu, and `t l` opens it there. Favourites are left out until it is decided how a page becomes one | The sidebar exists, so the header items move as planned; phones have no Cmd/Ctrl+K, and hiding the sidebar shouldn't hide search; the browser already knows what it opened, so Recent costs no server work |
 | 2026-11-11 | Tasks and Pages stay in the header as well as the sidebar | Owner's request |
 | 2026-11-12 | Back and forward buttons in the header only when the app runs from the Home Screen | A Home Screen app has no browser bar; in a tab they would repeat the browser's own |
+| 2026-11-12 | The short-term offline journal (service worker, offline fallbacks for the feed and days, recent days kept in the browser, offline notice, Home Screen manifest) goes ahead before deciding local-first | The owner needs to read the day's journal on their phone without a connection; none of it depends on the bigger decision |
 | 2026-11-18 | Images (F31): show `![alt](src)` pictures in pages, and store a Logseq graph's `assets/` images in an R2 bucket sent from the import page; no paste or drop upload yet | The owner's imported pages link to images that weren't there; the owner wants to keep experimenting with text only. The text stays as written so export is unchanged, and it is a display (decoration), so no document format change |
 | 2026-11-18 | Stored images are only ever added, never replaced or removed by the app; undoing an import leaves them; SVG is refused and images are served with `nosniff` and a sandboxing CSP | Never lose data; Logseq's file names are already unique per graph; an SVG or a mislabelled file served from Mistlog's own address could run scripts there |
 | 2026-11-18 | Linked references show the lines nested under each linking line, always open (not folded) | The owner wants to read what is written under a link without opening the page; the nested lines come from the index's stored page text, so no index schema change |
@@ -334,15 +432,7 @@ Larger architecture questions (local-first, a native iPhone app, rendering in th
 | 2026-11-22 | In the Tasks view, a task's sub-bullets start folded (linked references still start open) | The owner wants the task list compact, opening a task's details when needed |
 | 2026-11-23 | Pomodoro (F22): `{{POMO N}}` sets the focus length; finishing a round chimes; no notification, no journal log line; each device keeps its own timers (stored in the browser, never in the page) | The owner's choices; keeping timer state out of the page avoids a document schema change and keeps the text portable |
 | 2026-11-23 | Each journal day from today on starts with `- What are you thinking about {{POMO 10}}`, written once by the server the first time the day is opened; a deleted line stays deleted; past and imported days are left alone | The owner wants the prompt every day. Written by `DocumentAgent` under its lock and recorded, so two devices can't add it twice. For today and later days this replaces 2026-10-26's "opening a day saves nothing": opening one now creates it |
-| 2026-11-12 | The short-term offline journal (service worker, offline fallbacks for the feed and days, recent days kept in the browser, offline notice, Home Screen manifest) goes ahead before deciding local-first | The owner needs to read the day's journal on their phone without a connection; none of it depends on the bigger decision |
 | 2026-11-23 | Ship the held interim offline layer (F14) now, before deciding local-first or browser rendering | The owner wants to use the journal offline on the phone; the pieces to replace later are listed in `docs/design-choices.md` |
-| 2026-11-05 | Keep each opened page in the browser (y-indexeddb) before full offline mode; no change to the phone toolbar (the iPhone keyboard bar can't be hidden by a website; the owner will use Chrome) | The owner wants faster, sturdier use on the phone first; y-indexeddb is the Yjs author's own persistence and was approved as a new dependency |
-| 2026-11-01 | Outliner details: folded state is stored in the page and syncs; Cmd/Ctrl+Enter on a plain line starts `TODO`; the Tasks page is one list across all pages ordered NOW, DOING, TODO, LATER; dragging drops above the target at its level only | Owner's answers after trying the prototype; folding in the page follows Logseq and keeps export a straight conversion |
-| 2026-11-02 | Folding is kept out of undo; an edit that leaves the caret inside a folded block unfolds it; Enter at the end of a folded line adds a sibling after its children | Matches Logseq, and text is never typed into a hidden line |
-| 2026-10-31 | Linked references are read-only snapshots of the linking line, below the page and journal day only (not the feed or side panel); unlinked and editable references later (F35, F36) | Editable references need a live connection per linking page; the index already stores each linking line |
-| 2026-10-29 | Pasting `[[New title]]` creates the page, as typing does | Same rule as typing and as Logseq; a large paste can create many pages |
-| 2026-10-28 | Build links (2.5) and backlinks (2.6) before tasks (2.4); park the tasks work | Ticking tasks from a separate Tasks view meant the server editing pages by matching lines, which failed in a browser run and felt over-complicated. With backlinks in place, the Tasks view can reuse the references design |
-| 2026-10-22 | Gate deploys by running the checks in the Workers Builds command | Workers Builds ignores GitHub CI; this is the smallest change that stops failing code going live |
 
 ## 12. Changelog
 
@@ -404,11 +494,12 @@ Larger architecture questions (local-first, a native iPhone app, rendering in th
 - 2026-11-12: Added `docs/design-choices.md` for open architecture questions (local-first, a native iPhone app) and the short-term plan to read the journal offline.
 - 2026-11-12: Back and forward buttons in the header when Mistlog runs from the Home Screen (F17), which has no browser bar.
 - 2026-11-12: PRD tidied: built features marked 🟢 rather than prototyped, M2 and M2b.2 ticked off, the build order's progress noted, Pomodoro's milestone moved to M2b, M5 and M6 brought up to date, F14's held offline layer noted, coverage floors and the coverage risk updated, and a pointer to `docs/design-choices.md`.
-- 2026-11-23: Offline journal (F14) made live: the interim layer held on `offline-interim` since 2026-11-12, brought up to date with `main` (service worker, offline feed and days, recent days kept on the device, offline notice, Home Screen icon). Since then: the offline notice floats at the bottom rather than taking a line above the full-height screens, and offline the feed's older days come from the copies on the device. Risks added to section 10.
+- 2026-11-18: Linked references (F4) show the lines nested under each linking line. Phone layout: screens use the visible height (`dvh`), so they no longer run under Safari's and Chrome's bars.
+- 2026-11-18: Images (F31): pictures written as `![alt](src)` show in pages; the import page sends a graph's `assets/` images to a new R2 bucket (`FILES`) so imported pages show them. New routes `GET /files/assets/<name>` and `PUT /api/files/assets/<name>`. No document format or index change. Coverage floors raised.
+- 2026-11-19: Tasks view (F6) shows each task's sub-bullets under it; they fold with an arrow, as do linked references' nested lines.
 - 2026-11-22: Tasks view (F6): a task's sub-bullets start folded; its arrow shows them.
+- 2026-11-23: Offline journal (F14) made live: the interim layer held on `offline-interim` since 2026-11-12, brought up to date with `main` (service worker, offline feed and days, recent days kept on the device, offline notice, Home Screen icon). Since then: the offline notice floats at the bottom rather than taking a line above the full-height screens, and offline the feed's older days come from the copies on the device. Risks added to section 10.
 - 2026-11-23: Daily line: each journal day from today on starts with `- What are you thinking about {{POMO 10}}`, written once by the server (`POST /api/journals/prompt`, `DocumentAgent.addDailyPrompt`). No document format or index change. Coverage floors raised.
 - 2026-11-23: Pomodoro timer (F22): `{{POMO}}` and `{{POMO 10}}` show an inline timer with start, pause and reset, a chime at the end of a round, kept per device. No document format or index change.
 - 2026-11-23: Phone keyboard toolbar (F17): placed from the visible area alone and re-measured while the keyboard settles, so it no longer hides behind the iPhone keyboard when a tap low on the screen (as on an older journal day) makes Safari move the page.
-- 2026-11-19: Tasks view (F6) shows each task's sub-bullets under it; they fold with an arrow, as do linked references' nested lines.
-- 2026-11-18: Linked references (F4) show the lines nested under each linking line. Phone layout: screens use the visible height (`dvh`), so they no longer run under Safari's and Chrome's bars.
-- 2026-11-18: Images (F31): pictures written as `![alt](src)` show in pages; the import page sends a graph's `assets/` images to a new R2 bucket (`FILES`) so imported pages show them. New routes `GET /files/assets/<name>` and `PUT /api/files/assets/<name>`. No document format or index change. Coverage floors raised.
+- 2026-11-25: v0.4. PRD tidied: the feature table is one line per feature, with the details moved into new specs 6.5 (journal feed and the daily line), 6.6 (references and tasks), 6.7 (getting around), 6.8 (offline) and 6.9 (import and images); F11 and F12 say what is true today (no sharing built; random names); F36 partly done; milestones rewritten as done and still to do; the decision log and changelog put in date order; superseded decisions marked; open questions 1 and 2 pointed at the sharing plan.
