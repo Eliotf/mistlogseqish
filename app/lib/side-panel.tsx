@@ -7,6 +7,8 @@ import { pageTitles } from "./page-titles";
  * with Cmd/Ctrl+click, as in Roam. Newest on top; opening a page already
  * there moves it to the top. Each page is a live editor, so the list is
  * capped. The list is remembered per browser (a viewer convenience).
+ * Closing the last page hides the panel; shown empty (its header button or
+ * `t r`), it says how to fill it.
  */
 
 /** Most pages the panel holds; each is a live connection. */
@@ -17,7 +19,7 @@ const STORAGE_KEY = "mistlog-side-panel";
 
 export interface SidePanel {
   pages: string[];
-  /** Whether the panel is showing (it can be hidden with pages in it). */
+  /** Whether the panel is showing (it can be hidden with pages in it, or shown empty). */
   shown: boolean;
   open(pageId: string): void;
   close(pageId: string): void;
@@ -58,13 +60,14 @@ interface PanelState {
   shown: boolean;
 }
 
-const EMPTY: PanelState = { pages: [], shown: true };
+const EMPTY: PanelState = { pages: [], shown: false };
 
 function readStored(): PanelState {
   try {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null") as { pages?: unknown; shown?: unknown } | null;
     const pages = Array.isArray(raw?.pages) ? raw.pages.filter((p): p is string => typeof p === "string").slice(0, MAX_SIDE_PAGES) : [];
-    return { pages, shown: raw?.shown !== false };
+    // An empty panel isn't brought back by a reload
+    return { pages, shown: pages.length > 0 && raw?.shown !== false };
   } catch {
     return EMPTY;
   }
@@ -99,8 +102,15 @@ export function SidePanelProvider({ children }: { children: ReactNode }) {
   const { pages, shown } = useSyncExternalStore(store.subscribe, store.get, () => EMPTY);
 
   const open = useCallback((pageId: string) => store.update((st) => ({ pages: withOpened(st.pages, pageId), shown: true })), [store]);
-  const close = useCallback((pageId: string) => store.update((st) => ({ ...st, pages: st.pages.filter((p) => p !== pageId) })), [store]);
-  const closeAll = useCallback(() => store.update((st) => ({ ...st, pages: [] })), [store]);
+  const close = useCallback(
+    (pageId: string) =>
+      store.update((st) => {
+        const left = st.pages.filter((p) => p !== pageId);
+        return { pages: left, shown: st.shown && left.length > 0 };
+      }),
+    [store],
+  );
+  const closeAll = useCallback(() => store.update(() => ({ pages: [], shown: false })), [store]);
   const setShown = useCallback((next: boolean) => store.update((st) => ({ ...st, shown: next })), [store]);
   const toggle = useCallback(() => store.update((st) => ({ ...st, shown: !st.shown })), [store]);
 

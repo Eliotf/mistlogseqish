@@ -5,8 +5,8 @@
  * that handles it, so adding a shortcut here means adding its check there.
  *
  * Keys are written as combos joined with "+", alternatives as separate
- * strings. "Mod" is Cmd on a Mac and Ctrl elsewhere; "Up" and "Down" are
- * the arrow keys. A combo with a space ("g j") is a sequence: press one key,
+ * strings. "Mod" is Cmd on a Mac and Ctrl elsewhere; "Up", "Down", "Left"
+ * and "Right" are the arrow keys. A combo with a space ("g j") is a sequence: press one key,
  * then the other.
  */
 
@@ -35,6 +35,7 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
       { id: "left-sidebar", keys: ["t l"], action: "Show or hide the sidebar (on a phone, the menu)" },
       { id: "side-panel", keys: ["t r"], action: "Show or hide the side panel" },
       { id: "tasks-side", keys: ["Mod+click"], action: "On Tasks: open the list in the side panel" },
+      { id: "resize", keys: ["Left", "Right"], action: "On a panel's edge: resize it (Shift for bigger steps, Enter for the default)" },
     ],
   },
   {
@@ -110,7 +111,7 @@ export function allShortcuts(): Shortcut[] {
   return SHORTCUT_GROUPS.flatMap((group) => group.shortcuts);
 }
 
-const KEY_NAMES: Record<string, string> = { Up: "↑", Down: "↓" };
+const KEY_NAMES: Record<string, string> = { Up: "↑", Down: "↓", Left: "←", Right: "→" };
 
 /** How to show a combo: "Mod+Up" is "⌘+↑" on a Mac (mod "⌘") and "Ctrl+↑" elsewhere. */
 export function keyLabel(combo: string, mod: string): string {

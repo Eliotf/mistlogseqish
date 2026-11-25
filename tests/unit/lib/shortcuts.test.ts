@@ -66,6 +66,13 @@ const CHECKS: Record<string, Check[]> = {
     { file: SHELL, has: ["useToggleShortcut(panel.toggle)"] },
   ],
   "tasks-side": [{ file: "app/components/TasksLink.tsx", has: ["event.metaKey || event.ctrlKey", "panel.open(TASKS_PANEL_ID)"] }],
+  // Behaviour tested in tests/unit/components/resize-handle.test.tsx; here, that the handles are mounted
+  resize: [
+    { file: "app/lib/panel-width.ts", has: ['key === "ArrowRight"', 'key === "ArrowLeft"', "shift ? BIG_KEY_STEP : KEY_STEP"] },
+    { file: "app/components/ResizeHandle.tsx", has: ['event.key === "Enter"', "keyWidth(size, drawnWidth(), event.key, event.shiftKey"] },
+    { file: "app/components/LeftSidebar.tsx", has: ["<ResizeHandle size={LEFT_SIDEBAR_SIZE}"] },
+    { file: "app/components/SidePanel.tsx", has: ["<ResizeHandle size={RIGHT_PANEL_SIZE}"] },
+  ],
   "search-choose": [{ file: SEARCH_BOX, has: ['event.key === "ArrowDown" || event.key === "ArrowUp"'] }],
   "search-open": [{ file: SEARCH_BOX, has: ['event.key === "Enter"', "void choose(rows[current], side)"] }],
   "search-side": [{ file: SEARCH_BOX, has: ["const side = event.metaKey || event.ctrlKey", "void choose(rows[index], event.metaKey || event.ctrlKey)"] }],
@@ -159,6 +166,8 @@ describe("keyLabel", () => {
     expect(keyLabel("Mod+Enter", "Ctrl")).toBe("Ctrl+Enter");
     expect(keyLabel("Alt+Shift+Up", "Ctrl")).toBe("Alt+Shift+↑");
     expect(keyLabel("Mod+Down", "⌘")).toBe("⌘+↓");
+    expect(keyLabel("Left", "⌘")).toBe("←");
+    expect(keyLabel("Shift+Right", "Ctrl")).toBe("Shift+→");
     expect(keyLabel("Mod+.", "⌘")).toBe("⌘+.");
   });
 

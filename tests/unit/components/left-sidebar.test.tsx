@@ -18,6 +18,7 @@ import {
   type IndexStatus,
 } from "~/lib/left-sidebar";
 import { useSidePanel } from "~/lib/side-panel";
+import { LEFT_SIDEBAR_SIZE } from "~/lib/panel-width";
 import type { LinkTarget } from "~/lib/page-titles";
 
 const TITLES: Record<string, LinkTarget> = {
@@ -120,6 +121,18 @@ describe("the sidebar on a wide screen", () => {
     await act(async () => {});
   });
 
+  it("has a right edge to resize it, which goes with it", () => {
+    renderApp();
+    const handle = screen.getByRole("separator", { name: "Resize the sidebar" });
+    expect(handle.getAttribute("aria-controls")).toBe(sidebar()!.id);
+    // Outside the list, so it doesn't scroll away with it
+    expect(sidebar()!.contains(handle)).toBe(false);
+    fireEvent.keyDown(handle, { key: "End" });
+    expect(localStorage.getItem(LEFT_SIDEBAR_SIZE.storageKey)).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Hide sidebar" }));
+    expect(screen.queryByRole("separator", { name: "Resize the sidebar" })).toBeNull();
+  });
+
   it("is shown and hidden with the header's button", () => {
     renderApp();
     const button = screen.getByRole("button", { name: "Hide sidebar" });
@@ -160,10 +173,11 @@ describe("the sidebar on a wide screen", () => {
 
   it("leaves t r to the side panel", () => {
     renderApp();
-    expect(screen.getByTestId("probe").textContent).toContain("panel:true");
+    // An empty panel starts hidden in a new browser
+    expect(screen.getByTestId("probe").textContent).toContain("panel:false");
     key("t");
     key("r");
-    expect(screen.getByTestId("probe").textContent).toContain("panel:false");
+    expect(screen.getByTestId("probe").textContent).toContain("panel:true");
     expect(sidebar()).toBeTruthy();
   });
 

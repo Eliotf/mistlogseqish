@@ -11,6 +11,8 @@ import { APP_DISPLAY_NAME } from "~/shared/constants";
 import TodayButton from "~/components/TodayButton";
 import NewPageButton from "~/components/NewPageButton";
 import TasksLink from "~/components/TasksLink";
+import ResizeHandle from "~/components/ResizeHandle";
+import { LEFT_SIDEBAR_SIZE } from "~/lib/panel-width";
 
 export const SIDEBAR_ID = "left-sidebar";
 
@@ -130,12 +132,25 @@ function RecentPage({ pageId, pathname, onChoose }: { pageId: string; pathname: 
   );
 }
 
-/** The sidebar column on a wide screen, while it is shown (`t l`, or the header's button). */
+/**
+ * The sidebar column on a wide screen, while it is shown (`t l`, or the
+ * header's button), with its right edge to resize it.
+ */
 export default function LeftSidebar({ fetchStatus }: { fetchStatus?: () => Promise<IndexStatus> }) {
   return (
-    <nav id={SIDEBAR_ID} aria-label="Sidebar" className="left-sidebar hidden h-dvh w-56 shrink-0 flex-col overflow-y-auto border-r border-border md:flex">
-      <SidebarContents fetchStatus={fetchStatus} />
-    </nav>
+    <>
+      <nav
+        id={SIDEBAR_ID}
+        aria-label="Sidebar"
+        className="left-sidebar hidden h-dvh w-[min(var(--left-sidebar-width,14rem),40vw)] shrink-0 flex-col overflow-y-auto border-r border-border md:flex"
+      >
+        <SidebarContents fetchStatus={fetchStatus} />
+      </nav>
+      {/* Outside the nav, so it doesn't scroll with the list */}
+      <div className="left-sidebar relative hidden w-0 shrink-0 md:block">
+        <ResizeHandle size={LEFT_SIDEBAR_SIZE} label="Resize the sidebar" controls={SIDEBAR_ID} className="absolute inset-y-0 -left-1" />
+      </div>
+    </>
   );
 }
 

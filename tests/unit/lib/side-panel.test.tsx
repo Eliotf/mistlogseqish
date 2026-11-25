@@ -44,6 +44,31 @@ describe("SidePanelProvider", () => {
     expect(result.current.pages).toEqual([]);
   });
 
+  it("hides when its last page is closed, or all of them, and can be shown empty", () => {
+    const { result } = renderHook(() => useSidePanel(), { wrapper });
+    expect(result.current.shown).toBe(false);
+    act(() => result.current.open("a"));
+    act(() => result.current.open("b"));
+    act(() => result.current.close("a"));
+    expect(result.current.shown).toBe(true);
+    act(() => result.current.close("b"));
+    expect(result.current.shown).toBe(false);
+    act(() => result.current.toggle());
+    expect(result.current).toMatchObject({ pages: [], shown: true });
+    act(() => result.current.open("c"));
+    act(() => result.current.closeAll());
+    expect(result.current).toMatchObject({ pages: [], shown: false });
+  });
+
+  it("a reload brings back a panel with pages, shown or hidden, but not an empty one", () => {
+    localStorage.setItem("mistlog-side-panel", JSON.stringify({ pages: [], shown: true }));
+    expect(renderHook(() => useSidePanel(), { wrapper }).result.current.shown).toBe(false);
+    localStorage.setItem("mistlog-side-panel", JSON.stringify({ pages: ["a"], shown: true }));
+    expect(renderHook(() => useSidePanel(), { wrapper }).result.current.shown).toBe(true);
+    localStorage.setItem("mistlog-side-panel", JSON.stringify({ pages: ["a"], shown: false }));
+    expect(renderHook(() => useSidePanel(), { wrapper }).result.current.shown).toBe(false);
+  });
+
   it("remembers the panel in this browser", () => {
     const first = renderHook(() => useSidePanel(), { wrapper });
     act(() => first.result.current.open("a"));

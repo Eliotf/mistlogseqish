@@ -2,7 +2,7 @@ import { useCallback, useEffect } from "react";
 import { Link, useFetcher, useLocation, useNavigate } from "react-router";
 import { useYjsEditor } from "~/lib/useYjsEditor";
 import { DocumentProvider } from "~/lib/DocumentContext";
-import { TASKS_PANEL_ID, useSidePanel } from "~/lib/side-panel";
+import { TASKS_PANEL_ID, useHasSidePanel, useSidePanel } from "~/lib/side-panel";
 import TasksView from "~/components/TasksView";
 import type { loader as tasksLoader } from "~/routes/tasks";
 import { linkHref, type LinkTarget } from "~/lib/page-titles";
@@ -11,6 +11,11 @@ import { journalTitle, parseJournalDate } from "~/lib/note-ids";
 import { UNTITLED } from "~/lib/page-title";
 import ConnectedEditor from "~/components/ConnectedEditor";
 import { zoomHref } from "~/lib/zoom";
+import { useModKeyLabel } from "~/lib/mod-key";
+import { RIGHT_PANEL_SIZE } from "~/lib/panel-width";
+import ResizeHandle from "~/components/ResizeHandle";
+
+export const SIDE_PANEL_ID = "side-panel";
 
 function titleFor(pageId: string, target: LinkTarget | undefined): string {
   const date = parseJournalDate(pageId);
@@ -22,20 +27,24 @@ function titleFor(pageId: string, target: LinkTarget | undefined): string {
 /**
  * The side panel (PRD F18): pages opened with Cmd/Ctrl+click, newest on top,
  * each a live editor. A right-hand column on wide screens (taking the
- * comments column's place on a page), a full-screen sheet on phones.
+ * comments column's place on a page), resized by its left edge; a
+ * full-screen sheet on phones.
  */
 export default function SidePanel() {
   const panel = useSidePanel();
   const { pathname } = useLocation();
-  if (!panel.shown || panel.pages.length === 0) return null;
+  const mod = useModKeyLabel();
+  if (!panel.shown) return null;
   // On a page, hiding the panel brings its comments back
   const onPage = /^\/(docs|page|journal)\//.test(pathname);
 
   return (
     <aside
+      id={SIDE_PANEL_ID}
       aria-label="Side panel"
-      className="fixed inset-0 z-40 flex flex-col bg-paper lg:static lg:z-auto lg:h-dvh lg:w-[28rem] lg:shrink-0 lg:border-l lg:border-border"
+      className="fixed inset-0 z-40 flex flex-col bg-paper lg:relative lg:inset-auto lg:z-auto lg:h-dvh lg:w-[min(var(--right-panel-width,28rem),60vw)] lg:shrink-0 lg:border-l lg:border-border"
     >
+      <ResizeHandle size={RIGHT_PANEL_SIZE} label="Resize the side panel" controls={SIDE_PANEL_ID} className="absolute inset-y-0 -left-1 hidden lg:block" />
       <div className="flex shrink-0 items-stretch border-b border-border text-sm">
         <button type="button" onClick={() => panel.setShown(false)} className="px-3 py-2 text-muted hover:text-ink lg:hidden">
           ← Back
@@ -60,9 +69,36 @@ export default function SidePanel() {
         </button>
       </div>
       <div className="flex-1 overflow-y-auto">
+        {panel.pages.length === 0 && (
+          <p className="px-6 py-4 text-sm text-muted">Nothing here yet. {mod}+click a link, a search result or Tasks to open it here.</p>
+        )}
         {panel.pages.map((pageId) => (pageId === TASKS_PANEL_ID ? <SideTasks key={pageId} /> : <SidePage key={pageId} pageId={pageId} />))}
       </div>
     </aside>
+  );
+}
+
+/** The header button for the side panel, as the sidebar has on the left (`t r`). Nothing outside SidePanelProvider. */
+export function SidePanelButton() {
+  const panel = useSidePanel();
+  const hasPanel = useHasSidePanel();
+  if (!hasPanel) return null;
+  const label = panel.shown ? "Hide side panel" : "Show side panel";
+  return (
+    <button
+      type="button"
+      onClick={panel.toggle}
+      aria-label={label}
+      title={`${label} (t r)`}
+      aria-expanded={panel.shown}
+      aria-controls={SIDE_PANEL_ID}
+      className="flex shrink-0 cursor-pointer items-center self-stretch border-l border-border px-3 text-muted transition-colors hover:bg-border hover:text-ink"
+    >
+      <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75">
+        <rect x="3.5" y="4.5" width="17" height="15" />
+        <path d="M14.5 4.5v15" />
+      </svg>
+    </button>
   );
 }
 

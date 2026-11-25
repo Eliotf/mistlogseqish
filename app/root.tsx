@@ -12,6 +12,7 @@ import type { Route } from "./+types/root";
 import Fathom from "~/components/Fathom";
 import AppShell from "~/components/AppShell";
 import { SIDEBAR_HEAD_SCRIPT } from "~/lib/left-sidebar";
+import { PANEL_WIDTH_HEAD_SCRIPT } from "~/lib/panel-width";
 import "./app.css";
 
 export const links: Route.LinksFunction = () => [
@@ -34,7 +35,7 @@ const themeScript = `(function(){var t=localStorage.getItem('mist-theme')||'auto
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
-    // The head scripts set data-theme and data-left-sidebar before React loads
+    // The head scripts set data-theme, data-left-sidebar and the panel widths before React loads
     <html lang="en" data-theme="auto" suppressHydrationWarning>
       <head>
         <meta charSet="utf-8" />
@@ -43,6 +44,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <script dangerouslySetInnerHTML={{ __html: SIDEBAR_HEAD_SCRIPT }} />
+        <script dangerouslySetInnerHTML={{ __html: PANEL_WIDTH_HEAD_SCRIPT }} />
         <Meta />
         <Links />
       </head>

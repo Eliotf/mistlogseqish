@@ -7,6 +7,7 @@ import ShortcutsButton from "~/components/ShortcutsButton";
 import { SidebarButtons } from "~/components/LeftSidebar";
 import HistoryButtons from "~/components/HistoryButtons";
 import TasksLink from "~/components/TasksLink";
+import { SidePanelButton } from "~/components/SidePanel";
 import { useLeftSidebar } from "~/lib/left-sidebar";
 
 /**
@@ -46,6 +47,7 @@ export default function AppHeader({ children }: { children?: ReactNode }) {
       <div className={`shrink-0 items-center border-l border-border ${children ? "hidden sm:flex" : "flex"}`}>
         <ShortcutsButton />
         <ThemeSelector />
+        <SidePanelButton />
       </div>
     </header>
   );

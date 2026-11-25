@@ -9,6 +9,8 @@ import { DocumentProvider, useDocument } from "~/lib/DocumentContext";
 import PreviewToggle from "~/components/PreviewToggle";
 import ConnectionStatus from "~/components/ConnectionStatus";
 import { useSidePanel } from "~/lib/side-panel";
+import { RIGHT_PANEL_SIZE } from "~/lib/panel-width";
+import ResizeHandle from "~/components/ResizeHandle";
 import { useRecordVisit } from "~/lib/left-sidebar";
 import Backlinks from "~/components/Backlinks";
 import ShareButton from "~/components/ShareButton";
@@ -74,6 +76,9 @@ function DocumentScreen({ id, createdAt, exists, path, focusTitle }: ScreenProps
   );
 }
 
+/** The comments column, which its resize handle names. */
+const COMMENTS_ID = "page-comments";
+
 function DocumentLayout({ id, exists, path, focusTitle }: Omit<ScreenProps, "createdAt">) {
   const navigate = useNavigate();
   // Move to the new address straight away; the index already knows it
@@ -85,9 +90,8 @@ function DocumentLayout({ id, exists, path, focusTitle }: Omit<ScreenProps, "cre
   const [params] = useSearchParams();
   const zoom = params.get(ZOOM_PARAM);
   const onZoom = useCallback((blockId: string | null) => navigate(zoomHref(path, blockId)), [navigate, path]);
-  // The side panel takes the comments column while it shows pages
-  const panel = useSidePanel();
-  const panelOpen = panel.shown && panel.pages.length > 0;
+  // The side panel takes the comments column while it shows
+  const panelOpen = useSidePanel().shown;
   // Listed under Recent in the left sidebar
   useRecordVisit(id);
 
@@ -117,7 +121,9 @@ function DocumentLayout({ id, exists, path, focusTitle }: Omit<ScreenProps, "cre
           <ConnectedEditor zoom={zoom} onZoom={onZoom} />
           <Backlinks pageId={id} />
         </main>
-        <aside className={`hidden w-96 flex-col overflow-hidden ${panelOpen ? "" : "lg:flex"}`}>
+        {/* As wide as the side panel, which takes its place */}
+        <aside id={COMMENTS_ID} className={`relative hidden w-[min(var(--right-panel-width,24rem),60vw)] shrink-0 flex-col overflow-hidden ${panelOpen ? "" : "lg:flex"}`}>
+          <ResizeHandle size={RIGHT_PANEL_SIZE} label="Resize the comments" controls={COMMENTS_ID} className="absolute inset-y-0 left-0" />
           <div className="flex-1 overflow-y-auto">
             <OnboardingBanner />
             <ModeToggle />
