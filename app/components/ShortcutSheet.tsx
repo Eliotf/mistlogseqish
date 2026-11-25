@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useId, useRef } from "react";
 import { useShortcutSheet } from "~/lib/shortcut-sheet";
 import { keyLabel, SHORTCUT_GROUPS } from "~/lib/shortcuts";
+import { MARKDOWN_CHEATSHEET } from "~/lib/markdown-cheatsheet";
 import { useModKeyLabel } from "~/lib/mod-key";
 
 /** The keyboard shortcut sheet, while it is open (see ShortcutSheetProvider). */
@@ -13,7 +14,8 @@ export default function ShortcutSheet() {
 const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
 /**
- * Every shortcut, grouped, as in the prototype's key list (PRD F43). Modal:
+ * Every shortcut, grouped, as in the prototype's key list (PRD F43), then
+ * the Markdown the editor understands. Modal:
  * Tab stays inside, Esc, the close button or a click outside closes it.
  */
 function SheetDialog({ onClose }: { onClose: () => void }) {
@@ -102,6 +104,19 @@ function SheetDialog({ onClose }: { onClose: () => void }) {
               </dl>
             </section>
           ))}
+          <section aria-label="Markdown" className="sm:col-span-2">
+            <h3 className="mb-1.5 text-[11px] uppercase tracking-wider text-muted">Markdown</h3>
+            <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 text-[13px] sm:grid-cols-[max-content_1fr_max-content_1fr]">
+              {MARKDOWN_CHEATSHEET.map((entry) => (
+                <Fragment key={entry.id}>
+                  <dt className="whitespace-nowrap" data-markdown={entry.id}>
+                    <code className="font-[inherit] text-[12px] text-ink">{entry.example}</code>
+                  </dt>
+                  <dd className="text-muted">{entry.action}</dd>
+                </Fragment>
+              ))}
+            </dl>
+          </section>
         </div>
       </div>
     </>

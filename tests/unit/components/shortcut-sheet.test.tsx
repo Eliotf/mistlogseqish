@@ -12,6 +12,7 @@ import ShortcutsButton from "~/components/ShortcutsButton";
 import AppHeader from "~/components/AppHeader";
 import { ShortcutSheetProvider } from "~/lib/shortcut-sheet";
 import { allShortcuts, keyLabel, GO_CHORD_MS, SHORTCUT_GROUPS } from "~/lib/shortcuts";
+import { MARKDOWN_CHEATSHEET } from "~/lib/markdown-cheatsheet";
 
 /** Where the router is, recorded after render. */
 const seen = { where: "", renders: 0 };
@@ -200,6 +201,21 @@ describe("the shortcut sheet (F43)", () => {
       expect(dt.nextElementSibling?.textContent).toBe(shortcut.action);
     }
     expect(within(dialog).getByText("⌘+K")).toBeTruthy();
+  });
+
+  it("lists the Markdown the editor understands, after the shortcuts", () => {
+    show();
+    press(window, "?");
+    const dialog = sheet()!;
+    const section = within(dialog).getByRole("region", { name: "Markdown" });
+    expect(within(section).getByRole("heading", { name: "Markdown" })).toBeTruthy();
+    expect([...section.querySelectorAll("dt")].map((dt) => dt.getAttribute("data-markdown"))).toEqual(MARKDOWN_CHEATSHEET.map((e) => e.id));
+    for (const entry of MARKDOWN_CHEATSHEET) {
+      const dt = section.querySelector(`dt[data-markdown="${entry.id}"]`)!;
+      expect(dt.querySelector("code")?.textContent).toBe(entry.example);
+      expect(dt.nextElementSibling?.textContent).toBe(entry.action);
+    }
+    expect(dialog.querySelector('section[aria-label="Markdown"]')).toBe(dialog.querySelectorAll("section").item(SHORTCUT_GROUPS.length));
   });
 
   it("shows Ctrl for Mod elsewhere", () => {
